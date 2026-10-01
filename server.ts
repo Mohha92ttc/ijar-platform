@@ -68,7 +68,9 @@ function checkRequiredEnv() {
     }
   }
   if (isProd && !(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) {
-    throw new Error('SMTP_HOST/SMTP_USER/SMTP_PASS are required in production for real email');
+    console.warn(
+      'WARNING: SMTP not configured — emails will log to console only. Set SMTP_* for real mail.'
+    );
   }
 }
 
