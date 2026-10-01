@@ -1,0 +1,366 @@
+import { query } from '../../backend/database/connection';
+import { AdminDashboardData, AdminStats, MostRentedEquipment } from './admin.types';
+import { NotificationService } from '../../backend/modules/notifications/notification.service';
+import { PaymentService } from '../../backend/modules/payments/payment.service';
+import { mailService } from '../../backend/services/mail.service';
+import crypto from 'crypto';
+
+export class AdminService {
+  private notificationService = new NotificationService();
+  private paymentService = new PaymentService();
+  async getDashboardData(): Promise<AdminDashboardData> {
+    const userCount = await query('SELECT COUNT(*) FROM users');
+    const eqCount = await query('SELECT COUNT(*) FROM equipment');
+    const bookingCount = await query('SELECT COUNT(*) FROM bookings');
+    const paymentSum = await query("SELECT SUM(amount) FROM payments WHERE status = 'approved'");
+    
+    const stats: AdminStats = {
+      totalUsers: parseInt(String(userCount.rows[0].count)),
+      totalEquipment: parseInt(String(eqCount.rows[0].count)),
+      totalBookings: parseInt(String(bookingCount.rows[0].count)),
+      monthlyRevenue: parseFloat(String(paymentSum.rows[0].sum || 0)),
+      totalCommission: parseFloat(String(paymentSum.rows[0].sum || 0)) * 0.1,
+    };
+
+    const mostRentedRes = await query(`
+      SELECT e.id as "equipmentId", e.title, COUNT(b.id) as "bookingCount", SUM(b.total_amount) as "totalRevenue"
+      FROM equipment e
+      LEFT JOIN bookings b ON e.id = b.equipment_id
+      GROUP BY e.id, e.title
+      ORDER BY "bookingCount" DESC
+      LIMIT 5
+    `);
+
+    const pendingPayments = await query("SELECT * FROM payments WHERE status = 'pending' ORDER BY created_at DESC");
+
+    const recentBookingsRes = await query(`
+      SELECT b.id, b.status, b.total_amount, b.created_at,
+             u.name as customer_name, e.title as equipment_title
+      FROM bookings b
+      JOIN users u ON b.customer_id = u.id
+      JOIN equipment e ON b.equipment_id = e.id
+      ORDER BY b.created_at DESC
+      LIMIT 5
+    `);
+
+    return {
+      stats,
+      mostRented: mostRentedRes.rows.map(r => ({
+        equipmentId: String(r.equipmentId),
+        title: String(r.title),
+        bookingCount: parseInt(String(r.bookingCount)),
+        totalRevenue: parseFloat(String(r.totalRevenue || 0))
+      })),
+      recentBookings: recentBookingsRes.rows.map(r => ({
+        id: String(r.id),
+        status: String(r.status),
+        total_amount: parseFloat(String(r.total_amount)),
+        customer_name: String(r.customer_name),
+        equipment_title: String(r.equipment_title),
+        created_at: String(r.created_at)
+      })),
+      pendingPayments: pendingPayments.rows.map(r => ({
+        id: String(r.id),
+        amount: parseFloat(String(r.amount)),
+        user_id: String(r.user_id),
+        status: String(r.status),
+        created_at: String(r.created_at)
+      })) as any
+    };
+  }
+
+  async getAllUsers(): Promise<any[]> {
+    const res = await query(`
+      SELECT id, name, email, role, phone, is_approved, subscription_status, subscription_end_date, created_at as joined 
+      FROM users 
+      ORDER BY created_at DESC
+    `);
+    return res.rows;
+  }
+
+  async updateEquipmentStatus(equipmentId: string, status: any): Promise<void> {
+    await query('UPDATE equipment SET status = $1 WHERE id = $2', [status, equipmentId]);
+  }
+
+  async banUser(userId: string): Promise<void> {
+    await query("UPDATE users SET subscription_status = 'banned' WHERE id = $1", [userId]);
+  }
+
+  async approveUser(userId: string): Promise<void> {
+    await query("UPDATE users SET is_approved = TRUE, subscription_status = 'active' WHERE id = $1", [userId]);
+    await this.notificationService.create({
+      user_id: userId,
+      type: 'partner_approval',
+      title: 'تمت الموافقة على حسابك',
+      message: 'تمت الموافقة على طلب انضمامك كشريك. يمكنك تسجيل الدخول واستخدام لوحة التحكم.',
+      related_id: userId,
+    });
+  }
+
+  async renewSubscription(userId: string, months: number): Promise<void> {
+    await query(`
+      UPDATE users 
+      SET subscription_end_date = COALESCE(subscription_end_date, CURRENT_TIMESTAMP) + ($2 || ' months')::interval,
+          subscription_status = 'active',
+          is_approved = TRUE
+      WHERE id = $1
+    `, [userId, months]);
+  }
+
+  async getAllBookings(): Promise<any[]> {
+    const res = await query(`
+      SELECT b.*, u.name as customer_name, e.title as equipment_title 
+      FROM bookings b
+      JOIN users u ON b.customer_id = u.id
+      JOIN equipment e ON b.equipment_id = e.id
+      ORDER BY b.created_at DESC
+    `);
+    return res.rows;
+  }
+
+  async getAllPayments(): Promise<any[]> {
+    const res = await query(`
+      SELECT p.*, u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM payments p
+      LEFT JOIN users u ON p.user_id = u.id
+      ORDER BY p.created_at DESC
+    `);
+    return res.rows;
+  }
+
+  async getPlatformSettings(): Promise<any> {
+    const res = await query("SELECT * FROM platform_settings LIMIT 1");
+    if (res.rows[0]) {
+      const r = res.rows[0];
+      return {
+        ...r,
+        phones: r.phones || ['+964 7700 123 456'],
+        emails: r.emails || ['info@ijar.iq'],
+        addresses: r.addresses || ['بغداد، العراق'],
+        bank_name: r.bank_name ?? '',
+        bank_account_iban: r.bank_account_iban ?? '',
+        card_number_display: r.card_number_display ?? '',
+        transfer_instructions: r.transfer_instructions ?? '',
+        featured_ad_price: r.featured_ad_price != null ? Number(r.featured_ad_price) : 50000,
+        featured_duration_days: r.featured_duration_days != null ? Number(r.featured_duration_days) : 30,
+        subscription_renewal_price: r.subscription_renewal_price != null ? Number(r.subscription_renewal_price) : 100000,
+        commission_rate: r.commission_rate != null ? Number(r.commission_rate) : 0.1,
+      };
+    }
+    return {
+      name: 'إيجار',
+      description: 'المنصة الأولى لتأجير المعدات في العراق',
+      phones: ['+964 7700 123 456', '+964 7500 789 012'],
+      emails: ['info@ijar.iq', 'support@ijar.iq'],
+      addresses: ['بغداد - الكرادة، شارع فلسطين', 'أربيل - عينكاوة، بالقرب من الجامعة'],
+      mission: 'مهمتنا هي تسهيل عملية تأجير المعدات في العراق وتوفير مصدر دخل إضافي لأصحاب المعدات.',
+      vision: 'أن نكون المنصة الأولى والأكثر ثقة في تأجير المعدات في الشرق الأوسط.',
+      bank_name: '',
+      bank_account_iban: '',
+      card_number_display: '',
+      transfer_instructions: '',
+      featured_ad_price: 50000,
+      featured_duration_days: 30,
+      subscription_renewal_price: 100000,
+      commission_rate: 0.1,
+    };
+  }
+
+  async updatePlatformSettings(data: any): Promise<void> {
+    await query(
+      `
+      INSERT INTO platform_settings (
+        id, name, description, phones, emails, addresses, mission, vision,
+        bank_name, bank_account_iban, card_number_display, transfer_instructions,
+        featured_ad_price, featured_duration_days, subscription_renewal_price, commission_rate
+      )
+      VALUES (
+        1, $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12, $13, $14, $15
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        description = EXCLUDED.description,
+        phones = EXCLUDED.phones,
+        emails = EXCLUDED.emails,
+        addresses = EXCLUDED.addresses,
+        mission = EXCLUDED.mission,
+        vision = EXCLUDED.vision,
+        bank_name = EXCLUDED.bank_name,
+        bank_account_iban = EXCLUDED.bank_account_iban,
+        card_number_display = EXCLUDED.card_number_display,
+        transfer_instructions = EXCLUDED.transfer_instructions,
+        featured_ad_price = EXCLUDED.featured_ad_price,
+        featured_duration_days = EXCLUDED.featured_duration_days,
+        subscription_renewal_price = EXCLUDED.subscription_renewal_price,
+        commission_rate = EXCLUDED.commission_rate
+    `,
+      [
+        data.name,
+        data.description,
+        data.phones,
+        data.emails,
+        data.addresses,
+        data.mission,
+        data.vision,
+        data.bank_name ?? null,
+        data.bank_account_iban ?? null,
+        data.card_number_display ?? null,
+        data.transfer_instructions ?? null,
+        data.featured_ad_price ?? 50000,
+        data.featured_duration_days ?? 30,
+        data.subscription_renewal_price ?? 100000,
+        data.commission_rate ?? 0.1,
+      ]
+    );
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await query('DELETE FROM users WHERE id = $1', [id]);
+  }
+
+  async reviewPayment(paymentId: string, approve: boolean, notes?: string): Promise<void> {
+    await this.paymentService.adminReview(paymentId, approve, notes);
+  }
+
+  async getPasswordResetRequests(): Promise<any[]> {
+    const res = await query(
+      `
+      SELECT r.*, u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM password_reset_requests r
+      JOIN users u ON u.id = r.user_id
+      ORDER BY r.created_at DESC
+      `
+    );
+    return res.rows;
+  }
+
+  async reviewPasswordResetRequest(adminId: string, requestId: string, approve: boolean, notes?: string): Promise<{ completionToken?: string }> {
+    if (!approve) {
+      const res = await query(
+        `
+        UPDATE password_reset_requests
+        SET status = 'rejected', admin_notes = $1, reviewed_by = $2, reviewed_at = CURRENT_TIMESTAMP
+        WHERE id = $3 AND status = 'pending'
+        RETURNING user_id, requested_email
+        `,
+        [notes || null, adminId, requestId]
+      );
+      if (res.rows.length === 0) throw new Error('Request not found or already reviewed');
+      const userId = String(res.rows[0].user_id);
+      await this.notificationService.create({
+        user_id: userId,
+        type: 'system',
+        title: 'تم رفض طلب تغيير كلمة المرور',
+        message: `تم الرفض${notes ? `: ${notes}` : ''}`,
+        related_id: requestId,
+      });
+      return {};
+    }
+
+    const completionToken = crypto.randomBytes(32).toString('hex');
+    const expires = new Date(Date.now() + 1000 * 60 * 30);
+    const res = await query(
+      `
+      UPDATE password_reset_requests
+      SET status = 'approved',
+          admin_notes = $1,
+          reviewed_by = $2,
+          reviewed_at = CURRENT_TIMESTAMP,
+          completion_token = $3,
+          completion_token_expires = $4
+      WHERE id = $5 AND status = 'pending'
+      RETURNING user_id, requested_email
+      `,
+      [notes || null, adminId, completionToken, expires, requestId]
+    );
+    if (res.rows.length === 0) throw new Error('Request not found or already reviewed');
+    const userId = String(res.rows[0].user_id);
+    const email = String(res.rows[0].requested_email);
+    await this.notificationService.create({
+      user_id: userId,
+      type: 'system',
+      title: 'تمت الموافقة على تغيير كلمة المرور',
+      message: 'تمت الموافقة. استخدم رمز التأكيد المرسل لإدخال كلمة المرور الجديدة خلال 30 دقيقة.',
+      related_id: requestId,
+    });
+    await mailService.send({
+      to: email,
+      subject: 'رمز تأكيد تغيير كلمة المرور — إيجار',
+      text: `رمز التأكيد لمرة واحدة: ${completionToken}\nصالح لمدة 30 دقيقة.`,
+    });
+    // Return token so admin UI / tests can complete flow when SMTP is not configured
+    return { completionToken };
+  }
+
+  /** تقرير مدفوعات الشركاء للمنصة (اشتراك / إعلان مميز) */
+  async getPartnerPaymentsReport(): Promise<any> {
+    const partnersRes = await query(`
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.phone,
+        u.is_approved,
+        u.subscription_status,
+        u.subscription_end_date,
+        COALESCE(SUM(CASE WHEN p.status = 'approved' THEN p.amount ELSE 0 END), 0) AS total_paid,
+        COALESCE(SUM(CASE WHEN p.status IN ('under_review','pending','proof_uploaded') THEN p.amount ELSE 0 END), 0) AS pending_amount,
+        COUNT(p.id) FILTER (WHERE p.type IN ('featured_promotion','subscription_renewal','subscription')) AS payment_count
+      FROM users u
+      LEFT JOIN payments p
+        ON p.user_id = u.id
+       AND p.type IN ('featured_promotion', 'subscription_renewal', 'subscription')
+      WHERE u.role = 'owner'
+      GROUP BY u.id
+      ORDER BY pending_amount DESC, total_paid DESC
+    `);
+
+    const txRes = await query(`
+      SELECT p.*, u.name AS user_name, u.email AS user_email, u.phone AS user_phone
+      FROM payments p
+      JOIN users u ON u.id = p.user_id
+      WHERE u.role = 'owner'
+        AND p.type IN ('featured_promotion', 'subscription_renewal', 'subscription')
+      ORDER BY p.created_at DESC
+      LIMIT 200
+    `);
+
+    const summary = {
+      partnersCount: partnersRes.rows.length,
+      totalPaid: partnersRes.rows.reduce((s, r) => s + Number(r.total_paid || 0), 0),
+      pendingAmount: partnersRes.rows.reduce((s, r) => s + Number(r.pending_amount || 0), 0),
+      pendingRequests: txRes.rows.filter((r) =>
+        ['under_review', 'pending', 'proof_uploaded'].includes(String(r.status))
+      ).length,
+    };
+
+    return {
+      summary,
+      partners: partnersRes.rows.map((r) => ({
+        id: String(r.id),
+        name: String(r.name),
+        email: String(r.email),
+        phone: String(r.phone || '—'),
+        is_approved: Boolean(r.is_approved),
+        subscription_status: String(r.subscription_status || 'none'),
+        subscription_end_date: r.subscription_end_date,
+        total_paid: Number(r.total_paid || 0),
+        pending_amount: Number(r.pending_amount || 0),
+        payment_count: Number(r.payment_count || 0),
+      })),
+      transactions: txRes.rows.map((r) => ({
+        id: String(r.id),
+        user_id: String(r.user_id),
+        user_name: String(r.user_name),
+        user_email: String(r.user_email),
+        amount: Number(r.amount),
+        type: String(r.type),
+        status: String(r.status),
+        created_at: r.created_at,
+        payment_proof: r.payment_proof,
+        notes: r.notes,
+      })),
+    };
+  }
+}

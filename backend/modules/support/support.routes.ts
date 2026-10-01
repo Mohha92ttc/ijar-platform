@@ -1,0 +1,27 @@
+import { Router } from 'express';
+import { supportController } from './support.controller';
+import { authenticateToken, requireRole } from '../auth/auth.middleware';
+
+const router = Router();
+
+// Support tickets
+router.post('/tickets', authenticateToken, supportController.createTicket);
+router.get('/tickets', authenticateToken, supportController.getTickets);
+router.get('/tickets/:id', authenticateToken, supportController.getTicket);
+router.put('/tickets/:id', authenticateToken, supportController.updateTicket);
+router.delete('/tickets/:id', authenticateToken, requireRole(['admin']), supportController.deleteTicket);
+
+// Live chat
+router.post('/chat/start', authenticateToken, supportController.startChatSession);
+router.post('/chat/:sessionId/message', authenticateToken, supportController.sendChatMessage);
+router.get('/chat/:sessionId/messages', authenticateToken, supportController.getChatMessages);
+router.post('/chat/:sessionId/end', authenticateToken, supportController.endChatSession);
+
+// Knowledge base
+router.get('/knowledge', authenticateToken, supportController.getKnowledgeBase);
+router.get('/knowledge/search', authenticateToken, supportController.searchKnowledgeBase);
+
+// Support analytics
+router.get('/analytics', authenticateToken, requireRole(['admin']), supportController.getSupportAnalytics);
+
+export default router;

@@ -1,0 +1,223 @@
+import { query } from '../../database/connection';
+import { Equipment, CreateEquipmentDTO, UpdateEquipmentDTO, EquipmentSearchFilters } from './equipment.types';
+
+function rowToEquipment(row: Record<string, unknown>): Equipment {
+  const base: Equipment = {
+    id: String(row.id),
+    owner_id: String(row.owner_id),
+    title: String(row.title),
+    description: String(row.description),
+    category: String(row.category),
+    price_per_day: Number(row.price_per_day),
+    location: String(row.location),
+    images: Array.isArray(row.images) ? (row.images as string[]) : [],
+    status: row.status as Equipment['status'],
+    average_rating: Number(row.average_rating ?? 0),
+    review_count: Number(row.review_count ?? 0),
+    created_at: new Date(row.created_at as string),
+    updated_at: new Date(row.updated_at as string),
+  };
+  if (row.owner_is_featured !== undefined) {
+    base.owner_is_featured = Boolean(row.owner_is_featured);
+  }
+  return base;
+}
+
+export class EquipmentService {
+  async create(ownerId: string, data: CreateEquipmentDTO): Promise<Equipment> {
+    const sql = `
+      INSERT INTO equipment (owner_id, title, description, category, price_per_day, location, images, status, average_rating, review_count)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'available', 0, 0)
+      RETURNING *
+    `;
+    const imgs = data.images && data.images.length > 0 ? data.images : [];
+    const res = await query(sql, [
+      ownerId,
+      data.title,
+      data.description,
+      data.category,
+      data.price_per_day,
+      data.location,
+      imgs,
+    ]);
+    return rowToEquipment(res.rows[0]);
+  }
+
+  async update(id: string, ownerId: string, data: UpdateEquipmentDTO): Promise<Equipment> {
+    const existing = await this.getById(id);
+    if (existing.owner_id !== ownerId) {
+      throw new Error('Equipment not found or unauthorized');
+    }
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
+    if (data.title !== undefined) {
+      fields.push(`title = $${i++}`);
+      values.push(data.title);
+    }
+    if (data.description !== undefined) {
+      fields.push(`description = $${i++}`);
+      values.push(data.description);
+    }
+    if (data.category !== undefined) {
+      fields.push(`category = $${i++}`);
+      values.push(data.category);
+    }
+    if (data.price_per_day !== undefined) {
+      fields.push(`price_per_day = $${i++}`);
+      values.push(data.price_per_day);
+    }
+    if (data.location !== undefined) {
+      fields.push(`location = $${i++}`);
+      values.push(data.location);
+    }
+    if (data.images !== undefined) {
+      fields.push(`images = $${i++}`);
+      values.push(data.images);
+    }
+    if (data.status !== undefined) {
+      fields.push(`status = $${i++}::equipment_status`);
+      values.push(data.status);
+    }
+    if (fields.length === 0) return existing;
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    const sql = `UPDATE equipment SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`;
+    const res = await query(sql, values);
+    return rowToEquipment(res.rows[0]);
+  }
+
+  async delete(id: string, ownerId: string): Promise<void> {
+    const res = await query(`DELETE FROM equipment WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
+    if (res.rowCount === 0) {
+      throw new Error('Equipment not found or unauthorized');
+    }
+  }
+
+  async getById(id: string): Promise<Equipment> {
+    const res = await query(`SELECT * FROM equipment WHERE id = $1`, [id]);
+    if (res.rows.length === 0) {
+      throw new Error('Equipment not found');
+    }
+    return rowToEquipment(res.rows[0]);
+  }
+
+  async getAll(): Promise<Equipment[]> {
+    const res = await query(
+      `
+      SELECT e.*,
+        (u.featured_until IS NOT NULL AND u.featured_until > NOW()) AS owner_is_featured
+      FROM equipment e
+      JOIN users u ON u.id = e.owner_id
+      WHERE e.status NOT IN ('hidden', 'maintenance')
+      ORDER BY
+        CASE WHEN u.featured_until IS NOT NULL AND u.featured_until > NOW() THEN 0 ELSE 1 END,
+        COALESCE(u.featured_priority, 0) DESC,
+        e.created_at DESC
+      `
+    );
+    return res.rows.map(rowToEquipment);
+  }
+
+  async search(filters: EquipmentSearchFilters): Promise<Equipment[]> {
+    let sql = `
+      SELECT e.*,
+        (u.featured_until IS NOT NULL AND u.featured_until > NOW()) AS owner_is_featured
+      FROM equipment e
+      JOIN users u ON u.id = e.owner_id
+      WHERE e.status NOT IN ('hidden', 'maintenance')
+    `;
+    const params: unknown[] = [];
+    let n = 1;
+
+    if (filters.query) {
+      sql += ` AND (e.title ILIKE $${n} OR e.description ILIKE $${n})`;
+      params.push(`%${filters.query}%`);
+      n++;
+    }
+    if (filters.category) {
+      sql += ` AND e.category ILIKE $${n}`;
+      params.push(filters.category);
+      n++;
+    }
+    if (filters.location) {
+      sql += ` AND e.location ILIKE $${n}`;
+      params.push(`%${filters.location}%`);
+      n++;
+    }
+    if (filters.minPrice !== undefined) {
+      sql += ` AND e.price_per_day >= $${n}`;
+      params.push(filters.minPrice);
+      n++;
+    }
+    if (filters.maxPrice !== undefined) {
+      sql += ` AND e.price_per_day <= $${n}`;
+      params.push(filters.maxPrice);
+      n++;
+    }
+    if (filters.minRating !== undefined) {
+      sql += ` AND e.average_rating >= $${n}`;
+      params.push(filters.minRating);
+      n++;
+    }
+
+    sql += `
+      ORDER BY
+        CASE WHEN u.featured_until IS NOT NULL AND u.featured_until > NOW() THEN 0 ELSE 1 END,
+        COALESCE(u.featured_priority, 0) DESC,
+        e.created_at DESC
+    `;
+    const res = await query(sql, params);
+    const list = res.rows.map(rowToEquipment);
+
+    if (!filters.startDate || !filters.endDate) {
+      return list;
+    }
+
+    const start = new Date(filters.startDate);
+    const end = new Date(filters.endDate);
+    const filtered: Equipment[] = [];
+    for (const e of list) {
+      const ok = await this.isAvailableForRange(e.id, start, end);
+      if (ok) filtered.push(e);
+    }
+    return filtered;
+  }
+
+  /** No overlap with pending/confirmed bookings */
+  private async isAvailableForRange(equipmentId: string, start: Date, end: Date): Promise<boolean> {
+    const res = await query(
+      `
+      SELECT 1 FROM bookings
+      WHERE equipment_id = $1
+        AND status IN ('pending', 'confirmed')
+        AND start_date < $3 AND end_date > $2
+      LIMIT 1
+    `,
+      [equipmentId, start, end]
+    );
+    return res.rows.length === 0;
+  }
+
+  async getByOwner(ownerId: string): Promise<Equipment[]> {
+    const res = await query(`SELECT * FROM equipment WHERE owner_id = $1 ORDER BY created_at DESC`, [ownerId]);
+    return res.rows.map(rowToEquipment);
+  }
+
+  async getCategories(): Promise<any[]> {
+    const res = await query(`SELECT * FROM categories WHERE is_active = TRUE ORDER BY sort_order ASC`);
+    return res.rows;
+  }
+
+  async addCategory(name: string, image?: string): Promise<any> {
+    const res = await query(
+      'INSERT INTO categories (name, image) VALUES ($1, $2) RETURNING *',
+      [name, image]
+    );
+    return res.rows[0];
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    await query('UPDATE categories SET is_active = FALSE WHERE id = $1', [id]);
+  }
+}

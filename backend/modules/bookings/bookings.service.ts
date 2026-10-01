@@ -1,0 +1,200 @@
+import { query } from '../../database/connection';
+import { Booking, CreateBookingDTO, BookingStatus } from './bookings.types';
+import { EquipmentService } from '../equipment/equipment.service';
+import { NotificationService } from '../notifications/notification.service';
+
+function rowToBooking(row: Record<string, unknown>): Booking {
+  return {
+    id: String(row.id),
+    equipment_id: String(row.equipment_id),
+    customer_id: String(row.customer_id),
+    start_date: new Date(row.start_date as string),
+    end_date: new Date(row.end_date as string),
+    total_price: Number(row.total_amount),
+    status: row.status as BookingStatus,
+    created_at: new Date(row.created_at as string),
+    updated_at: new Date(row.updated_at as string),
+  };
+}
+
+export class BookingService {
+  private equipmentService: EquipmentService;
+  private notificationService: NotificationService;
+
+  constructor() {
+    this.equipmentService = new EquipmentService();
+    this.notificationService = new NotificationService();
+  }
+
+  async create(customerId: string, data: CreateBookingDTO): Promise<Booking> {
+    const equipment = await this.equipmentService.getById(data.equipment_id);
+
+    const start = new Date(data.start_date);
+    const end = new Date(data.end_date);
+
+    if (start < new Date()) {
+      throw new Error('Start date cannot be in the past');
+    }
+
+    if (end <= start) {
+      throw new Error('End date must be after start date');
+    }
+
+    const available = await this.checkAvailability(data.equipment_id, start, end);
+    if (!available) {
+      throw new Error('Equipment is already booked for these dates');
+    }
+
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const totalPrice = diffDays * equipment.price_per_day;
+
+    const ins = await query(
+      `
+      INSERT INTO bookings (equipment_id, customer_id, start_date, end_date, total_amount, status, location, notes, customer_phone)
+      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
+      RETURNING *
+    `,
+      [
+        data.equipment_id,
+        customerId,
+        start.toISOString(),
+        end.toISOString(),
+        totalPrice,
+        data.location ?? null,
+        data.notes ?? null,
+        data.customer_phone ?? null,
+      ]
+    );
+
+    const newBooking = rowToBooking(ins.rows[0]);
+
+    await this.notificationService.create({
+      user_id: equipment.owner_id,
+      type: 'system',
+      title: 'New Booking Request',
+      message: `You have a new booking request for ${equipment.title}.`,
+      related_id: newBooking.id,
+    });
+
+    return newBooking;
+  }
+
+  /** true = no overlapping pending/confirmed booking */
+  async checkAvailability(equipmentId: string, start: Date, end: Date): Promise<boolean> {
+    const res = await query(
+      `
+      SELECT 1 FROM bookings
+      WHERE equipment_id = $1
+        AND status = 'confirmed'
+        AND start_date < $3 AND end_date > $2
+      LIMIT 1
+    `,
+      [equipmentId, start, end]
+    );
+    return res.rows.length === 0;
+  }
+
+  async updateStatus(id: string, status: BookingStatus, actor: { userId: string; role: string }): Promise<Booking> {
+    const existing = await this.getById(id);
+    const oldStatus = existing.status;
+
+    // Authorization: only owners/admin can update status, and owners can only update their own equipment.
+    if (actor.role === 'owner') {
+      const equipment = await this.equipmentService.getById(existing.equipment_id);
+      if (equipment.owner_id !== actor.userId) {
+        throw new Error('Not authorized to update this booking');
+      }
+    } else if (actor.role !== 'admin') {
+      throw new Error('Not authorized to update this booking');
+    }
+
+    const res = await query(
+      `
+      UPDATE bookings SET status = $1::booking_status, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING *
+    `,
+      [status, id]
+    );
+    if (res.rows.length === 0) {
+      throw new Error('Booking not found');
+    }
+    const booking = rowToBooking(res.rows[0]);
+
+    const equipment = await this.equipmentService.getById(booking.equipment_id);
+
+    if (status === 'confirmed' && oldStatus !== 'confirmed') {
+      await this.notificationService.create({
+        user_id: booking.customer_id,
+        type: 'booking_confirmed',
+        title: 'Booking Confirmed',
+        message: `Your booking for ${equipment.title} has been confirmed.`,
+        related_id: booking.id,
+      });
+    } else if (status === 'cancelled' && oldStatus !== 'cancelled') {
+      await this.notificationService.create({
+        user_id: booking.customer_id,
+        type: 'booking_cancelled',
+        title: 'Booking Cancelled',
+        message: `Your booking for ${equipment.title} has been cancelled.`,
+        related_id: booking.id,
+      });
+      await this.notificationService.create({
+        user_id: equipment.owner_id,
+        type: 'booking_cancelled',
+        title: 'Booking Cancelled',
+        message: `The booking for ${equipment.title} has been cancelled.`,
+        related_id: booking.id,
+      });
+    }
+
+    return booking;
+  }
+
+  async getByCustomer(customerId: string): Promise<any[]> {
+    const res = await query(
+      `
+      SELECT b.*, e.title as equipment_title, u.name as owner_name, e.location as equipment_location
+      FROM bookings b
+      JOIN equipment e ON b.equipment_id = e.id
+      JOIN users u ON e.owner_id = u.id
+      WHERE b.customer_id = $1 
+      ORDER BY b.start_date DESC
+      `,
+      [customerId]
+    );
+    return res.rows;
+  }
+
+  async getByEquipment(equipmentId: string): Promise<any[]> {
+    const res = await query(`
+      SELECT b.*, u.name as customer_name
+      FROM bookings b
+      JOIN users u ON b.customer_id = u.id
+      WHERE b.equipment_id = $1 
+      ORDER BY b.start_date DESC
+    `, [equipmentId]);
+    return res.rows;
+  }
+  async getById(id: string): Promise<Booking> {
+    const res = await query('SELECT * FROM bookings WHERE id = $1', [id]);
+    if (res.rows.length === 0) throw new Error('Booking not found');
+    return rowToBooking(res.rows[0]);
+  }
+
+  async getByOwner(ownerId: string): Promise<any[]> {
+    const res = await query(
+      `
+      SELECT b.*, e.title as equipment_title, u.name as customer_name
+      FROM bookings b
+      JOIN equipment e ON b.equipment_id = e.id
+      JOIN users u ON b.customer_id = u.id
+      WHERE e.owner_id = $1
+      ORDER BY b.created_at DESC
+      `,
+      [ownerId]
+    );
+    return res.rows;
+  }
+}

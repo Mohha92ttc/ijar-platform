@@ -1,0 +1,14 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+/test-results/
+/playwright-report/
+/playwright/.cache/
+/e2e/reports/audit-issues.jsonl
+/e2e/reports/AUDIT-LAST-RUN.md
+.neon
