@@ -58,7 +58,14 @@ function checkRequiredEnv() {
     console.warn(`WARNING: ${msg}`);
   }
   if (isProd && !process.env.ALLOWED_ORIGINS) {
-    throw new Error('ALLOWED_ORIGINS is required in production');
+    // Render provides RENDER_EXTERNAL_URL — use it when ALLOWED_ORIGINS unset
+    const renderUrl = process.env.RENDER_EXTERNAL_URL;
+    if (renderUrl) {
+      process.env.ALLOWED_ORIGINS = renderUrl;
+      console.warn('ALLOWED_ORIGINS defaulted to RENDER_EXTERNAL_URL:', renderUrl);
+    } else {
+      throw new Error('ALLOWED_ORIGINS is required in production');
+    }
   }
   if (isProd && !(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS)) {
     throw new Error('SMTP_HOST/SMTP_USER/SMTP_PASS are required in production for real email');
