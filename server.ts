@@ -35,7 +35,10 @@ function errMsg(err: unknown): string {
 }
 
 function checkRequiredEnv() {
-  const required = ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
+  const hasDatabaseUrl = Boolean(process.env.DATABASE_URL || process.env.DATABASE_URL_UNPOOLED);
+  const required = hasDatabaseUrl
+    ? ['JWT_SECRET']
+    : ['JWT_SECRET', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD'];
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length > 0) {
     console.error('CRITICAL: Missing required environment variables:', missing.join(', '));
