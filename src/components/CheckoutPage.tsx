@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { ShoppingBag, Trash2, MapPin, Phone, CreditCard, ArrowRight, X, Truck } from 'lucide-react';
+import { ShoppingBag, Trash2, MapPin, Phone, ArrowRight, X, Truck } from 'lucide-react';
 import type { CartLine, CartPaymentMethod } from '../lib/cartStorage';
 import { paymentMethodLabel } from '../lib/cartStorage';
 import { apiJson } from '../lib/api';
