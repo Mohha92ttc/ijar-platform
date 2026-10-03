@@ -5,6 +5,7 @@ import ImageUpload from './ImageUpload';
 import TransferAccountsPanel from './TransferAccountsPanel';
 import { apiJson, ApiError } from '../lib/api';
 import { paymentMethodLabel, type CartPaymentMethod } from '../lib/cartStorage';
+import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation } from '../lib/iraqLocations';
 
 type Eq = {
   id: string;
@@ -60,6 +61,8 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     category: '',
     price: '',
     description: '',
+    governorate: 'بغداد',
+    area: '',
     imageFile: null as File | null
   });
   const [showAddForm, setShowAddForm] = useState(false);
@@ -277,6 +280,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       alert('يرجى ملء جميع الحقول المطلوبة: الاسم، التصنيف، والسعر.');
       return;
     }
+    if (!newEquipment.governorate.trim()) {
+      alert('يرجى اختيار المحافظة التي تتوفر فيها المعدة.');
+      return;
+    }
     const price = parseInt(newEquipment.price, 10);
     if (Number.isNaN(price)) {
       alert('السعر يجب أن يكون رقماً صحيحاً.');
@@ -292,6 +299,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
     }
 
+    const governorate = newEquipment.governorate.trim();
+    const area = newEquipment.area.trim() || null;
+    const location = formatEquipmentLocation(governorate, area);
+
     try {
       await apiJson('/api/equipment', {
         method: 'POST',
@@ -300,12 +311,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           description: newEquipment.description || '—',
           category: newEquipment.category,
           price_per_day: price,
-          location: 'بغداد',
+          location,
+          governorate,
+          area,
           images: [imageUrl],
           ownerId,
         }),
       });
-      setNewEquipment({ title: '', category: '', price: '', description: '', imageFile: null });
+      setNewEquipment({ title: '', category: '', price: '', description: '', governorate: 'بغداد', area: '', imageFile: null });
       setShowAddForm(false);
       await loadData();
     } catch {
@@ -642,6 +655,39 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     onChange={(e) => setNewEquipment({...newEquipment, price: e.target.value})}
                     className="px-4 py-3 border border-slate-200 rounded-xl text-sm"
                   />
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500">المحافظة *</label>
+                    <select
+                      data-testid="partner-equipment-governorate"
+                      value={newEquipment.governorate}
+                      onChange={(e) => setNewEquipment({ ...newEquipment, governorate: e.target.value, area: '' })}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white"
+                      required
+                    >
+                      {IRAQ_GOVERNORATES.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500">المنطقة (اختياري)</label>
+                    <input
+                      type="text"
+                      list="partner-area-suggestions"
+                      data-testid="partner-equipment-area"
+                      placeholder="مثال: الكرادة، العشار…"
+                      value={newEquipment.area}
+                      onChange={(e) => setNewEquipment({ ...newEquipment, area: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm"
+                    />
+                    <datalist id="partner-area-suggestions">
+                      {(GOVERNORATE_AREAS[newEquipment.governorate] || []).map((a) => (
+                        <option key={a} value={a} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
                 <div className="space-y-2 mb-4">
                   <label className="text-sm font-medium text-slate-700">صورة المعدة</label>

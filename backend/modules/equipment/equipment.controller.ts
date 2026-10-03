@@ -30,12 +30,23 @@ export class EquipmentController {
       rawPrice !== undefined && rawPrice !== null && rawPrice !== ''
         ? Number(rawPrice)
         : NaN;
+    const governorate = String(body.governorate ?? '').trim();
+    const areaRaw = body.area != null ? String(body.area).trim() : '';
+    const locationFallback = String(body.location ?? 'بغداد');
+    const location =
+      governorate
+        ? areaRaw
+          ? `${governorate} - ${areaRaw}`
+          : governorate
+        : locationFallback;
     return {
       title: String(body.title ?? body.name ?? ''),
       description: String(body.description ?? ''),
       category: String(body.category ?? ''),
       price_per_day,
-      location: String(body.location ?? 'بغداد'),
+      location,
+      governorate: governorate || locationFallback.split('-')[0].trim(),
+      area: areaRaw || null,
       images: body.images as string[] | undefined,
     };
   }
@@ -110,6 +121,8 @@ export class EquipmentController {
         query: req.query.query as string,
         category: req.query.category as string,
         location: req.query.location as string,
+        governorate: req.query.governorate as string,
+        area: req.query.area as string,
         minPrice: req.query.minPrice ? Number(req.query.minPrice) : undefined,
         maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : undefined,
         minRating: req.query.minRating ? Number(req.query.minRating) : undefined,

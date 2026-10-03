@@ -27,6 +27,8 @@ import HelpPage from './components/HelpPage';
 import NotificationsPanel from './components/NotificationsPanel';
 import { apiJson, clearSession, ApiError, apiLogout, friendlyAuthMessage, validateSession, apiFetch } from './lib/api';
 import { loadCart, saveCart, clearCartStorage, switchCartUser, type CartLine, type CartPaymentMethod } from './lib/cartStorage';
+import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from './lib/iraqLocations';
+import InstallAppButtons from './components/InstallAppButtons';
 
 type EquipmentRow = {
   id: string;
@@ -34,6 +36,8 @@ type EquipmentRow = {
   category: string;
   price: number;
   location: string;
+  governorate?: string;
+  area?: string;
   rating: number;
   reviews: number;
   image: string;
@@ -48,12 +52,17 @@ const PLACEHOLDER_IMG =
 
 function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {
   const images = e.images as string[] | undefined;
+  const hint = parseLocationHint(String(e.location || ''));
+  const governorate = String(e.governorate || hint.governorate || '');
+  const area = String(e.area || hint.area || '');
   return {
     id: String(e.id),
     title: String(e.title),
     category: String(e.category),
     price: Number(e.price_per_day),
-    location: String(e.location),
+    location: String(e.location) || formatEquipmentLocation(governorate, area),
+    governorate,
+    area,
     rating: Number(e.average_rating ?? 0),
     reviews: Number(e.review_count ?? 0),
     image: images?.[0] || PLACEHOLDER_IMG,
@@ -77,6 +86,8 @@ export default function App() {
   const [showFilter, setShowFilter] = useState(false);
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
+  const [filterGovernorate, setFilterGovernorate] = useState('');
+  const [filterArea, setFilterArea] = useState('');
   const [list, setList] = useState<EquipmentRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -192,15 +203,30 @@ export default function App() {
     return list.filter((item) => {
       if (selectedOwnerId && item.owner_id !== selectedOwnerId) return false;
       if (activeCategory !== 'الكل' && item.category !== activeCategory) return false;
+      if (filterGovernorate) {
+        const g = item.governorate || parseLocationHint(item.location).governorate;
+        if (!g.includes(filterGovernorate) && !item.location.includes(filterGovernorate)) return false;
+      }
+      if (filterArea.trim()) {
+        const a = (item.area || parseLocationHint(item.location).area || '').toLowerCase();
+        const loc = item.location.toLowerCase();
+        const q = filterArea.trim().toLowerCase();
+        if (!a.includes(q) && !loc.includes(q)) return false;
+      }
       const q = searchQ.trim().toLowerCase();
-      if (q && !item.title.toLowerCase().includes(q) && !item.category.toLowerCase().includes(q)) return false;
+      if (q && !item.title.toLowerCase().includes(q) && !item.category.toLowerCase().includes(q) && !item.location.toLowerCase().includes(q)) return false;
       const min = priceMin ? Number(priceMin) : NaN;
       const max = priceMax ? Number(priceMax) : NaN;
       if (!Number.isNaN(min) && item.price < min) return false;
       if (!Number.isNaN(max) && item.price > max) return false;
       return true;
     });
-  }, [list, selectedOwnerId, activeCategory, searchQ, priceMin, priceMax]);
+  }, [list, selectedOwnerId, activeCategory, searchQ, priceMin, priceMax, filterGovernorate, filterArea]);
+
+  const areaSuggestions = useMemo(() => {
+    if (!filterGovernorate) return [] as string[];
+    return GOVERNORATE_AREAS[filterGovernorate] || [];
+  }, [filterGovernorate]);
 
   const handleLogin = (userData: any) => {
     setUser(userData);
@@ -393,7 +419,8 @@ export default function App() {
             />
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <InstallAppButtons />
             {cart.length > 0 && (
               <button
                 type="button"
@@ -405,6 +432,17 @@ export default function App() {
                 <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
                   {cart.length}
                 </span>
+              </button>
+            )}
+            {cart.length === 0 && (
+              <button
+                type="button"
+                data-testid="header-cart"
+                onClick={() => setView('checkout')}
+                className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors relative"
+                title="السلة"
+              >
+                <ShoppingCart size={22} />
               </button>
             )}
 
@@ -461,6 +499,46 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 py-6 w-full flex-1 flex flex-col gap-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            <select
+              data-testid="home-filter-governorate"
+              value={filterGovernorate}
+              onChange={(e) => {
+                setFilterGovernorate(e.target.value);
+                setFilterArea('');
+              }}
+              className="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all bg-white border border-slate-200 max-w-[180px]"
+            >
+              <option value="">كل المحافظات</option>
+              {IRAQ_GOVERNORATES.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+            <select
+              data-testid="home-filter-area"
+              value={filterArea}
+              onChange={(e) => setFilterArea(e.target.value)}
+              disabled={!filterGovernorate}
+              className="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all bg-white border border-slate-200 max-w-[180px] disabled:opacity-50"
+            >
+              <option value="">كل المناطق</option>
+              {areaSuggestions.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
+            {filterGovernorate && (
+              <input
+                type="text"
+                data-testid="home-filter-area-custom"
+                value={filterArea}
+                onChange={(e) => setFilterArea(e.target.value)}
+                placeholder="أو اكتب المنطقة…"
+                className="px-3 py-2 rounded-xl text-sm border border-slate-200 bg-white max-w-[160px]"
+              />
+            )}
             <select
               data-testid="home-filter-owner"
               value={selectedOwnerId ?? ''}
@@ -548,6 +626,8 @@ export default function App() {
                 setSelectedOwnerId(null);
                 setPriceMin('');
                 setPriceMax('');
+                setFilterGovernorate('');
+                setFilterArea('');
               }}
               className="text-sm text-blue-600 font-medium hover:underline"
             >

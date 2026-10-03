@@ -1,7 +1,19 @@
 import { query } from '../../database/connection';
 import { Equipment, CreateEquipmentDTO, UpdateEquipmentDTO, EquipmentSearchFilters } from './equipment.types';
 
+function formatLoc(governorate?: string | null, area?: string | null, fallback = ''): string {
+  const g = String(governorate || '').trim();
+  const a = String(area || '').trim();
+  if (g && a) return `${g} - ${a}`;
+  if (g) return g;
+  if (a) return a;
+  return fallback;
+}
+
 function rowToEquipment(row: Record<string, unknown>): Equipment {
+  const governorate = row.governorate != null ? String(row.governorate) : null;
+  const area = row.area != null && String(row.area) !== '' ? String(row.area) : null;
+  const locationRaw = String(row.location || '');
   const base: Equipment = {
     id: String(row.id),
     owner_id: String(row.owner_id),
@@ -9,7 +21,9 @@ function rowToEquipment(row: Record<string, unknown>): Equipment {
     description: String(row.description),
     category: String(row.category),
     price_per_day: Number(row.price_per_day),
-    location: String(row.location),
+    location: locationRaw || formatLoc(governorate, area),
+    governorate,
+    area,
     images: Array.isArray(row.images) ? (row.images as string[]) : [],
     status: row.status as Equipment['status'],
     average_rating: Number(row.average_rating ?? 0),
@@ -25,9 +39,12 @@ function rowToEquipment(row: Record<string, unknown>): Equipment {
 
 export class EquipmentService {
   async create(ownerId: string, data: CreateEquipmentDTO): Promise<Equipment> {
+    const governorate = String(data.governorate || '').trim() || String(data.location || '').split('-')[0].trim() || 'بغداد';
+    const area = data.area != null && String(data.area).trim() !== '' ? String(data.area).trim() : null;
+    const location = formatLoc(governorate, area, data.location || governorate);
     const sql = `
-      INSERT INTO equipment (owner_id, title, description, category, price_per_day, location, images, status, average_rating, review_count)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'available', 0, 0)
+      INSERT INTO equipment (owner_id, title, description, category, price_per_day, location, governorate, area, images, status, average_rating, review_count)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'available', 0, 0)
       RETURNING *
     `;
     const imgs = data.images && data.images.length > 0 ? data.images : [];
@@ -37,7 +54,9 @@ export class EquipmentService {
       data.description,
       data.category,
       data.price_per_day,
-      data.location,
+      location,
+      governorate,
+      area,
       imgs,
     ]);
     return rowToEquipment(res.rows[0]);
@@ -70,6 +89,14 @@ export class EquipmentService {
     if (data.location !== undefined) {
       fields.push(`location = $${i++}`);
       values.push(data.location);
+    }
+    if (data.governorate !== undefined) {
+      fields.push(`governorate = $${i++}`);
+      values.push(data.governorate);
+    }
+    if (data.area !== undefined) {
+      fields.push(`area = $${i++}`);
+      values.push(data.area);
     }
     if (data.images !== undefined) {
       fields.push(`images = $${i++}`);
@@ -143,6 +170,16 @@ export class EquipmentService {
     if (filters.location) {
       sql += ` AND e.location ILIKE $${n}`;
       params.push(`%${filters.location}%`);
+      n++;
+    }
+    if (filters.governorate) {
+      sql += ` AND (COALESCE(e.governorate, '') ILIKE $${n} OR e.location ILIKE $${n})`;
+      params.push(`%${filters.governorate}%`);
+      n++;
+    }
+    if (filters.area) {
+      sql += ` AND (COALESCE(e.area, '') ILIKE $${n} OR e.location ILIKE $${n})`;
+      params.push(`%${filters.area}%`);
       n++;
     }
     if (filters.minPrice !== undefined) {

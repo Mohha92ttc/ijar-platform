@@ -8,6 +8,8 @@ export interface Equipment {
   category: string;
   price_per_day: number;
   location: string;
+  governorate?: string | null;
+  area?: string | null;
   images: string[];
   status: EquipmentStatus;
   average_rating: number;
@@ -24,6 +26,8 @@ export interface CreateEquipmentDTO {
   category: string;
   price_per_day: number;
   location: string;
+  governorate?: string;
+  area?: string | null;
   images?: string[];
 }
 
@@ -33,6 +37,8 @@ export interface UpdateEquipmentDTO {
   category?: string;
   price_per_day?: number;
   location?: string;
+  governorate?: string;
+  area?: string | null;
   images?: string[];
   status?: EquipmentStatus;
 }
@@ -41,9 +47,11 @@ export interface EquipmentSearchFilters {
   query?: string;
   category?: string;
   location?: string;
+  governorate?: string;
+  area?: string;
   minPrice?: number;
   maxPrice?: number;
   minRating?: number;
-  startDate?: string; // ISO string for availability check
-  endDate?: string;   // ISO string for availability check
+  startDate?: string;
+  endDate?: string;
 }

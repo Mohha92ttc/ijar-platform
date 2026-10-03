@@ -362,6 +362,14 @@ async function createTables() {
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_requested BOOLEAN DEFAULT FALSE;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_fee DECIMAL(12, 2) DEFAULT 0;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_preference VARCHAR(50);
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS governorate VARCHAR(100);
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS area VARCHAR(100);
+    UPDATE equipment
+      SET governorate = TRIM(SPLIT_PART(location, '-', 1))
+      WHERE (governorate IS NULL OR governorate = '')
+        AND location IS NOT NULL AND location <> '';
+    CREATE INDEX IF NOT EXISTS idx_equipment_governorate ON equipment (governorate);
+    CREATE INDEX IF NOT EXISTS idx_equipment_area ON equipment (area);
 
     -- Messages Table
     CREATE TABLE IF NOT EXISTS messages (
