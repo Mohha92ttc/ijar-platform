@@ -60,6 +60,15 @@ export class EquipmentController {
     }
   };
 
+  listPartners = async (_req: Request, res: Response) => {
+    try {
+      const partners = await this.equipmentService.listPublicPartners();
+      res.status(200).json(partners);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  };
+
   create = async (req: Request, res: Response) => {
     try {
       const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;

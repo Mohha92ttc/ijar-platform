@@ -34,6 +34,9 @@ function rowToEquipment(row: Record<string, unknown>): Equipment {
   if (row.owner_is_featured !== undefined) {
     base.owner_is_featured = Boolean(row.owner_is_featured);
   }
+  if (row.owner_name !== undefined && row.owner_name !== null) {
+    base.owner_name = String(row.owner_name);
+  }
   return base;
 }
 
@@ -133,6 +136,7 @@ export class EquipmentService {
     const res = await query(
       `
       SELECT e.*,
+        u.name AS owner_name,
         (u.featured_until IS NOT NULL AND u.featured_until > NOW()) AS owner_is_featured
       FROM equipment e
       JOIN users u ON u.id = e.owner_id
@@ -146,9 +150,38 @@ export class EquipmentService {
     return res.rows.map(rowToEquipment);
   }
 
+  /** شركاء لديهم معدات ظاهرة — للبحث وصفحة المتجر */
+  async listPublicPartners(): Promise<
+    { id: string; name: string; equipment_count: number; locations: string[]; featured: boolean }[]
+  > {
+    const res = await query(
+      `
+      SELECT
+        u.id,
+        u.name,
+        COUNT(e.id)::int AS equipment_count,
+        ARRAY_REMOVE(ARRAY_AGG(DISTINCT COALESCE(NULLIF(TRIM(e.governorate), ''), NULLIF(TRIM(SPLIT_PART(e.location, '-', 1)), ''))), NULL) AS locations,
+        BOOL_OR(u.featured_until IS NOT NULL AND u.featured_until > NOW()) AS featured
+      FROM users u
+      JOIN equipment e ON e.owner_id = u.id AND e.status NOT IN ('hidden', 'maintenance')
+      WHERE u.role = 'owner' AND COALESCE(u.is_approved, true) = true
+      GROUP BY u.id, u.name
+      ORDER BY featured DESC, equipment_count DESC, u.name ASC
+      `
+    );
+    return res.rows.map((row: Record<string, unknown>) => ({
+      id: String(row.id),
+      name: String(row.name || 'شريك'),
+      equipment_count: Number(row.equipment_count || 0),
+      locations: Array.isArray(row.locations) ? (row.locations as string[]).filter(Boolean) : [],
+      featured: Boolean(row.featured),
+    }));
+  }
+
   async search(filters: EquipmentSearchFilters): Promise<Equipment[]> {
     let sql = `
       SELECT e.*,
+        u.name AS owner_name,
         (u.featured_until IS NOT NULL AND u.featured_until > NOW()) AS owner_is_featured
       FROM equipment e
       JOIN users u ON u.id = e.owner_id
@@ -158,7 +191,7 @@ export class EquipmentService {
     let n = 1;
 
     if (filters.query) {
-      sql += ` AND (e.title ILIKE $${n} OR e.description ILIKE $${n})`;
+      sql += ` AND (e.title ILIKE $${n} OR e.description ILIKE $${n} OR u.name ILIKE $${n} OR e.location ILIKE $${n})`;
       params.push(`%${filters.query}%`);
       n++;
     }

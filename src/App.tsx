@@ -42,8 +42,17 @@ type EquipmentRow = {
   reviews: number;
   image: string;
   owner_id: string;
+  owner_name?: string;
   /** يُعاد من الخادم عند تفعيل إعلان مميز مدفوع للشريك */
   owner_featured?: boolean;
+};
+
+type PublicPartner = {
+  id: string;
+  name: string;
+  equipment_count: number;
+  locations: string[];
+  featured: boolean;
 };
 
 const PLACEHOLDER_IMG =
@@ -68,6 +77,7 @@ function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {
     image: images?.[0] || PLACEHOLDER_IMG,
     owner_featured: Boolean(e.owner_is_featured),
     owner_id: String(e.owner_id),
+    owner_name: e.owner_name ? String(e.owner_name) : undefined,
   };
 }
 
@@ -88,6 +98,7 @@ export default function App() {
   const [priceMax, setPriceMax] = useState('');
   const [filterGovernorate, setFilterGovernorate] = useState('');
   const [filterArea, setFilterArea] = useState('');
+  const [partners, setPartners] = useState<PublicPartner[]>([]);
   const [list, setList] = useState<EquipmentRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
@@ -184,20 +195,42 @@ export default function App() {
     }
   }, []);
 
+  const refreshPartners = useCallback(async () => {
+    try {
+      const rows = await apiJson<PublicPartner[]>('/api/equipment/partners');
+      setPartners(rows);
+    } catch {
+      setPartners([]);
+    }
+  }, []);
+
   useEffect(() => {
     refreshEquipment();
     refreshCategories();
-  }, [refreshEquipment, refreshCategories]);
+    refreshPartners();
+  }, [refreshEquipment, refreshCategories, refreshPartners]);
 
   const ownerOptions = useMemo(() => {
     const m = new Map<string, string>();
+    partners.forEach((p) => m.set(p.id, p.name));
     list.forEach((item) => {
       if (!m.has(item.owner_id)) {
-        m.set(item.owner_id, `شريك ${item.owner_id.slice(0, 8)}…`);
+        m.set(item.owner_id, item.owner_name || `شريك ${item.owner_id.slice(0, 8)}…`);
       }
     });
     return Array.from(m.entries());
-  }, [list]);
+  }, [list, partners]);
+
+  const selectedPartner = useMemo(
+    () => partners.find((p) => p.id === selectedOwnerId) || null,
+    [partners, selectedOwnerId]
+  );
+
+  const matchedPartners = useMemo(() => {
+    const q = searchQ.trim().toLowerCase();
+    if (!q || selectedOwnerId) return [] as PublicPartner[];
+    return partners.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+  }, [partners, searchQ, selectedOwnerId]);
 
   const filteredEquipment = useMemo(() => {
     return list.filter((item) => {
@@ -210,11 +243,16 @@ export default function App() {
       if (filterArea.trim()) {
         const a = (item.area || parseLocationHint(item.location).area || '').toLowerCase();
         const loc = item.location.toLowerCase();
-        const q = filterArea.trim().toLowerCase();
-        if (!a.includes(q) && !loc.includes(q)) return false;
+        const qa = filterArea.trim().toLowerCase();
+        if (!a.includes(qa) && !loc.includes(qa)) return false;
       }
       const q = searchQ.trim().toLowerCase();
-      if (q && !item.title.toLowerCase().includes(q) && !item.category.toLowerCase().includes(q) && !item.location.toLowerCase().includes(q)) return false;
+      if (q) {
+        const hay = `${item.title} ${item.category} ${item.location} ${item.owner_name || ''}`.toLowerCase();
+        // إذا البحث يطابق اسم شريك فقط — لا نخفي معدات شركاء آخرين هنا؛ بطاقات الشركاء تظهر فوق
+        // لكن نظهر المعدات المطابقة للاسم/التصنيف/الموقع أو اسم مالكها
+        if (!hay.includes(q)) return false;
+      }
       const min = priceMin ? Number(priceMin) : NaN;
       const max = priceMax ? Number(priceMax) : NaN;
       if (!Number.isNaN(min) && item.price < min) return false;
@@ -222,6 +260,13 @@ export default function App() {
       return true;
     });
   }, [list, selectedOwnerId, activeCategory, searchQ, priceMin, priceMax, filterGovernorate, filterArea]);
+
+  const openPartnerStore = (partnerId: string) => {
+    setSelectedOwnerId(partnerId);
+    setSearchQ('');
+    setActiveCategory('الكل');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const areaSuggestions = useMemo(() => {
     if (!filterGovernorate) return [] as string[];
@@ -491,7 +536,7 @@ export default function App() {
               data-testid="home-search"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="ابحث عن معدات…"
+              placeholder="ابحث عن معدات أو اسم شريك…"
               className="w-full bg-slate-100 border-none rounded-xl py-3 pr-10 pl-4 text-sm focus:ring-2 focus:ring-blue-500 transition-all"
             />
           </div>
@@ -499,6 +544,32 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 w-full flex-1 flex flex-col gap-4 sm:gap-6 pb-28 sm:pb-6">
+        {selectedPartner && (
+          <div
+            className="rounded-2xl border border-blue-200 bg-gradient-to-l from-blue-600 to-blue-500 text-white p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+            data-testid="partner-storefront-banner"
+          >
+            <div>
+              <div className="text-xs text-blue-100 font-medium mb-1">متجر الشريك</div>
+              <h2 className="text-xl font-bold">{selectedPartner.name}</h2>
+              <p className="text-sm text-blue-100 mt-1">
+                {selectedPartner.equipment_count} معدة متاحة
+                {selectedPartner.locations?.length
+                  ? ` · ${selectedPartner.locations.slice(0, 3).join('، ')}`
+                  : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              data-testid="partner-storefront-clear"
+              onClick={() => setSelectedOwnerId(null)}
+              className="min-h-11 px-4 rounded-xl bg-white text-blue-700 text-sm font-bold shrink-0"
+            >
+              عرض كل الشركاء
+            </button>
+          </div>
+        )}
+
         {/* فلاتر الموبايل — صف أفقي قابل للتمرير */}
         <div className="flex flex-col gap-3">
           <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 snap-x">
@@ -621,9 +692,44 @@ export default function App() {
           <div className="absolute -right-10 -bottom-10 w-48 sm:w-64 h-48 sm:h-64 bg-blue-500 rounded-full opacity-20 pointer-events-none" />
         </div>
 
+        {matchedPartners.length > 0 && (
+          <div className="space-y-3" data-testid="partner-search-results">
+            <h3 className="text-base font-bold text-slate-800">شركاء مطابقون لـ «{searchQ.trim()}»</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {matchedPartners.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  data-testid="partner-search-card"
+                  onClick={() => openPartnerStore(p.id)}
+                  className="text-right bg-white border border-slate-200 rounded-2xl p-4 hover:border-blue-400 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 truncate flex items-center gap-2">
+                        {p.name}
+                        {p.featured && (
+                          <span className="text-[10px] bg-amber-400 text-slate-900 px-2 py-0.5 rounded-lg font-bold">مميز</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-500 mt-1">
+                        {p.equipment_count} معدة
+                        {p.locations?.length ? ` · ${p.locations.slice(0, 2).join('، ')}` : ''}
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-blue-600 shrink-0">عرض البضاعة ←</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-bold">المعدات المتاحة</h3>
+            <h3 className="text-lg font-bold">
+              {selectedPartner ? `بضاعة ${selectedPartner.name}` : 'المعدات المتاحة'}
+            </h3>
             <button
               type="button"
               onClick={() => {
@@ -670,7 +776,19 @@ export default function App() {
                       <MapPin size={12} /> {item.location.split(' - ')[0]}
                     </div>
                   </div>
-                  <h4 className="font-bold text-slate-800 mb-3 line-clamp-1">{item.title}</h4>
+                  <h4 className="font-bold text-slate-800 mb-1 line-clamp-1">{item.title}</h4>
+                  {item.owner_name && (
+                    <button
+                      type="button"
+                      className="text-[11px] text-blue-600 font-medium mb-2 hover:underline block"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPartnerStore(item.owner_id);
+                      }}
+                    >
+                      الشريك: {item.owner_name}
+                    </button>
+                  )}
                   <div className="flex items-end justify-between">
                     <div>
                       <span className="text-lg font-bold text-blue-600">{item.price.toLocaleString()}</span>

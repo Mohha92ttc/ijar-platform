@@ -8,6 +8,7 @@ const equipmentController = new EquipmentController();
 // Public
 router.get('/search', equipmentController.search);
 router.get('/categories', equipmentController.getCategories);
+router.get('/partners', equipmentController.listPartners);
 router.get('/owner/:ownerId', equipmentController.getByOwner);
 
 // Category management BEFORE /:id catch-alls

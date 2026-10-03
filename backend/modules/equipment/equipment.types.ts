@@ -18,6 +18,16 @@ export interface Equipment {
   updated_at: Date;
   /** Present on list API when owner has active paid featured placement */
   owner_is_featured?: boolean;
+  /** اسم الشريك للعرض والبحث */
+  owner_name?: string;
+}
+
+export interface PublicPartner {
+  id: string;
+  name: string;
+  equipment_count: number;
+  locations: string[];
+  featured: boolean;
 }
 
 export interface CreateEquipmentDTO {
