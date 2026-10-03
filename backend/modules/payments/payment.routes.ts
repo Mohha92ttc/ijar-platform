@@ -1,12 +1,20 @@
 import { Router } from 'express';
 import { PaymentController } from './payment.controller';
 import { authenticateToken, requireRole } from '../auth/auth.middleware';
+import { validatePaymentRequest, validateImageUpload } from './payment.validation';
 
 const router = Router();
 const controller = new PaymentController();
 
 // Customer routes
-router.post('/initiate', authenticateToken, requireRole(['customer']), controller.initiate);
+router.post(
+  '/initiate',
+  authenticateToken,
+  requireRole(['customer']),
+  validatePaymentRequest,
+  validateImageUpload,
+  controller.initiate
+);
 router.get('/owner-settings/:ownerId', authenticateToken, requireRole(['owner', 'admin']), controller.getOwnerSettings);
 // Public: delivery fee + wallet/phone for checkout (no bank secrets)
 router.get('/public-owner/:ownerId', controller.getPublicOwnerInfo);

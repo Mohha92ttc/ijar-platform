@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Package, Clock, CheckCircle, XCircle, Settings, Plus, BarChart2, Home, Edit2, Trash2, Save, X, Sparkles, CreditCard } from 'lucide-react';
+import { Package, Clock, CheckCircle, XCircle, Settings, Plus, BarChart2, Home, Edit2, Trash2, Save, X, Sparkles, CreditCard, Image as ImageIcon, Eye } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 import TransferAccountsPanel from './TransferAccountsPanel';
 import { apiJson, ApiError } from '../lib/api';
+import { paymentMethodLabel, type CartPaymentMethod } from '../lib/cartStorage';
 
 type Eq = {
   id: string;
@@ -24,7 +25,30 @@ type Bk = {
   dates: string;
   total: number;
   status: string;
+  paymentPreference?: string;
+  paymentProof?: string | null;
+  paymentStatus?: string | null;
+  isCod: boolean;
 };
+
+function mapPayLabel(pref?: string | null): string {
+  const p = String(pref || '');
+  if (p === 'zain_cash' || p === 'asia_hawala' || p === 'manual' || p === 'cash_on_delivery') {
+    return paymentMethodLabel(p as CartPaymentMethod);
+  }
+  if (p === 'cash') return 'دفع عند التسليم';
+  if (p === 'wallet') return 'زين كاش';
+  if (p === 'bank') return 'تحويل بنكي / حوالة';
+  return p || '—';
+}
+
+function resolveProofUrl(raw?: string | null): string | null {
+  if (!raw) return null;
+  if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('/')) {
+    return raw;
+  }
+  return `/uploads/${raw}`;
+}
 
 export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string; onBack: () => void }) {
   const [activeTab, setActiveTab] = useState('bookings');
@@ -42,6 +66,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
 
   const [bookings, setBookings] = useState<Bk[]>([]);
   const [loading, setLoading] = useState(true);
+  const [proofPreview, setProofPreview] = useState<{ url: string; bookingId: string; title: string } | null>(null);
 
   const [transferInfo, setTransferInfo] = useState<{
     bank_name?: string | null;
@@ -93,16 +118,24 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       setMyEquipment(mapped);
 
       const bList = await apiJson<any[]>(`/api/bookings/owner/${ownerId}`);
-      const mappedBookings: Bk[] = bList.map((b) => ({
-        id: String(b.id),
-        equipment: String(b.equipment_title || '—'),
-        customer: String(b.customer_name || b.customer_id),
-        phone: String(b.customer_phone ?? '—'),
-        location: String(b.location ?? '—'),
-        dates: `${new Date(String(b.start_date)).toLocaleDateString('ar-IQ')} – ${new Date(String(b.end_date)).toLocaleDateString('ar-IQ')}`,
-        total: Number(b.total_amount),
-        status: String(b.status),
-      }));
+      const mappedBookings: Bk[] = bList.map((b) => {
+        const pref = String(b.payment_preference || '');
+        const isCod = pref === 'cash_on_delivery' || String(b.payment_db_method || '') === 'cash';
+        return {
+          id: String(b.id),
+          equipment: String(b.equipment_title || '—'),
+          customer: String(b.customer_name || b.customer_id),
+          phone: String(b.customer_phone ?? '—'),
+          location: String(b.location ?? '—'),
+          dates: `${new Date(String(b.start_date)).toLocaleDateString('ar-IQ')} – ${new Date(String(b.end_date)).toLocaleDateString('ar-IQ')}`,
+          total: Number(b.total_amount),
+          status: String(b.status),
+          paymentPreference: pref || String(b.payment_db_method || ''),
+          paymentProof: resolveProofUrl(b.payment_proof ? String(b.payment_proof) : null),
+          paymentStatus: b.payment_status ? String(b.payment_status) : null,
+          isCod,
+        };
+      });
       setBookings(mappedBookings);
 
       try {
@@ -219,6 +252,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   };
 
   const updateBookingStatus = async (id: string, newStatus: string) => {
+    const booking = bookings.find((b) => b.id === id);
+    if (newStatus === 'confirmed' && booking && !booking.isCod && booking.paymentProof) {
+      const ok = confirm('هل راجعت صورة إثبات التحويل وتأكدت من وصول المبلغ؟');
+      if (!ok) return;
+    }
     try {
       await apiJson(`/api/bookings/${id}/status`, {
         method: 'PATCH',
@@ -401,10 +439,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   key={booking.id}
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6"
+                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4"
+                  data-testid="partner-booking-card"
                 >
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                   <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <span className="font-bold text-slate-800">{booking.equipment}</span>
                       <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${
                         booking.status === 'confirmed' ? 'bg-green-100 text-green-700' : 
@@ -412,6 +452,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         'bg-amber-100 text-amber-700'
                       }`}>
                         {booking.status === 'confirmed' ? 'مثبت' : booking.status === 'cancelled' ? 'ملغي' : 'بانتظار الموافقة'}
+                      </span>
+                      <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                        {mapPayLabel(booking.paymentPreference)}
                       </span>
                     </div>
                     <div className="text-sm text-slate-500 flex flex-wrap gap-x-6 gap-y-1">
@@ -453,8 +496,113 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                       )}
                     </div>
                   </div>
+                  </div>
+
+                  {/* إثبات الدفع — يراجعه الشريك قبل الموافقة */}
+                  <div className="border-t border-slate-100 pt-4" data-testid="partner-booking-payment-proof">
+                    {booking.isCod ? (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                        دفع عند التسليم — لا توجد صورة تحويل. وافق على الحجز إذا كانت التواريخ والمعدة مناسبة.
+                      </p>
+                    ) : booking.paymentProof ? (
+                      <div className="flex flex-col sm:flex-row gap-4 items-start">
+                        <button
+                          type="button"
+                          data-testid="partner-view-proof"
+                          onClick={() =>
+                            setProofPreview({
+                              url: booking.paymentProof!,
+                              bookingId: booking.id,
+                              title: booking.equipment,
+                            })
+                          }
+                          className="relative group shrink-0"
+                        >
+                          <img
+                            src={booking.paymentProof}
+                            alt="إثبات الدفع"
+                            className="w-28 h-28 object-cover rounded-xl border border-slate-200 shadow-sm"
+                          />
+                          <span className="absolute inset-0 rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
+                            <Eye size={16} className="ml-1" /> عرض
+                          </span>
+                        </button>
+                        <div className="space-y-1 text-sm">
+                          <div className="font-bold text-slate-800 flex items-center gap-2">
+                            <ImageIcon size={16} className="text-blue-600" />
+                            إثبات التحويل مرفق
+                          </div>
+                          <p className="text-xs text-slate-500 leading-relaxed">
+                            اضغط على الصورة لتكبيرها وتأكد من وصول المبلغ لحسابك قبل الموافقة على الطلب.
+                          </p>
+                          {booking.paymentStatus && (
+                            <span className="inline-block text-[10px] font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-700">
+                              حالة الدفع: {booking.paymentStatus === 'under_review' ? 'بانتظار مراجعتك' : booking.paymentStatus}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2">
+                        الزبون اختار تحويلاً لكن لم يُرفق إثبات دفع بعد — راجع معه قبل الموافقة.
+                      </p>
+                    )}
+                  </div>
                 </motion.div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {proofPreview && (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80"
+            data-testid="partner-proof-lightbox"
+            onClick={() => setProofPreview(null)}
+          >
+            <div
+              className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-auto p-4 relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-3 gap-3">
+                <div>
+                  <h4 className="font-bold text-slate-800">إثبات دفع — {proofPreview.title}</h4>
+                  <p className="text-xs text-slate-500">راجع الصورة ثم أغلق ووافق أو ارفض الطلب</p>
+                </div>
+                <button
+                  type="button"
+                  data-testid="partner-proof-close"
+                  onClick={() => setProofPreview(null)}
+                  className="p-2 hover:bg-slate-100 rounded-full"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <img src={proofPreview.url} alt="إثبات الدفع" className="w-full rounded-xl border border-slate-100" />
+              {bookings.find((b) => b.id === proofPreview.bookingId)?.status === 'pending' && (
+                <div className="flex gap-3 mt-4 justify-end">
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-xl bg-red-50 text-red-700 text-sm font-bold"
+                    onClick={() => {
+                      setProofPreview(null);
+                      updateBookingStatus(proofPreview.bookingId, 'cancelled');
+                    }}
+                  >
+                    رفض الطلب
+                  </button>
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-bold"
+                    onClick={() => {
+                      setProofPreview(null);
+                      updateBookingStatus(proofPreview.bookingId, 'confirmed');
+                    }}
+                  >
+                    تأكيد بعد مراجعة الصورة
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

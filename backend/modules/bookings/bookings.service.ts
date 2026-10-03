@@ -194,10 +194,21 @@ export class BookingService {
   async getByOwner(ownerId: string): Promise<any[]> {
     const res = await query(
       `
-      SELECT b.*, e.title as equipment_title, u.name as customer_name
+      SELECT b.*, e.title as equipment_title, u.name as customer_name,
+             p.payment_proof AS payment_proof,
+             p.method::text AS payment_db_method,
+             p.status::text AS payment_status,
+             p.notes AS payment_notes
       FROM bookings b
       JOIN equipment e ON b.equipment_id = e.id
       JOIN users u ON b.customer_id = u.id
+      LEFT JOIN LATERAL (
+        SELECT payment_proof, method, status, notes
+        FROM payments
+        WHERE booking_id = b.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) p ON TRUE
       WHERE e.owner_id = $1
       ORDER BY b.created_at DESC
       `,

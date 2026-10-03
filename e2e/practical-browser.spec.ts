@@ -63,7 +63,7 @@ test.describe('اختبار عملي — تحكم مباشر بالمتصفح', 
     await expect(page.getByTestId('booking-modal')).toBeVisible();
     await fillBookingSchedule(page, { days: 2 });
     await page.getByTestId('booking-confirm-step1').click();
-    await page.getByTestId('booking-pay-manual').click();
+    await page.getByTestId('booking-pay-cash_on_delivery').click();
     await page.getByTestId('booking-confirm-final').click();
     await expect(page.getByTestId('header-cart')).toBeVisible();
     await page.getByTestId('header-cart').click();

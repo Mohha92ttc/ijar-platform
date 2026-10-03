@@ -113,7 +113,7 @@ test.describe('عميل — سيناريوهات', () => {
     await page.getByTestId('equipment-book').first().click();
     await fillBookingSchedule(page);
     await page.getByTestId('booking-confirm-step1').click();
-    await page.getByTestId('booking-pay-manual').click();
+    await page.getByTestId('booking-pay-cash_on_delivery').click();
     await page.getByTestId('booking-confirm-final').click();
     await page.getByTestId('header-cart').click();
     await expect(page.getByTestId('checkout-page')).toBeVisible();
@@ -284,7 +284,7 @@ test.describe('سلسلة — رفض حجز', () => {
     await page.getByTestId('equipment-book').first().click();
     await fillBookingSchedule(page);
     await page.getByTestId('booking-confirm-step1').click();
-    await page.getByTestId('booking-pay-manual').click();
+    await page.getByTestId('booking-pay-cash_on_delivery').click();
     await page.getByTestId('booking-confirm-final').click();
     await page.getByTestId('header-cart').click();
     await expect(page.getByTestId('checkout-page')).toBeVisible();

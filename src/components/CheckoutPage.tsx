@@ -5,13 +5,20 @@ import type { CartLine, CartPaymentMethod } from '../lib/cartStorage';
 import { paymentMethodLabel } from '../lib/cartStorage';
 import { apiJson } from '../lib/api';
 import TransferAccountsPanel from './TransferAccountsPanel';
+import ImageUpload from './ImageUpload';
 
 export type CheckoutFormData = {
   phone: string;
   location: string;
   notes: string;
   paymentMethod: CartPaymentMethod;
+  /** data URL لإثبات التحويل — إلزامي لغير الدفع عند التسليم */
+  proofImage?: string | null;
 };
+
+function needsPaymentProof(m: CartPaymentMethod): boolean {
+  return m !== 'cash_on_delivery';
+}
 
 export default function CheckoutPage({
   cart,
@@ -37,6 +44,7 @@ export default function CheckoutPage({
     notes: '',
   });
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>(defaultPay);
+  const [proofDataUrl, setProofDataUrl] = useState<string | null>(null);
   const [ownerHints, setOwnerHints] = useState<
     Record<
       string,
@@ -79,10 +87,31 @@ export default function CheckoutPage({
   const rentalSum = useMemo(() => cart.reduce((s, i) => s + Number(i.rentalTotal ?? i.total), 0), [cart]);
   const deliverySum = useMemo(() => cart.reduce((s, i) => s + Number(i.deliveryFee || 0), 0), [cart]);
   const total = rentalSum + deliverySum;
+  const requireProof = needsPaymentProof(paymentMethod);
+  const canSubmit = cart.length > 0 && (!requireProof || Boolean(proofDataUrl));
+
+  const handleProofFile = (file: File | null) => {
+    if (!file) {
+      setProofDataUrl(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => setProofDataUrl(reader.result as string);
+    reader.onerror = () => setProofDataUrl(null);
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onComplete({ ...formData, paymentMethod });
+    if (requireProof && !proofDataUrl) {
+      alert('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
+      return;
+    }
+    await onComplete({
+      ...formData,
+      paymentMethod,
+      proofImage: requireProof ? proofDataUrl : null,
+    });
   };
 
   const methods: CartPaymentMethod[] = ['zain_cash', 'asia_hawala', 'manual', 'cash_on_delivery'];
@@ -236,7 +265,10 @@ export default function CheckoutPage({
                   key={m}
                   type="button"
                   data-testid={`checkout-pay-${m}`}
-                  onClick={() => setPaymentMethod(m)}
+                  onClick={() => {
+                    setPaymentMethod(m);
+                    if (m === 'cash_on_delivery') setProofDataUrl(null);
+                  }}
                   className={`w-full text-right px-3 py-2.5 rounded-xl border text-sm font-bold transition-all ${
                     paymentMethod === m ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700'
                   }`}
@@ -249,7 +281,7 @@ export default function CheckoutPage({
             {(paymentMethod === 'zain_cash' || paymentMethod === 'asia_hawala' || paymentMethod === 'manual') && (
               <div className="space-y-3" data-testid="checkout-partner-accounts">
                 <p className="text-[11px] text-slate-600 leading-relaxed">
-                  حوّل لشريك كل معدة حسب الحسابات أدناه (ماستركارد أو زين كاش). بعد موافقة الشريك ارفع إثبات التحويل عند الطلب.
+                  1) انسخ حساب الشريك أدناه وحوّل المبلغ. 2) ارفع صورة إثبات التحويل. 3) الشريك يراجع الصورة ثم يوافق على الحجز.
                 </p>
                 {Object.entries(ownerHints).map(([oid, h]) => (
                   <TransferAccountsPanel
@@ -274,26 +306,41 @@ export default function CheckoutPage({
               </div>
             )}
 
+            {requireProof && (
+              <div className="space-y-2" data-testid="checkout-payment-proof">
+                <label className="text-xs font-bold text-slate-500">صورة إثبات الدفع (إلزامي)</label>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  لقطة شاشة لزين كاش / حوالة / تحويل الرافدين أو أي وصل تحويل يظهر المبلغ والحساب.
+                </p>
+                <ImageUpload onImageSelect={handleProofFile} currentImage={proofDataUrl || undefined} className="min-h-[140px]" />
+                {!proofDataUrl && (
+                  <p className="text-[11px] text-red-600 font-medium">لن يُرسل الطلب بدون صورة الإثبات.</p>
+                )}
+              </div>
+            )}
+
             {paymentMethod === 'cash_on_delivery' && (
               <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-800">
-                الدفع عند التسليم: تدفع المبلغ عند استلام المعدة. لا يلزم تحويل مسبق.
+                الدفع عند التسليم: تدفع المبلغ عند استلام المعدة. لا يلزم إرفاق إثبات تحويل.
               </div>
             )}
 
             <div className="pt-2">
               <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 mb-4">
                 <p className="text-[10px] leading-relaxed font-medium text-amber-700">
-                  يُرسل طلب مستقل لكل شريك. الدفع الإلكتروني/الحوالة يُؤكد بعد مراجعة الإثبات؛ الدفع عند التسليم عند الاستلام.
+                  {requireProof
+                    ? 'الطلب يبقى بانتظار موافقة الشريك بعد مراجعة صورة التحويل.'
+                    : 'الدفع عند التسليم: الشريك يؤكد الحجز، والدفع يتم عند الاستلام.'}
                 </p>
               </div>
 
               <button
                 type="submit"
                 data-testid="checkout-submit"
-                disabled={submitting || cart.length === 0}
+                disabled={submitting || !canSubmit}
                 className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 group shadow-xl shadow-blue-100 disabled:opacity-60"
               >
-                {submitting ? 'جاري الإرسال…' : 'إرسال طلبات الحجز'}
+                {submitting ? 'جاري الإرسال…' : requireProof && !proofDataUrl ? 'أرفق إثبات الدفع أولاً' : 'إرسال طلبات الحجز'}
                 <ArrowRight size={18} className="rotate-180 transition-transform group-hover:-translate-x-1" />
               </button>
             </div>

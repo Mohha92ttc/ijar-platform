@@ -1,5 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 
+const TRANSFER_METHODS = new Set([
+  'manual',
+  'zain_cash',
+  'asia_hawala',
+  'wallet',
+  'bank',
+  'online',
+  'visa',
+]);
+
 export const validatePaymentRequest = (req: Request, res: Response, next: NextFunction) => {
   const { booking_id, payment_method, amount } = req.body;
 
@@ -11,11 +21,14 @@ export const validatePaymentRequest = (req: Request, res: Response, next: NextFu
     return res.status(400).json({ message: 'Amount must be greater than zero' });
   }
 
-  if (payment_method === 'manual') {
-    const hasProof = req.body.proof_image || req.body.transfer_phone || req.body.transfer_card;
-    if (!hasProof) {
-      // We allow initiating without proof, but it stays 'pending'
-      // However, for certain flows we might require it
+  const method = String(payment_method);
+  const isCod = method === 'cash_on_delivery' || method === 'cash';
+  if (!isCod && TRANSFER_METHODS.has(method)) {
+    const proof = req.body.proof_image || req.body.payment_proof;
+    if (!proof || String(proof).length < 20) {
+      return res.status(400).json({
+        message: 'يرجى إرفاق صورة إثبات التحويل (زين كاش / حوالة / تحويل بنكي) قبل إرسال الطلب',
+      });
     }
   }
 
@@ -23,11 +36,9 @@ export const validatePaymentRequest = (req: Request, res: Response, next: NextFu
 };
 
 export const validateImageUpload = (req: Request, res: Response, next: NextFunction) => {
-  // Mock image validation
-  // In real app, check mime type and size
-  const { proof_image } = req.body;
-  if (proof_image && !proof_image.startsWith('data:image/')) {
-    // return res.status(400).json({ message: 'Invalid image format' });
+  const proof = req.body.proof_image || req.body.payment_proof;
+  if (proof && typeof proof === 'string' && proof.startsWith('data:') && !proof.startsWith('data:image/')) {
+    return res.status(400).json({ message: 'صيغة صورة الإثبات غير صالحة' });
   }
   next();
 };

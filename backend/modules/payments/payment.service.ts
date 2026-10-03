@@ -86,18 +86,26 @@ export class PaymentService {
     const commission = data.amount * commissionRate;
     const ownerAmount = data.amount - commission;
 
-    let proofPath = data.proof_image;
+    let proofPath = data.proof_image || (data as { payment_proof?: string }).payment_proof;
     if (proofPath && String(proofPath).startsWith('data:')) {
       proofPath = await saveProofImage(String(proofPath), 'booking_proof');
+    }
+
+    const methodKey = String(data.payment_method);
+    const isCod = methodKey === 'cash_on_delivery' || methodKey === 'cash';
+    if (!isCod && (!proofPath || String(proofPath).length < 8)) {
+      throw new Error('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
     }
 
     const providerPayload = { ...data, payment_method: mapped.dbMethod as CreatePaymentDTO['payment_method'] };
     const providerResponse = await provider.processPayment({ ...providerPayload, proof_image: proofPath });
 
-    // COD stays pending until delivery; transfers without proof stay pending
+    // COD stays pending until delivery; transfer+proof → under_review for partner
     let status = providerResponse.status;
-    if (String(data.payment_method) === 'cash_on_delivery') {
+    if (isCod) {
       status = 'pending';
+    } else if (proofPath) {
+      status = 'under_review';
     }
 
     const payment: Payment = {

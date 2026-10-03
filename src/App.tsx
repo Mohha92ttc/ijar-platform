@@ -289,6 +289,7 @@ export default function App() {
     location: string;
     notes: string;
     paymentMethod: CartPaymentMethod;
+    proofImage?: string | null;
   }) => {
     if (!user?.id) {
       alert('يرجى تسجيل الدخول لإتمام الحجز');
@@ -300,11 +301,18 @@ export default function App() {
       setView('auth');
       return;
     }
+    const payMethod = formData.paymentMethod || 'manual';
+    const needsProof = payMethod !== 'cash_on_delivery';
+    if (needsProof && (!formData.proofImage || formData.proofImage.length < 20)) {
+      setCheckoutError('يرجى إرفاق صورة إثبات التحويل');
+      alert('يرجى إرفاق صورة إثبات التحويل');
+      return;
+    }
     setCheckoutError(null);
     setCheckoutSubmitting(true);
     try {
       for (const item of cart) {
-        const payMethod = formData.paymentMethod || item.paymentMethod || 'manual';
+        const method = formData.paymentMethod || item.paymentMethod || 'manual';
         const booking = await apiJson<any>('/api/bookings', {
           method: 'POST',
           body: JSON.stringify({
@@ -317,23 +325,32 @@ export default function App() {
             notes: formData.notes,
             delivery_requested: item.wantsDelivery,
             delivery_fee: item.deliveryFee || 0,
-            payment_preference: payMethod,
+            payment_preference: method,
           }),
         });
 
+        const paymentBody: Record<string, unknown> = {
+          booking_id: booking.id,
+          amount: item.total,
+          payment_method: method,
+          notes: `بواسطة العميل: ${formData.phone} | ${method}${item.wantsDelivery ? ' | توصيل' : ''}`,
+        };
+        if (method !== 'cash_on_delivery' && formData.proofImage) {
+          paymentBody.proof_image = formData.proofImage;
+        }
+
         await apiJson('/api/payments/initiate', {
           method: 'POST',
-          body: JSON.stringify({
-            booking_id: booking.id,
-            amount: item.total,
-            payment_method: payMethod,
-            notes: `بواسطة العميل: ${formData.phone} | ${payMethod}${item.wantsDelivery ? ' | توصيل' : ''}`,
-          }),
+          body: JSON.stringify(paymentBody),
         });
       }
       clearCart();
       setView('home');
-      alert('تم تسجيل حجوزاتك بنجاح في النظام.');
+      alert(
+        needsProof
+          ? 'تم إرسال حجوزاتك مع إثبات الدفع. بانتظار مراجعة الشريك وموافقته.'
+          : 'تم تسجيل حجوزاتك بنجاح. بانتظار موافقة الشريك (الدفع عند التسليم).'
+      );
     } catch (err) {
       const msg = friendlyAuthMessage(err instanceof ApiError ? err.message : 'فشل إرسال الحجز');
       setCheckoutError(msg);
