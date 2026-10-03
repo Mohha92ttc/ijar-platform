@@ -395,6 +395,7 @@ async function main() {
     await page.getByTestId('booking-date-start').fill(uiStart.toISOString().slice(0, 10));
     await page.getByTestId('booking-date-end').fill(uiEnd.toISOString().slice(0, 10));
     await page.getByTestId('booking-confirm-step1').click();
+    await page.getByTestId('booking-pay-cash_on_delivery').click();
     await page.getByTestId('booking-confirm-final').click();
     ok('added to cart via booking modal');
 

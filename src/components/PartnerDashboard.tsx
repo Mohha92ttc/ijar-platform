@@ -57,6 +57,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const [subFile, setSubFile] = useState<File | null>(null);
   const [paySubmitting, setPaySubmitting] = useState(false);
   const [myPlatformPayments, setMyPlatformPayments] = useState<any[]>([]);
+  const [paySettings, setPaySettings] = useState({
+    phone_number: '',
+    wallet_number: '',
+    bank_account: '',
+    card_number: '',
+    delivery_fee: '0',
+  });
+  const [paySettingsSaving, setPaySettingsSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!ownerId) {
@@ -122,11 +130,43 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           const pays = await apiJson<any[]>('/api/payments/my-platform');
           setMyPlatformPayments(pays);
         }
+        if (activeTab === 'settings') {
+          const s = await apiJson<any>(`/api/payments/owner-settings/${ownerId}`);
+          setPaySettings({
+            phone_number: String(s.phone_number || ''),
+            wallet_number: String(s.wallet_number || ''),
+            bank_account: String(s.bank_account || ''),
+            card_number: String(s.card_number || ''),
+            delivery_fee: String(s.delivery_fee ?? 0),
+          });
+        }
       } catch {
         if (activeTab === 'featured' || activeTab === 'settings') setTransferInfo(null);
       }
     })();
   }, [activeTab, ownerId]);
+
+  const savePaySettings = async () => {
+    if (!ownerId) return;
+    try {
+      setPaySettingsSaving(true);
+      await apiJson('/api/payments/settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          phone_number: paySettings.phone_number.trim() || undefined,
+          wallet_number: paySettings.wallet_number.trim() || undefined,
+          bank_account: paySettings.bank_account.trim() || undefined,
+          card_number: paySettings.card_number.trim() || undefined,
+          delivery_fee: Math.max(0, Number(paySettings.delivery_fee) || 0),
+        }),
+      });
+      alert('تم حفظ إعدادات الدفع والتوصيل');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'فشل الحفظ');
+    } finally {
+      setPaySettingsSaving(false);
+    }
+  };
 
   const fileToDataUrl = (file: File) =>
     new Promise<string>((resolve, reject) => {
@@ -736,6 +776,64 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 <label className="block text-sm font-medium text-slate-700 mb-2">تاريخ الانضمام</label>
                 <input type="text" value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ar-IQ') : '—'} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-right" />
               </div>
+            </div>
+
+            <div className="max-w-4xl mx-auto mt-10 p-6 border border-blue-100 rounded-2xl bg-blue-50/40" data-testid="partner-delivery-payment-settings">
+              <h4 className="text-lg font-bold text-slate-800 mb-2">إعدادات الدفع والتوصيل للزبائن</h4>
+              <p className="text-xs text-slate-500 mb-4">
+                رسوم التوصيل تظهر للزبون عند اختيار «أريد توصيل». يمكنك تركها 0. رقم المحفظة/الهاتف يظهر عند اختيار زين كاش أو الحوالة.
+              </p>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">رسوم التوصيل (د.ع)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    data-testid="partner-delivery-fee"
+                    value={paySettings.delivery_fee}
+                    onChange={(e) => setPaySettings({ ...paySettings, delivery_fee: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">رقم زين كاش / المحفظة</label>
+                  <input
+                    type="text"
+                    data-testid="partner-wallet-number"
+                    value={paySettings.wallet_number}
+                    onChange={(e) => setPaySettings({ ...paySettings, wallet_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
+                    placeholder="07xxxxxxxx"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">هاتف التواصل للدفع</label>
+                  <input
+                    type="text"
+                    value={paySettings.phone_number}
+                    onChange={(e) => setPaySettings({ ...paySettings, phone_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">حساب بنكي (اختياري)</label>
+                  <input
+                    type="text"
+                    value={paySettings.bank_account}
+                    onChange={(e) => setPaySettings({ ...paySettings, bank_account: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                data-testid="partner-save-pay-settings"
+                disabled={paySettingsSaving}
+                onClick={savePaySettings}
+                className="mt-4 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
+              >
+                {paySettingsSaving ? 'جاري الحفظ…' : 'حفظ إعدادات الدفع والتوصيل'}
+              </button>
             </div>
           </div>
         )}

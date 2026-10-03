@@ -47,12 +47,17 @@ export class BookingService {
 
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const totalPrice = diffDays * equipment.price_per_day;
+    const rentalPrice = diffDays * equipment.price_per_day;
+    const deliveryFee = data.delivery_requested ? Math.max(0, Number(data.delivery_fee) || 0) : 0;
+    const totalPrice = rentalPrice + deliveryFee;
 
     const ins = await query(
       `
-      INSERT INTO bookings (equipment_id, customer_id, start_date, end_date, total_amount, status, location, notes, customer_phone)
-      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8)
+      INSERT INTO bookings (
+        equipment_id, customer_id, start_date, end_date, total_amount, status,
+        location, notes, customer_phone, delivery_requested, delivery_fee, payment_preference
+      )
+      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, $11)
       RETURNING *
     `,
       [
@@ -64,6 +69,9 @@ export class BookingService {
         data.location ?? null,
         data.notes ?? null,
         data.customer_phone ?? null,
+        Boolean(data.delivery_requested),
+        deliveryFee,
+        data.payment_preference ?? null,
       ]
     );
 

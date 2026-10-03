@@ -26,6 +26,9 @@ export class BookingController {
         location: req.body.location,
         notes: req.body.notes,
         customer_phone: req.body.customer_phone,
+        delivery_requested: Boolean(req.body.delivery_requested),
+        delivery_fee: Number(req.body.delivery_fee) || 0,
+        payment_preference: req.body.payment_preference ? String(req.body.payment_preference) : undefined,
       });
       res.status(201).json(booking);
     } catch (error: any) {

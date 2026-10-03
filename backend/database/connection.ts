@@ -352,8 +352,13 @@ async function createTables() {
       bank_account VARCHAR(50),
       card_number VARCHAR(20),
       wallet_number VARCHAR(50),
+      delivery_fee DECIMAL(12, 2) DEFAULT 0,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+    ALTER TABLE owner_payment_settings ADD COLUMN IF NOT EXISTS delivery_fee DECIMAL(12, 2) DEFAULT 0;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_requested BOOLEAN DEFAULT FALSE;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_fee DECIMAL(12, 2) DEFAULT 0;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_preference VARCHAR(50);
 
     -- Messages Table
     CREATE TABLE IF NOT EXISTS messages (

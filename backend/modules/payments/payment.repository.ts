@@ -111,20 +111,37 @@ export class PaymentRepository {
 
   async saveOwnerSettings(settings: OwnerPaymentSettings): Promise<void> {
     await query(`
-      INSERT INTO owner_payment_settings (owner_id, phone_number, bank_account, card_number, wallet_number, updated_at)
-      VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+      INSERT INTO owner_payment_settings (owner_id, phone_number, bank_account, card_number, wallet_number, delivery_fee, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
       ON CONFLICT (owner_id) DO UPDATE SET
         phone_number = EXCLUDED.phone_number,
         bank_account = EXCLUDED.bank_account,
         card_number = EXCLUDED.card_number,
         wallet_number = EXCLUDED.wallet_number,
+        delivery_fee = EXCLUDED.delivery_fee,
         updated_at = CURRENT_TIMESTAMP
-    `, [settings.owner_id, settings.phone_number, settings.bank_account, settings.card_number, settings.wallet_number]);
+    `, [
+      settings.owner_id,
+      settings.phone_number ?? null,
+      settings.bank_account ?? null,
+      settings.card_number ?? null,
+      settings.wallet_number ?? null,
+      Number(settings.delivery_fee ?? 0) || 0,
+    ]);
   }
 
   async getOwnerSettings(ownerId: string): Promise<OwnerPaymentSettings | undefined> {
     const res = await query('SELECT * FROM owner_payment_settings WHERE owner_id = $1', [ownerId]);
-    return res.rows[0];
+    if (!res.rows[0]) return undefined;
+    const r = res.rows[0];
+    return {
+      owner_id: String(r.owner_id),
+      phone_number: r.phone_number ?? undefined,
+      bank_account: r.bank_account ?? undefined,
+      card_number: r.card_number ?? undefined,
+      wallet_number: r.wallet_number ?? undefined,
+      delivery_fee: Number(r.delivery_fee ?? 0) || 0,
+    };
   }
 
   async findAllUnderReview(): Promise<Payment[]> {

@@ -84,10 +84,35 @@ export class PaymentController {
         return res.status(403).json({ error: 'Not allowed' });
       }
       const settings = await this.service.getOwnerPaymentSettings(ownerId);
-      if (!settings) return res.status(404).json({ error: 'Settings not found' });
+      if (!settings) {
+        return res.status(200).json({
+          owner_id: ownerId,
+          delivery_fee: 0,
+          phone_number: '',
+          wallet_number: '',
+          bank_account: '',
+          card_number: '',
+        });
+      }
       res.status(200).json(settings);
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل جلب الإعدادات') });
+    }
+  };
+
+  /** بيانات عامة للزبون عند الدفع/التوصيل — بدون حساب بنكي كامل */
+  getPublicOwnerInfo = async (req: Request, res: Response) => {
+    try {
+      const { ownerId } = req.params;
+      const settings = await this.service.getOwnerPaymentSettings(ownerId);
+      res.status(200).json({
+        owner_id: ownerId,
+        delivery_fee: Number(settings?.delivery_fee ?? 0) || 0,
+        phone_number: settings?.phone_number || '',
+        wallet_number: settings?.wallet_number || '',
+      });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل جلب بيانات الشريك') });
     }
   };
 

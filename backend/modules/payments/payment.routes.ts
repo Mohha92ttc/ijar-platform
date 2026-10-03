@@ -8,6 +8,8 @@ const controller = new PaymentController();
 // Customer routes
 router.post('/initiate', authenticateToken, requireRole(['customer']), controller.initiate);
 router.get('/owner-settings/:ownerId', authenticateToken, requireRole(['owner', 'admin']), controller.getOwnerSettings);
+// Public: delivery fee + wallet/phone for checkout (no bank secrets)
+router.get('/public-owner/:ownerId', controller.getPublicOwnerInfo);
 
 // Owner routes
 router.post('/settings', authenticateToken, requireRole(['owner', 'admin']), controller.updateOwnerSettings);

@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { ShoppingBag, Trash2, MapPin, Phone, CreditCard, ArrowRight, X } from 'lucide-react';
-import type { CartLine } from '../lib/cartStorage';
+import { ShoppingBag, Trash2, MapPin, Phone, CreditCard, ArrowRight, X, Truck } from 'lucide-react';
+import type { CartLine, CartPaymentMethod } from '../lib/cartStorage';
+import { paymentMethodLabel } from '../lib/cartStorage';
+import { apiJson } from '../lib/api';
+
+export type CheckoutFormData = {
+  phone: string;
+  location: string;
+  notes: string;
+  paymentMethod: CartPaymentMethod;
+};
 
 export default function CheckoutPage({
   cart,
   onRemove,
+  onClear,
   onComplete,
   onClose,
   submitting,
@@ -13,23 +23,47 @@ export default function CheckoutPage({
 }: {
   cart: CartLine[];
   onRemove: (id: string) => void;
-  onComplete: (data: { phone: string; location: string; notes: string }) => void | Promise<void>;
+  onClear: () => void;
+  onComplete: (data: CheckoutFormData) => void | Promise<void>;
   onClose: () => void;
   submitting?: boolean;
   error?: string | null;
 }) {
+  const defaultPay = (cart[0]?.paymentMethod || 'manual') as CartPaymentMethod;
   const [formData, setFormData] = useState({
     phone: '',
     location: '',
     notes: '',
   });
+  const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>(defaultPay);
+  const [ownerHints, setOwnerHints] = useState<Record<string, { delivery_fee: number; phone_number?: string; wallet_number?: string }>>({});
 
-  const total = cart.reduce((sum, item) => sum + item.total, 0);
+  useEffect(() => {
+    const owners = [...new Set(cart.map((c) => c.owner_id).filter(Boolean))] as string[];
+    owners.forEach(async (oid) => {
+      if (ownerHints[oid]) return;
+      try {
+        const data = await apiJson<{ delivery_fee: number; phone_number?: string; wallet_number?: string }>(
+          `/api/payments/public-owner/${oid}`
+        );
+        setOwnerHints((prev) => ({ ...prev, [oid]: data }));
+      } catch {
+        // ignore
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart]);
+
+  const rentalSum = useMemo(() => cart.reduce((s, i) => s + Number(i.rentalTotal ?? i.total), 0), [cart]);
+  const deliverySum = useMemo(() => cart.reduce((s, i) => s + Number(i.deliveryFee || 0), 0), [cart]);
+  const total = rentalSum + deliverySum;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onComplete(formData);
+    await onComplete({ ...formData, paymentMethod });
   };
+
+  const methods: CartPaymentMethod[] = ['zain_cash', 'asia_hawala', 'manual', 'cash_on_delivery'];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" data-testid="checkout-page">
@@ -41,37 +75,77 @@ export default function CheckoutPage({
         className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl relative z-10 overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
       >
         <div className="flex-1 p-8 overflow-y-auto border-l border-slate-100">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex justify-between items-center mb-6 gap-3 flex-wrap">
             <h3 className="text-2xl font-bold flex items-center gap-3">
               <ShoppingBag className="text-blue-600" /> سلة الحجوزات
             </h3>
-            <span className="text-sm text-slate-400 font-medium">{cart.length} معدات مختارة</span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-slate-400 font-medium">{cart.length} معدات مختارة</span>
+              {cart.length > 0 && (
+                <button
+                  type="button"
+                  data-testid="checkout-clear-cart"
+                  onClick={() => {
+                    if (confirm('تفريغ السلة بالكامل؟')) onClear();
+                  }}
+                  className="text-xs font-bold text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-red-100"
+                >
+                  تفريغ السلة
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">
+            {cart.length === 0 && (
+              <div className="text-center text-slate-500 py-12" data-testid="checkout-empty">
+                السلة فارغة
+              </div>
+            )}
             {cart.map((item) => (
-              <div key={item.id} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
+              <div key={`${item.id}-${item.startDate}`} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
                 <img src={item.image} className="w-20 h-20 rounded-xl object-cover" alt="" />
                 <div className="flex-1">
                   <div className="flex justify-between">
                     <h4 className="font-bold text-slate-800">{item.title}</h4>
-                    <button type="button" onClick={() => onRemove(item.id)} className="text-slate-300 hover:text-red-500 transition-colors">
+                    <button
+                      type="button"
+                      data-testid="checkout-remove-item"
+                      onClick={() => onRemove(item.id)}
+                      className="text-slate-300 hover:text-red-500 transition-colors"
+                    >
                       <Trash2 size={18} />
                     </button>
                   </div>
                   <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
                     <MapPin size={12} /> {item.location}
                   </p>
-                  <div className="flex justify-between items-end mt-2">
-                    <div className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">{item.days} أيام</div>
-                    <div className="text-sm font-bold text-slate-800">{item.total.toLocaleString()} د.ع</div>
+                  <div className="flex flex-wrap gap-2 mt-2 text-[10px] font-bold">
+                    <span className="bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">{item.days} أيام</span>
+                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">{paymentMethodLabel(item.paymentMethod)}</span>
+                    {item.wantsDelivery && (
+                      <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded-lg flex items-center gap-1">
+                        <Truck size={10} /> توصيل {Number(item.deliveryFee || 0).toLocaleString()} د.ع
+                      </span>
+                    )}
                   </div>
+                  <div className="text-sm font-bold text-slate-800 mt-2 text-left">{item.total.toLocaleString()} د.ع</div>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="mt-8 pt-6 border-t border-slate-100">
+          <div className="mt-8 pt-6 border-t border-slate-100 space-y-2">
+            <div className="flex justify-between text-sm text-slate-600">
+              <span>مجموع الإيجار</span>
+              <span>{rentalSum.toLocaleString()} د.ع</span>
+            </div>
+            {deliverySum > 0 && (
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>التوصيل</span>
+                <span>{deliverySum.toLocaleString()} د.ع</span>
+              </div>
+            )}
             <div className="flex justify-between items-center text-xl font-bold">
               <span>المجموع الكلي:</span>
               <span className="text-blue-600">{total.toLocaleString()} د.ع</span>
@@ -88,10 +162,7 @@ export default function CheckoutPage({
           </div>
 
           {error && (
-            <div
-              data-testid="checkout-error"
-              className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700"
-            >
+            <div data-testid="checkout-error" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
               {error}
             </div>
           )}
@@ -131,23 +202,64 @@ export default function CheckoutPage({
               <label className="text-xs font-bold text-slate-500 mr-2">ملاحظات إضافية</label>
               <textarea
                 placeholder="أي تفاصيل أخرى تود إخبار الشركاء بها..."
-                className="w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 h-24 resize-none"
+                className="w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
             </div>
 
-            <div className="pt-4">
-              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 mb-6">
-                <div className="flex gap-2 text-amber-700">
-                  <CreditCard size={16} className="shrink-0 mt-0.5" />
-                  <p className="text-[10px] leading-relaxed font-medium">سيتم إرسال طلبات الحجز لكل شريك على حدة. يمكنك الدفع بعد موافقة الشركاء على طلبك.</p>
+            <div className="space-y-2" data-testid="checkout-payment-methods">
+              <label className="text-xs font-bold text-slate-500">طريقة الدفع النهائية</label>
+              {methods.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  data-testid={`checkout-pay-${m}`}
+                  onClick={() => setPaymentMethod(m)}
+                  className={`w-full text-right px-3 py-2.5 rounded-xl border text-sm font-bold transition-all ${
+                    paymentMethod === m ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700'
+                  }`}
+                >
+                  {paymentMethodLabel(m)}
+                </button>
+              ))}
+            </div>
+
+            {(paymentMethod === 'zain_cash' || paymentMethod === 'asia_hawala' || paymentMethod === 'manual') && (
+              <div className="p-3 bg-white border border-slate-200 rounded-xl text-[11px] text-slate-600 space-y-1">
+                <div className="font-bold text-slate-800 flex items-center gap-1">
+                  <CreditCard size={12} /> تعليمات الدفع
                 </div>
+                <p>بعد موافقة الشريك على الحجز ستصلك بيانات التحويل (رقم المحفظة/الهاتف). ارفع إثبات التحويل من لوحة حجوزاتك عند الطلب.</p>
+                {Object.values(ownerHints).some((h) => h.wallet_number || h.phone_number) && (
+                  <div className="pt-1 border-t border-slate-100 space-y-0.5">
+                    {Object.values(ownerHints).map((h, i) => (
+                      <div key={i}>
+                        {h.wallet_number && <div>محفظة: {h.wallet_number}</div>}
+                        {h.phone_number && <div>هاتف الشريك: {h.phone_number}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {paymentMethod === 'cash_on_delivery' && (
+              <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-[11px] text-amber-800">
+                الدفع عند التسليم: تدفع المبلغ عند استلام المعدة. لا يلزم تحويل مسبق.
+              </div>
+            )}
+
+            <div className="pt-2">
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 mb-4">
+                <p className="text-[10px] leading-relaxed font-medium text-amber-700">
+                  يُرسل طلب مستقل لكل شريك. الدفع الإلكتروني/الحوالة يُؤكد بعد مراجعة الإثبات؛ الدفع عند التسليم عند الاستلام.
+                </p>
               </div>
 
               <button
                 type="submit"
                 data-testid="checkout-submit"
-                disabled={submitting}
+                disabled={submitting || cart.length === 0}
                 className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-2 group shadow-xl shadow-blue-100 disabled:opacity-60"
               >
                 {submitting ? 'جاري الإرسال…' : 'إرسال طلبات الحجز'}

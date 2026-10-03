@@ -53,7 +53,21 @@ export class PaymentService {
   }
 
   async initiatePayment(customerId: string, ownerId: string, data: CreatePaymentDTO): Promise<Payment> {
-    const provider = this.providers.get(data.payment_method);
+    // Map UI methods → providers + DB enum values
+    const methodMap: Record<string, { provider: string; dbMethod: CreatePaymentDTO['payment_method'] }> = {
+      manual: { provider: 'manual', dbMethod: 'manual' },
+      stripe: { provider: 'stripe', dbMethod: 'stripe' },
+      wallet: { provider: 'manual', dbMethod: 'wallet' },
+      zain_cash: { provider: 'manual', dbMethod: 'wallet' },
+      asia_hawala: { provider: 'manual', dbMethod: 'bank' },
+      cash_on_delivery: { provider: 'manual', dbMethod: 'cash' },
+      cash: { provider: 'manual', dbMethod: 'cash' },
+      bank: { provider: 'manual', dbMethod: 'bank' },
+      online: { provider: 'manual', dbMethod: 'online' },
+      visa: { provider: 'manual', dbMethod: 'visa' },
+    };
+    const mapped = methodMap[String(data.payment_method)] || methodMap.manual;
+    const provider = this.providers.get(mapped.provider);
     if (!provider) {
       throw new Error(`Payment method ${data.payment_method} not supported`);
     }
@@ -77,7 +91,14 @@ export class PaymentService {
       proofPath = await saveProofImage(String(proofPath), 'booking_proof');
     }
 
-    const providerResponse = await provider.processPayment({ ...data, proof_image: proofPath });
+    const providerPayload = { ...data, payment_method: mapped.dbMethod as CreatePaymentDTO['payment_method'] };
+    const providerResponse = await provider.processPayment({ ...providerPayload, proof_image: proofPath });
+
+    // COD stays pending until delivery; transfers without proof stay pending
+    let status = providerResponse.status;
+    if (String(data.payment_method) === 'cash_on_delivery') {
+      status = 'pending';
+    }
 
     const payment: Payment = {
       id: crypto.randomUUID(),
@@ -88,8 +109,8 @@ export class PaymentService {
       amount: data.amount,
       commission: commission,
       owner_amount: ownerAmount,
-      payment_method: data.payment_method,
-      payment_status: providerResponse.status,
+      payment_method: mapped.dbMethod,
+      payment_status: status,
       proof_image: proofPath,
       transfer_phone: data.transfer_phone,
       transfer_card: data.transfer_card,

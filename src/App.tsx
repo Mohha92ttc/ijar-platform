@@ -25,8 +25,8 @@ import AboutPage from './components/AboutPage';
 import TermsPage from './components/TermsPage';
 import HelpPage from './components/HelpPage';
 import NotificationsPanel from './components/NotificationsPanel';
-import { apiJson, clearSession, ApiError, apiLogout, friendlyAuthMessage, validateSession } from './lib/api';
-import { loadCart, saveCart, type CartLine } from './lib/cartStorage';
+import { apiJson, clearSession, ApiError, apiLogout, friendlyAuthMessage, validateSession, apiFetch } from './lib/api';
+import { loadCart, saveCart, clearCartStorage, switchCartUser, type CartLine, type CartPaymentMethod } from './lib/cartStorage';
 
 type EquipmentRow = {
   id: string;
@@ -67,6 +67,7 @@ export default function App() {
   const [view, setView] = useState<'home' | 'auth' | 'admin' | 'partner' | 'customer' | 'checkout' | 'about' | 'terms' | 'help'>('home');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentRow | null>(null);
+  const [selectedDeliveryFee, setSelectedDeliveryFee] = useState(0);
   const [categories, setCategories] = useState<string[]>(['الكل']);
   const [activeCategory, setActiveCategory] = useState('الكل');
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
@@ -83,15 +84,24 @@ export default function App() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+  const cartReadyRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const me = await validateSession();
       if (cancelled) return;
-      if (me) setUser(me);
-      else setUser(null);
-      setCart(loadCart());
+      if (me) {
+        setUser(me);
+        setCart(loadCart(me.id));
+        prevUserIdRef.current = me.id;
+      } else {
+        setUser(null);
+        setCart(loadCart(null));
+        prevUserIdRef.current = null;
+      }
+      cartReadyRef.current = true;
     })();
     return () => {
       cancelled = true;
@@ -109,8 +119,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    saveCart(cart);
-  }, [cart]);
+    if (!cartReadyRef.current) return;
+    saveCart(cart, user?.id ?? null);
+  }, [cart, user?.id]);
+
+  useEffect(() => {
+    if (!cartReadyRef.current) return;
+    const nextId = user?.id ?? null;
+    const prev = prevUserIdRef.current;
+    if (prev === undefined) {
+      prevUserIdRef.current = nextId;
+      return;
+    }
+    if (prev !== nextId) {
+      setCart(switchCartUser(prev, nextId));
+      prevUserIdRef.current = nextId;
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -196,7 +221,33 @@ export default function App() {
     return () => window.removeEventListener('ijar:session-expired', onExpired);
   }, []);
 
-  const addToCart = (equipment: EquipmentRow, bookingData: { dates: { start: string; end: string }; total: number }) => {
+  const openBooking = async (item: EquipmentRow) => {
+    setSelectedEquipment(item);
+    setSelectedDeliveryFee(0);
+    if (item.owner_id) {
+      try {
+        const res = await apiFetch(`/api/payments/public-owner/${item.owner_id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setSelectedDeliveryFee(Number(data.delivery_fee) || 0);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const addToCart = (
+    equipment: EquipmentRow,
+    bookingData: {
+      dates: { start: string; end: string };
+      total: number;
+      rentalTotal: number;
+      deliveryFee: number;
+      paymentMethod: CartPaymentMethod;
+      wantsDelivery: boolean;
+    }
+  ) => {
     const s = new Date(bookingData.dates.start);
     const e = new Date(bookingData.dates.end);
     const days = Math.max(1, Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)));
@@ -211,9 +262,13 @@ export default function App() {
       days,
       startDate: bookingData.dates.start,
       endDate: bookingData.dates.end,
+      rentalTotal: bookingData.rentalTotal,
+      deliveryFee: bookingData.deliveryFee,
       total: bookingData.total,
+      paymentMethod: bookingData.paymentMethod,
+      wantsDelivery: bookingData.wantsDelivery,
     };
-    setCart((prev) => [...prev, line]);
+    setCart((prev) => [...prev.filter((x) => !(x.id === line.id && x.startDate === line.startDate)), line]);
     setSelectedEquipment(null);
   };
 
@@ -221,7 +276,17 @@ export default function App() {
     setCart((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const handleCheckoutComplete = async (formData: { phone: string; location: string; notes: string }) => {
+  const clearCart = () => {
+    setCart([]);
+    clearCartStorage(user?.id ?? null);
+  };
+
+  const handleCheckoutComplete = async (formData: {
+    phone: string;
+    location: string;
+    notes: string;
+    paymentMethod: CartPaymentMethod;
+  }) => {
     if (!user?.id) {
       alert('يرجى تسجيل الدخول لإتمام الحجز');
       setView('auth');
@@ -236,6 +301,7 @@ export default function App() {
     setCheckoutSubmitting(true);
     try {
       for (const item of cart) {
+        const payMethod = formData.paymentMethod || item.paymentMethod || 'manual';
         const booking = await apiJson<any>('/api/bookings', {
           method: 'POST',
           body: JSON.stringify({
@@ -246,6 +312,9 @@ export default function App() {
             customer_phone: formData.phone,
             location: formData.location,
             notes: formData.notes,
+            delivery_requested: item.wantsDelivery,
+            delivery_fee: item.deliveryFee || 0,
+            payment_preference: payMethod,
           }),
         });
 
@@ -254,12 +323,12 @@ export default function App() {
           body: JSON.stringify({
             booking_id: booking.id,
             amount: item.total,
-            payment_method: 'manual',
-            notes: `بواسطة العميل: ${formData.phone}`,
+            payment_method: payMethod,
+            notes: `بواسطة العميل: ${formData.phone} | ${payMethod}${item.wantsDelivery ? ' | توصيل' : ''}`,
           }),
         });
       }
-      setCart([]);
+      clearCart();
       setView('home');
       alert('تم تسجيل حجوزاتك بنجاح في النظام.');
     } catch (err) {
@@ -504,7 +573,7 @@ export default function App() {
                     <button
                       type="button"
                       data-testid="equipment-book"
-                      onClick={() => setSelectedEquipment(item)}
+                      onClick={() => openBooking(item)}
                       className="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-600 transition-colors"
                     >
                       حجز
@@ -521,6 +590,7 @@ export default function App() {
         {selectedEquipment && (
           <BookingModal
             equipment={selectedEquipment}
+            deliveryFee={selectedDeliveryFee}
             onClose={() => setSelectedEquipment(null)}
             onConfirm={(data) => addToCart(selectedEquipment, data)}
           />
@@ -529,6 +599,7 @@ export default function App() {
           <CheckoutPage
             cart={cart}
             onRemove={removeFromCart}
+            onClear={clearCart}
             onClose={() => { setCheckoutError(null); setView('home'); }}
             onComplete={handleCheckoutComplete}
             submitting={checkoutSubmitting}

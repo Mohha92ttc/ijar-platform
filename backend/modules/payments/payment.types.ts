@@ -1,5 +1,16 @@
 export type PaymentStatus = 'pending' | 'proof_uploaded' | 'under_review' | 'approved' | 'rejected' | 'refunded';
-export type PaymentMethod = 'stripe' | 'manual' | 'wallet';
+/** Stored in DB enum + client aliases mapped in service */
+export type PaymentMethod =
+  | 'stripe'
+  | 'manual'
+  | 'wallet'
+  | 'cash'
+  | 'bank'
+  | 'visa'
+  | 'online'
+  | 'zain_cash'
+  | 'asia_hawala'
+  | 'cash_on_delivery';
 
 export interface Payment {
   id: string;
@@ -23,7 +34,6 @@ export interface CreatePaymentDTO {
   booking_id: string;
   payment_method: PaymentMethod;
   amount: number;
-  // For manual payments
   proof_image?: string;
   transfer_phone?: string;
   transfer_card?: string;
@@ -36,6 +46,8 @@ export interface OwnerPaymentSettings {
   bank_account?: string;
   card_number?: string;
   wallet_number?: string;
+  /** رسوم التوصيل بالدينار — 0 مسموح */
+  delivery_fee?: number;
 }
 
 export interface PaymentResponse {
@@ -43,5 +55,5 @@ export interface PaymentResponse {
   payment_id: string;
   status: PaymentStatus;
   message?: string;
-  transaction_url?: string; // For Stripe/external
+  transaction_url?: string;
 }
