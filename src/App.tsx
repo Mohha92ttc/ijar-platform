@@ -211,7 +211,7 @@ export default function App() {
     setView('home');
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     const onExpired = () => {
       setUser(null);
       setView('auth');
