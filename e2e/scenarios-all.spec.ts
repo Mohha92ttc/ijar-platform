@@ -11,6 +11,7 @@ import {
   ADMIN_PASSWORD,
   ADMIN_NAV_TESTIDS,
   CUSTOMER_NAV_TESTIDS,
+  fillBookingSchedule,
 } from './helpers/ui-flow';
 
 /**
@@ -21,14 +22,6 @@ test.describe.configure({ mode: 'parallel' });
 let sharedCustomerEmail: string;
 const SHARED_PW = 'password123';
 let stamp: number;
-
-function bookingDates() {
-  const s = new Date();
-  s.setDate(s.getDate() + 2);
-  const e = new Date(s);
-  e.setDate(e.getDate() + 2);
-  return { start: s.toISOString().slice(0, 10), end: e.toISOString().slice(0, 10) };
-}
 
 test.beforeAll(async ({ request, baseURL }) => {
   stamp = Date.now();
@@ -118,10 +111,9 @@ test.describe('عميل — سيناريوهات', () => {
       await ownerSel.selectOption({ index: 1 });
     }
     await page.getByTestId('equipment-book').first().click();
-    const { start, end } = bookingDates();
-    await page.getByTestId('booking-date-start').fill(start);
-    await page.getByTestId('booking-date-end').fill(end);
+    await fillBookingSchedule(page);
     await page.getByTestId('booking-confirm-step1').click();
+    await page.getByTestId('booking-pay-manual').click();
     await page.getByTestId('booking-confirm-final').click();
     await page.getByTestId('header-cart').click();
     await expect(page.getByTestId('checkout-page')).toBeVisible();
@@ -139,12 +131,10 @@ test.describe('عميل — سيناريوهات', () => {
       await ownerSel.selectOption({ index: 1 });
     }
     await page.getByTestId('equipment-book').first().click();
-    const { start, end } = bookingDates();
-    await page.getByTestId('booking-date-start').fill(start);
-    await page.getByTestId('booking-date-end').fill(end);
+    await fillBookingSchedule(page);
     await page.getByTestId('booking-confirm-step1').click();
     await page.getByRole('button', { name: 'رجوع' }).click();
-    await expect(page.getByTestId('booking-date-start')).toBeVisible();
+    await expect(page.getByTestId('booking-days')).toBeVisible();
     await page.getByTestId('booking-modal-close').click();
     await logoutFromHeader(page);
   });
@@ -292,10 +282,9 @@ test.describe('سلسلة — رفض حجز', () => {
       await ownerSel.selectOption({ index: 1 });
     }
     await page.getByTestId('equipment-book').first().click();
-    const { start, end } = bookingDates();
-    await page.getByTestId('booking-date-start').fill(start);
-    await page.getByTestId('booking-date-end').fill(end);
+    await fillBookingSchedule(page);
     await page.getByTestId('booking-confirm-step1').click();
+    await page.getByTestId('booking-pay-manual').click();
     await page.getByTestId('booking-confirm-final').click();
     await page.getByTestId('header-cart').click();
     await expect(page.getByTestId('checkout-page')).toBeVisible();

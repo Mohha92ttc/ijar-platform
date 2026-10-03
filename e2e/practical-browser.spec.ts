@@ -10,6 +10,7 @@ import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
   ADMIN_NAV_TESTIDS,
+  fillBookingSchedule,
 } from './helpers/ui-flow';
 
 /**
@@ -21,14 +22,6 @@ test.describe.configure({ mode: 'serial' });
 let customerEmail: string;
 const CUSTOMER_PW = 'password123';
 let runStamp: number;
-
-function bookingDates() {
-  const s = new Date();
-  s.setDate(s.getDate() + 1);
-  const e = new Date(s);
-  e.setDate(e.getDate() + 2);
-  return { start: s.toISOString().slice(0, 10), end: e.toISOString().slice(0, 10) };
-}
 
 test.beforeAll(async ({ request, baseURL }) => {
   runStamp = Date.now();
@@ -68,10 +61,9 @@ test.describe('اختبار عملي — تحكم مباشر بالمتصفح', 
 
     await page.getByTestId('equipment-book').first().click();
     await expect(page.getByTestId('booking-modal')).toBeVisible();
-    const { start, end } = bookingDates();
-    await page.getByTestId('booking-date-start').fill(start);
-    await page.getByTestId('booking-date-end').fill(end);
+    await fillBookingSchedule(page, { days: 2 });
     await page.getByTestId('booking-confirm-step1').click();
+    await page.getByTestId('booking-pay-manual').click();
     await page.getByTestId('booking-confirm-final').click();
     await expect(page.getByTestId('header-cart')).toBeVisible();
     await page.getByTestId('header-cart').click();

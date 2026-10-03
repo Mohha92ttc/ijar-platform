@@ -9,18 +9,11 @@ import {
   loginUi,
   openDashboard,
   logoutFromHeader,
+  fillBookingSchedule,
 } from './helpers/ui-flow';
 import { apiRegisterCustomer } from './helpers/control';
 
 const CUSTOMER_PASSWORD = 'password123';
-
-function bookingDates() {
-  const s = new Date();
-  s.setDate(s.getDate() + 1);
-  const e = new Date(s);
-  e.setDate(e.getDate() + 2);
-  return { start: s.toISOString().slice(0, 10), end: e.toISOString().slice(0, 10) };
-}
 
 let customerEmail: string;
 
@@ -77,10 +70,9 @@ test.describe('فحص ما قبل الإطلاق — شريك / إدارة / ع�
 
       await page.getByTestId('equipment-book').first().click();
       await expect(page.getByTestId('booking-modal')).toBeVisible();
-      const { start, end } = bookingDates();
-      await page.getByTestId('booking-date-start').fill(start);
-      await page.getByTestId('booking-date-end').fill(end);
+      await fillBookingSchedule(page, { days: 2 });
       await page.getByTestId('booking-confirm-step1').click();
+      await page.getByTestId('booking-pay-manual').click();
       await page.getByTestId('booking-confirm-final').click();
       await expect(page.getByTestId('header-cart')).toBeVisible();
       await page.getByTestId('header-cart').click();

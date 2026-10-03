@@ -73,3 +73,27 @@ export const CUSTOMER_NAV_TESTIDS = [
   'customer-nav-profile',
   'customer-nav-settings',
 ] as const;
+
+/** تواريخ حجز مستقبلية: start + days → end تلقائي في الواجهة */
+export function bookingDates(startOffsetDays = 2, rentalDays = 2) {
+  const s = new Date();
+  s.setDate(s.getDate() + startOffsetDays);
+  const start = s.toISOString().slice(0, 10);
+  const e = new Date(s);
+  e.setDate(e.getDate() + rentalDays);
+  const end = e.toISOString().slice(0, 10);
+  return { start, end, days: rentalDays };
+}
+
+/** يملأ مودال الحجز: إلغاء «اليوم» + تاريخ استلام + عدد الأيام */
+export async function fillBookingSchedule(
+  page: Page,
+  opts?: { start?: string; days?: number; startOffsetDays?: number }
+) {
+  const base = bookingDates(opts?.startOffsetDays ?? 2, opts?.days ?? 2);
+  const start = opts?.start ?? base.start;
+  const days = opts?.days ?? base.days;
+  await page.getByTestId('booking-start-today').setChecked(false);
+  await page.getByTestId('booking-date-start').fill(start);
+  await page.getByTestId('booking-days').fill(String(days));
+}

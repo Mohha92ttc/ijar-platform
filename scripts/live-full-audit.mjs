@@ -390,10 +390,9 @@ async function main() {
     await page.getByTestId('booking-modal').waitFor({ state: 'visible' });
     const uiStart = new Date();
     uiStart.setDate(uiStart.getDate() + 40);
-    const uiEnd = new Date();
-    uiEnd.setDate(uiEnd.getDate() + 47);
+    await page.getByTestId('booking-start-today').setChecked(false);
     await page.getByTestId('booking-date-start').fill(uiStart.toISOString().slice(0, 10));
-    await page.getByTestId('booking-date-end').fill(uiEnd.toISOString().slice(0, 10));
+    await page.getByTestId('booking-days').fill('7');
     await page.getByTestId('booking-confirm-step1').click();
     await page.getByTestId('booking-pay-cash_on_delivery').click();
     await page.getByTestId('booking-confirm-final').click();
