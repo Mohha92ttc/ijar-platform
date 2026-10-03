@@ -1,4 +1,4 @@
-# Keep Render free instance awake (external ping every 5 minutes)
+# يحاكي زيارة مستخدم حقيقية كل 5 دقائق حتى لا يدخل Render Free في وضع السليب
 name: keep-alive
 
 on:
@@ -9,18 +9,50 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Ping production (health + home)
+      - name: Simulate real browser visit
+        env:
+          BASE: https://ijar-platform.onrender.com
+          UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
         run: |
-          BASE="https://ijar-platform.onrender.com"
-          echo "Pinging $BASE"
-          for i in 1 2 3 4 5; do
-            if curl -fsS --max-time 120 "$BASE/api/health" && curl -fsS -o /dev/null --max-time 120 "$BASE/"; then
-              echo ""
-              echo "OK at attempt $i"
+          set -euo pipefail
+          echo "Simulating visit to $BASE"
+
+          visit() {
+            local path="$1"
+            curl -fsS --max-time 120 \
+              -A "$UA" \
+              -H "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,application/json,*/*;q=0.8" \
+              -H "Accept-Language: ar-IQ,ar;q=0.9,en;q=0.8" \
+              -H "Cache-Control: no-cache" \
+              -H "Pragma: no-cache" \
+              -H "Connection: keep-alive" \
+              -e "https://www.google.com/" \
+              -o /tmp/ijar-body \
+              -w "GET %{url_effective} -> %{http_code} (%{time_total}s)\n" \
+              "$BASE$path"
+          }
+
+          for i in 1 2 3 4 5 6; do
+            echo "--- attempt $i ---"
+            if visit /api/health \
+              && visit / \
+              && visit /api/equipment \
+              && visit /api/equipment/categories \
+              && visit /favicon.svg; then
+              # حمّل سكربت الواجهة إن وُجد (مثل متصفح يفتح الصفحة)
+              JS=$(grep -oE '/assets/index-[^"]+\.js' /tmp/ijar-body | head -n1 || true)
+              if [ -n "${JS:-}" ]; then
+                curl -fsS --max-time 120 -A "$UA" -o /dev/null \
+                  -w "GET %{url_effective} -> %{http_code}\n" \
+                  "$BASE$JS" || true
+              fi
+              echo "OK — visit simulation succeeded at attempt $i"
               exit 0
             fi
-            echo "retry $i..."
-            sleep 20
+            echo "retry after wake delay..."
+            sleep 25
           done
+          echo "FAILED to keep Render awake"
           exit 1

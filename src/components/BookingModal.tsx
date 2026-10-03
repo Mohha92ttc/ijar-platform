@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Calendar, MapPin, ShieldCheck, CreditCard, Info, X, Truck, Banknote } from 'lucide-react';
 import type { CartPaymentMethod } from '../lib/cartStorage';
@@ -13,6 +13,38 @@ type ConfirmPayload = {
   wantsDelivery: boolean;
 };
 
+function todayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** يضيف أيام تقويمية لتاريخ YYYY-MM-DD */
+function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatArDate(iso: string): string {
+  if (!iso) return '—';
+  try {
+    return new Date(`${iso}T12:00:00`).toLocaleDateString('ar-IQ', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export default function BookingModal({
   equipment,
   onClose,
@@ -24,20 +56,20 @@ export default function BookingModal({
   onConfirm: (data: ConfirmPayload) => void;
   deliveryFee?: number;
 }) {
-  const [dates, setDates] = useState({ start: '', end: '' });
+  const [startToday, setStartToday] = useState(true);
+  const [startDate, setStartDate] = useState(todayIso);
+  const [dayCount, setDayCount] = useState(1);
   const [step, setStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod | null>(null);
   const [wantsDelivery, setWantsDelivery] = useState(false);
 
-  const calculateDays = () => {
-    if (!dates.start || !dates.end) return 0;
-    const s = new Date(dates.start);
-    const e = new Date(dates.end);
-    const diff = Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24));
-    return Math.max(1, diff);
-  };
+  const effectiveStart = startToday ? todayIso() : startDate;
+  const endDate = useMemo(() => {
+    if (!effectiveStart || dayCount < 1) return '';
+    return addDaysIso(effectiveStart, dayCount);
+  }, [effectiveStart, dayCount]);
 
-  const days = calculateDays();
+  const days = dayCount >= 1 && effectiveStart && endDate ? dayCount : 0;
   const rentalTotal = days * equipment.price;
   const fee = wantsDelivery ? Math.max(0, Number(deliveryFee) || 0) : 0;
   const total = rentalTotal + fee;
@@ -95,30 +127,80 @@ export default function BookingModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 mr-2">تاريخ الاستلام</label>
-                  <div className="relative">
-                    <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="date"
-                      data-testid="booking-date-start"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pr-10 pl-4 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      onChange={(e) => setDates({ ...dates, start: e.target.value })}
-                    />
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 p-3 rounded-2xl border border-slate-200 cursor-pointer hover:border-blue-300 transition-colors">
+                  <input
+                    type="checkbox"
+                    data-testid="booking-start-today"
+                    checked={startToday}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setStartToday(on);
+                      if (on) setStartDate(todayIso());
+                    }}
+                    className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <div className="text-sm font-bold text-slate-800">الاستلام اليوم</div>
+                    <div className="text-[11px] text-slate-400">إذا أشّرت صح = تاريخ الاستلام هو اليوم تلقائياً</div>
                   </div>
+                </label>
+
+                {!startToday && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 mr-2">تاريخ الاستلام</label>
+                    <div className="relative">
+                      <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                      <input
+                        type="date"
+                        data-testid="booking-date-start"
+                        value={startDate}
+                        min={todayIso()}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pr-10 pl-4 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        onChange={(e) => setStartDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 mr-2">عدد أيام الإيجار</label>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={365}
+                    data-testid="booking-days"
+                    value={dayCount}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                    onChange={(e) => {
+                      const n = Math.floor(Number(e.target.value));
+                      if (!Number.isFinite(n)) {
+                        setDayCount(1);
+                        return;
+                      }
+                      setDayCount(Math.min(365, Math.max(1, n)));
+                    }}
+                  />
+                  <p className="text-[11px] text-slate-400">مثال: 3 أيام → يُحسب تاريخ الإرجاع تلقائياً</p>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 mr-2">تاريخ الإرجاع</label>
-                  <div className="relative">
-                    <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="date"
-                      data-testid="booking-date-end"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 pr-10 pl-4 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      onChange={(e) => setDates({ ...dates, end: e.target.value })}
-                    />
+
+                <div
+                  className="p-4 rounded-2xl border border-emerald-100 bg-emerald-50 space-y-2"
+                  data-testid="booking-return-auto"
+                >
+                  <div className="flex items-center gap-2 text-emerald-800 text-sm font-bold">
+                    <Calendar size={16} />
+                    تاريخ الإرجاع (تلقائي)
                   </div>
+                  <div className="text-lg font-bold text-emerald-900" data-testid="booking-date-end-display">
+                    {formatArDate(endDate)}
+                  </div>
+                  <div className="text-[11px] text-emerald-700/80">
+                    من {formatArDate(effectiveStart)} · لمدة {dayCount} {dayCount === 1 ? 'يوم' : 'أيام'}
+                  </div>
+                  {/* قيمة مخفية للاختبارات والتوافق */}
+                  <input type="hidden" data-testid="booking-date-end" value={endDate} readOnly />
                 </div>
               </div>
 
@@ -138,7 +220,7 @@ export default function BookingModal({
               <button
                 type="button"
                 data-testid="booking-confirm-step1"
-                disabled={days <= 0}
+                disabled={days <= 0 || !effectiveStart || !endDate}
                 onClick={() => setStep(2)}
                 className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -244,7 +326,7 @@ export default function BookingModal({
                 onClick={() => {
                   if (!paymentMethod) return;
                   onConfirm({
-                    dates,
+                    dates: { start: effectiveStart, end: endDate },
                     total,
                     rentalTotal,
                     deliveryFee: fee,

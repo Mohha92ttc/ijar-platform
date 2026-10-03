@@ -108,10 +108,13 @@ export default function App() {
     };
   }, []);
 
-  // Keep Render awake while a browser tab is open
+  // Keep Render awake while a browser tab is open (يشبه زيارة حقيقية)
   useEffect(() => {
     const ping = () => {
-      fetch('/api/health', { credentials: 'include' }).catch(() => {});
+      const opts: RequestInit = { credentials: 'include', cache: 'no-store' };
+      fetch('/api/health', opts).catch(() => {});
+      fetch('/', { ...opts, headers: { Accept: 'text/html' } }).catch(() => {});
+      fetch('/api/equipment', opts).catch(() => {});
     };
     ping();
     const id = window.setInterval(ping, 4 * 60 * 1000);
