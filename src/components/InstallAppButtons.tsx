@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Smartphone, Download, Share, Plus, X } from 'lucide-react';
 
 type BeforeInstallPromptEvent = Event & {
@@ -6,9 +6,14 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 };
 
-function isIos(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function detectPlatform(): 'android' | 'ios' | 'other' {
+  if (typeof navigator === 'undefined') return 'other';
+  const ua = navigator.userAgent || '';
+  if (/android/i.test(ua)) return 'android';
+  if (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+    return 'ios';
+  }
+  return 'other';
 }
 
 function isStandalone(): boolean {
@@ -21,10 +26,10 @@ function isStandalone(): boolean {
 }
 
 /**
- * أزرار تثبيت تطبيق أندرويد / آيفون بجانب السلة.
- * التطبيق واحد (PWA) يخدم الزبون والشريك بعد تسجيل الدخول.
+ * أزرار تثبيت أندرويد / آيفون — ظاهرة دائماً على الموبايل بجانب السلة.
  */
 export default function InstallAppButtons() {
+  const platform = useMemo(() => detectPlatform(), []);
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(isStandalone());
   const [sheet, setSheet] = useState<'android' | 'ios' | null>(null);
@@ -61,85 +66,108 @@ export default function InstallAppButtons() {
     setSheet('android');
   };
 
-  const installIos = () => setSheet('ios');
+  const btnBase =
+    'inline-flex items-center justify-center gap-1 min-h-9 px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-colors active:scale-[0.98]';
 
   return (
     <>
-      <div className="flex items-center gap-1" data-testid="header-install-apps">
+      <div className="flex items-center gap-1.5" data-testid="header-install-apps">
+        {/* أندرويد — ظاهر دائماً (كان مخفياً بسبب xs غير موجود في Tailwind) */}
         <button
           type="button"
           data-testid="install-android"
           onClick={installAndroid}
           title="تثبيت تطبيق أندرويد"
-          className="hidden xs:flex sm:flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-100 transition-colors"
+          className={`${btnBase} text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-200 ${
+            platform === 'android' ? 'ring-2 ring-emerald-300' : ''
+          }`}
         >
-          <Download size={14} />
-          <span className="hidden md:inline">أندرويد</span>
+          <Download size={15} className="shrink-0" />
+          <span>أندرويد</span>
         </button>
         <button
           type="button"
           data-testid="install-ios"
-          onClick={installIos}
+          onClick={() => setSheet('ios')}
           title="تثبيت تطبيق آيفون"
-          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-colors"
+          className={`${btnBase} text-slate-800 bg-slate-100 hover:bg-slate-200 border-slate-200 ${
+            platform === 'ios' ? 'ring-2 ring-slate-300' : ''
+          }`}
         >
-          <Smartphone size={14} />
-          <span className="hidden md:inline">آيفون</span>
+          <Smartphone size={15} className="shrink-0" />
+          <span>آيفون</span>
         </button>
       </div>
 
+      {/* شريط تثبيت سريع لأندرويد أسفل الشاشة */}
+      {platform === 'android' && !installed && (
+        <div
+          className="fixed bottom-0 inset-x-0 z-[90] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:hidden"
+          data-testid="android-install-banner"
+        >
+          <button
+            type="button"
+            onClick={installAndroid}
+            className="w-full flex items-center justify-between gap-3 rounded-2xl bg-emerald-600 text-white px-4 py-3 shadow-xl shadow-emerald-900/20 active:scale-[0.99]"
+          >
+            <div className="text-right">
+              <div className="text-sm font-bold">ثبّت تطبيق إيجار</div>
+              <div className="text-[11px] text-emerald-100">للزبون والشريك — يعمل مثل التطبيق</div>
+            </div>
+            <span className="shrink-0 bg-white text-emerald-700 text-xs font-bold px-3 py-1.5 rounded-xl">تثبيت</span>
+          </button>
+        </div>
+      )}
+
       {sheet && (
-        <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-4" data-testid="install-sheet">
+        <div
+          className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          data-testid="install-sheet"
+        >
           <div className="absolute inset-0 bg-slate-900/50" onClick={() => setSheet(null)} />
-          <div className="relative bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4">
+          <div className="relative bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md p-6 shadow-2xl space-y-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <div className="mx-auto w-10 h-1 rounded-full bg-slate-200 sm:hidden mb-2" />
             <div className="flex justify-between items-start gap-3">
               <div>
                 <h3 className="text-lg font-bold text-slate-900">
-                  {sheet === 'android' ? 'تثبيت تطبيق إيجار على أندرويد' : 'تثبيت تطبيق إيجار على آيفون'}
+                  {sheet === 'android' ? 'تثبيت على أندرويد' : 'تثبيت على آيفون'}
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  تطبيق واحد للزبون والشريك — بعد التثبيت سجّل دخولك وأدر حجوزاتك ومعداتك كالموقع تماماً.
+                  تطبيق واحد للزبون والشريك — بعد التثبيت سجّل دخولك وأدر كل عملياتك كالموقع.
                 </p>
               </div>
-              <button type="button" onClick={() => setSheet(null)} className="p-2 hover:bg-slate-100 rounded-full">
+              <button type="button" onClick={() => setSheet(null)} className="p-2 hover:bg-slate-100 rounded-full shrink-0">
                 <X size={18} />
               </button>
             </div>
 
             {sheet === 'android' ? (
-              <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside">
-                <li>افتح الموقع في Chrome على هاتفك.</li>
-                <li>من القائمة ⋮ اختر «تثبيت التطبيق» أو «Add to Home screen».</li>
-                <li>أو اضغط الزر أدناه إن ظهر لك زر التثبيت.</li>
+              <ol className="space-y-3 text-sm text-slate-700 list-decimal list-inside leading-relaxed">
+                <li>افتح الموقع في <strong>Chrome</strong> على هاتفك.</li>
+                <li>من القائمة ⋮ اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».</li>
+                <li>أو اضغط «تثبيت الآن» إذا ظهر الزر أدناه.</li>
               </ol>
             ) : (
               <ol className="space-y-3 text-sm text-slate-700">
                 <li className="flex gap-2 items-start">
                   <Share className="text-blue-600 shrink-0 mt-0.5" size={18} />
-                  <span>في Safari اضغط زر المشاركة (المربع مع السهم للأعلى).</span>
+                  <span>في Safari اضغط المشاركة (المربع مع السهم).</span>
                 </li>
                 <li className="flex gap-2 items-start">
                   <Plus className="text-blue-600 shrink-0 mt-0.5" size={18} />
                   <span>اختر «إضافة إلى الشاشة الرئيسية» ثم «إضافة».</span>
                 </li>
-                <li className="text-xs text-slate-500">يفتح كتطبيق مستقل بدون شريط المتصفح — مناسب للزبون والشريك.</li>
               </ol>
             )}
 
-            {sheet === 'android' && deferred && (
+            {sheet === 'android' && (
               <button
                 type="button"
                 onClick={installAndroid}
-                className="w-full py-3 rounded-2xl bg-emerald-600 text-white font-bold text-sm"
+                className="w-full py-3.5 rounded-2xl bg-emerald-600 text-white font-bold text-sm"
               >
-                تثبيت الآن
+                {deferred ? 'تثبيت الآن' : 'عرض خطوات التثبيت'}
               </button>
-            )}
-
-            {sheet === 'ios' && isIos() && (
-              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
-                أنت على آيفون الآن — استخدم زر المشاركة في Safari كما في الخطوات أعلاه.
-              </p>
             )}
 
             <button type="button" onClick={() => setSheet(null)} className="w-full py-2.5 text-sm text-slate-500 font-medium">

@@ -55,3 +55,18 @@
 .animate-fade-in {
   animation: fadeIn 0.5s ease-out forwards;
 }
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Better tap targets on touch devices */
+@media (pointer: coarse) {
+  button, a, select, input, textarea {
+    touch-action: manipulation;
+  }
+}

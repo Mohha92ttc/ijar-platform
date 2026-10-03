@@ -399,63 +399,43 @@ export default function App() {
   if (view === 'help') return <HelpPage onBack={() => setView('home')} />;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 shrink-0 cursor-pointer" onClick={() => setView('home')}>
+    <div className="min-h-screen bg-slate-50 flex flex-col pb-[env(safe-area-inset-bottom)]">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 pt-[env(safe-area-inset-top)]">
+        {/* صف علوي: شعار + تثبيت + سلة + دخول */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 shrink-0 cursor-pointer" onClick={() => setView('home')}>
             <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">إ</div>
-            <h1 className="text-xl font-bold tracking-tight hidden sm:block">إيجار</h1>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight hidden min-[380px]:block">إيجار</h1>
           </div>
 
-          <div className="flex-1 max-w-2xl relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              data-testid="home-search"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="ابحث عن معدات، أدوات، أو مكائن..."
-              className="w-full bg-slate-100 border-none rounded-xl py-2.5 pr-10 pl-4 text-sm focus:ring-2 focus:ring-blue-500 transition-all"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 min-w-0">
             <InstallAppButtons />
-            {cart.length > 0 && (
-              <button
-                type="button"
-                data-testid="header-cart"
-                onClick={() => setView('checkout')}
-                className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors relative"
-              >
-                <ShoppingCart size={22} />
+            <button
+              type="button"
+              data-testid="header-cart"
+              onClick={() => setView('checkout')}
+              className={`p-2 rounded-full transition-colors relative shrink-0 ${
+                cart.length > 0 ? 'text-blue-600 hover:bg-blue-50' : 'text-slate-400 hover:bg-slate-100'
+              }`}
+              title="السلة"
+            >
+              <ShoppingCart size={22} />
+              {cart.length > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
                   {cart.length}
                 </span>
-              </button>
-            )}
-            {cart.length === 0 && (
-              <button
-                type="button"
-                data-testid="header-cart"
-                onClick={() => setView('checkout')}
-                className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors relative"
-                title="السلة"
-              >
-                <ShoppingCart size={22} />
-              </button>
-            )}
+              )}
+            </button>
 
             {user && (
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-1 sm:gap-2">
                 <button type="button" data-testid="header-notifications" onClick={() => setShowNotifications(true)} className="relative p-2 hover:bg-slate-100 rounded-lg transition-colors">
                   <Bell className="text-slate-600" size={20} />
                 </button>
                 <div className="relative" ref={menuRef}>
-                  <button type="button" data-testid="header-user-menu" onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-2 p-2 hover:bg-slate-100 rounded-lg transition-colors">
+                  <button type="button" data-testid="header-user-menu" onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-1.5 p-1.5 sm:p-2 hover:bg-slate-100 rounded-lg transition-colors">
                     <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">{user.name?.[0] ?? '؟'}</div>
-                    <span className="text-sm font-medium text-slate-700 hidden sm:inline">{user.name}</span>
-                    <ChevronDown className="text-slate-400" size={16} />
+                    <ChevronDown className="text-slate-400 hidden sm:block" size={16} />
                   </button>
 
                   {showUserMenu && (
@@ -488,17 +468,40 @@ export default function App() {
               </div>
             )}
             {!user && (
-              <button type="button" data-testid="header-auth" onClick={() => setView('auth')} className="bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-bold hover:bg-blue-700 transition-all">
-                دخول / تسجيل
+              <button
+                type="button"
+                data-testid="header-auth"
+                onClick={() => setView('auth')}
+                className="bg-blue-600 text-white px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold hover:bg-blue-700 transition-all whitespace-nowrap"
+              >
+                <span className="sm:hidden">دخول</span>
+                <span className="hidden sm:inline">دخول / تسجيل</span>
               </button>
             )}
           </div>
         </div>
+
+        {/* صف البحث — بعرض كامل على الموبايل */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 pb-3">
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="search"
+              enterKeyHint="search"
+              data-testid="home-search"
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              placeholder="ابحث عن معدات…"
+              className="w-full bg-slate-100 border-none rounded-xl py-3 pr-10 pl-4 text-sm focus:ring-2 focus:ring-blue-500 transition-all"
+            />
+          </div>
+        </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6 w-full flex-1 flex flex-col gap-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 w-full flex-1 flex flex-col gap-4 sm:gap-6 pb-28 sm:pb-6">
+        {/* فلاتر الموبايل — صف أفقي قابل للتمرير */}
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 snap-x">
             <select
               data-testid="home-filter-governorate"
               value={filterGovernorate}
@@ -506,7 +509,7 @@ export default function App() {
                 setFilterGovernorate(e.target.value);
                 setFilterArea('');
               }}
-              className="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all bg-white border border-slate-200 max-w-[180px]"
+              className="snap-start shrink-0 min-h-11 px-3 rounded-xl text-sm font-medium bg-white border border-slate-200 max-w-[46vw] sm:max-w-[180px]"
             >
               <option value="">كل المحافظات</option>
               {IRAQ_GOVERNORATES.map((g) => (
@@ -520,7 +523,7 @@ export default function App() {
               value={filterArea}
               onChange={(e) => setFilterArea(e.target.value)}
               disabled={!filterGovernorate}
-              className="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all bg-white border border-slate-200 max-w-[180px] disabled:opacity-50"
+              className="snap-start shrink-0 min-h-11 px-3 rounded-xl text-sm font-medium bg-white border border-slate-200 max-w-[46vw] sm:max-w-[180px] disabled:opacity-50"
             >
               <option value="">كل المناطق</option>
               {areaSuggestions.map((a) => (
@@ -529,16 +532,6 @@ export default function App() {
                 </option>
               ))}
             </select>
-            {filterGovernorate && (
-              <input
-                type="text"
-                data-testid="home-filter-area-custom"
-                value={filterArea}
-                onChange={(e) => setFilterArea(e.target.value)}
-                placeholder="أو اكتب المنطقة…"
-                className="px-3 py-2 rounded-xl text-sm border border-slate-200 bg-white max-w-[160px]"
-              />
-            )}
             <select
               data-testid="home-filter-owner"
               value={selectedOwnerId ?? ''}
@@ -546,7 +539,7 @@ export default function App() {
                 setSelectedOwnerId(e.target.value || null);
                 setActiveCategory('الكل');
               }}
-              className="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all bg-white border border-slate-200 max-w-[220px]"
+              className="snap-start shrink-0 min-h-11 px-3 rounded-xl text-sm font-medium bg-white border border-slate-200 max-w-[46vw] sm:max-w-[200px]"
             >
               <option value="">كل الشركاء</option>
               {ownerOptions.map(([id, label]) => (
@@ -555,32 +548,45 @@ export default function App() {
                 </option>
               ))}
             </select>
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setActiveCategory(cat)}
-                  className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                    activeCategory === cat ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-slate-200 hover:border-blue-300'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {filterGovernorate && (
+            <input
+              type="text"
+              data-testid="home-filter-area-custom"
+              value={filterArea}
+              onChange={(e) => setFilterArea(e.target.value)}
+              placeholder="أو اكتب المنطقة…"
+              className="min-h-11 px-3 rounded-xl text-sm border border-slate-200 bg-white w-full sm:max-w-xs"
+            />
+          )}
+
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setActiveCategory(cat)}
+                className={`shrink-0 min-h-10 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
+                  activeCategory === cat ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-slate-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={() => setShowFilter(!showFilter)}
-              className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium shrink-0 ${showFilter ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              className={`flex items-center gap-2 min-h-10 px-3 py-2 border rounded-xl text-sm font-medium ${showFilter ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-white border-slate-200 text-slate-600'}`}
             >
               <Filter size={16} />
-              تصفية السعر
+              السعر
             </button>
-            <button type="button" data-testid="home-refresh-list" onClick={() => refreshEquipment()} className="text-sm text-blue-600 font-medium hover:underline">
-              تحديث القائمة
+            <button type="button" data-testid="home-refresh-list" onClick={() => refreshEquipment()} className="text-sm text-blue-600 font-medium min-h-10 px-2">
+              تحديث
             </button>
           </div>
         </div>
@@ -603,16 +609,16 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div className="bg-blue-600 rounded-2xl p-8 text-white relative overflow-hidden shadow-lg">
+        <div className="bg-blue-600 rounded-2xl p-5 sm:p-8 text-white relative overflow-hidden shadow-lg">
           <div className="relative z-10 max-w-lg">
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">أجر معداتك وابدأ بالربح اليوم</h2>
-            <p className="text-blue-100 mb-6 text-sm sm:text-base">حول معداتك غير المستخدمة إلى مصدر دخل إضافي. انضم إلى مئات أصحاب المعدات في العراق.</p>
-            <button type="button" data-testid="home-hero-register" onClick={() => setView('auth')} className="bg-white text-blue-600 px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-blue-50 transition-colors">
+            <h2 className="text-xl sm:text-3xl font-bold mb-2 sm:mb-3 leading-snug">أجر معداتك وابدأ بالربح اليوم</h2>
+            <p className="text-blue-100 mb-4 sm:mb-6 text-sm sm:text-base leading-relaxed">حوّل معداتك غير المستخدمة إلى دخل إضافي في العراق.</p>
+            <button type="button" data-testid="home-hero-register" onClick={() => setView('auth')} className="bg-white text-blue-600 px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 min-h-11">
               <Plus size={18} />
               أضف معداتك الآن
             </button>
           </div>
-          <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-blue-500 rounded-full opacity-20" />
+          <div className="absolute -right-10 -bottom-10 w-48 sm:w-64 h-48 sm:h-64 bg-blue-500 rounded-full opacity-20 pointer-events-none" />
         </div>
 
         <div className="flex flex-col gap-4">
