@@ -18,10 +18,17 @@ interface MeResponse {
 }
 
 export class AuthService {
-  private readonly JWT_SECRET = process.env.JWT_SECRET!;
   private readonly JWT_EXPIRES_IN = '24h';
   private readonly notificationService = new NotificationService();
   private readonly bcryptRounds = Math.max(10, parseInt(process.env.BCRYPT_ROUNDS || '12', 10) || 12);
+
+  private get jwtSecret(): string {
+    const s = process.env.JWT_SECRET || '';
+    if (!s || s.length < 16) {
+      throw new Error('JWT_SECRET is not configured securely');
+    }
+    return s;
+  }
 
   private normalizeRole(role?: string): UserRole {
     if (role === 'admin') {
@@ -116,7 +123,7 @@ export class AuthService {
       });
     }
 
-    const token = jwt.sign({ userId: row.id, role: row.role }, this.JWT_SECRET, { expiresIn: this.JWT_EXPIRES_IN });
+    const token = jwt.sign({ userId: row.id, role: row.role }, this.jwtSecret, { expiresIn: this.JWT_EXPIRES_IN });
 
     return {
       token,
@@ -157,7 +164,7 @@ export class AuthService {
       throw new Error('Email verification required');
     }
 
-    const token = jwt.sign({ userId: row.id, role: row.role }, this.JWT_SECRET, { expiresIn: this.JWT_EXPIRES_IN });
+    const token = jwt.sign({ userId: row.id, role: row.role }, this.jwtSecret, { expiresIn: this.JWT_EXPIRES_IN });
 
     return {
       token,

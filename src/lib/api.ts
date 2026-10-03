@@ -18,11 +18,12 @@ export function getStoredUser(): { id: string; name: string; email: string; role
   }
 }
 
-/** Store user profile only — auth prefers httpOnly cookie; Bearer kept as fallback for same-origin SPA. */
+/** Store user profile + token fallback (httpOnly cookie is primary on server). */
 export function setSession(token: string | undefined | null, user: object) {
   if (token) {
-    // Fallback for clients that still send Authorization; cookie is set by server
     localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
   }
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
@@ -48,7 +49,6 @@ export async function apiFetch(path: string, opts: RequestInit = {}): Promise<Re
   if (!headers.has('Content-Type') && opts.body && !(opts.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
-  // Prefer cookie (httpOnly); Bearer is secondary for compatibility
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
@@ -58,8 +58,16 @@ export async function apiFetch(path: string, opts: RequestInit = {}): Promise<Re
 export async function apiJson<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const res = await apiFetch(path, opts);
   const text = await res.text();
-  const data = text ? (JSON.parse(text) as unknown) : null;
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
   if (!res.ok) {
+    if (res.status === 401) {
+      clearSession();
+    }
     const msg =
       typeof data === 'object' && data !== null && 'error' in data
         ? String((data as { error?: string }).error)

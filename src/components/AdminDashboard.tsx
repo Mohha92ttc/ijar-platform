@@ -5,7 +5,7 @@ import {
   MapPin, Phone, Mail, Globe, Save, X, Edit2, CheckCircle, CreditCard, Bell, Trash2, ArrowRight, Eye, Download, Info,
   FileText, Home, Sparkles
 } from 'lucide-react';
-import { apiJson, ApiError } from '../lib/api';
+import { apiJson, ApiError, clearSession } from '../lib/api';
 import AdminSettings from './AdminSettings';
 import PaymentsTab from './PaymentsTab';
 import PaymentApproval from './PaymentApproval';
@@ -99,8 +99,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
 
       const settingsData = await apiJson<any>('/api/admin/settings');
       if (settingsData) {
-        setPlatformInfo(settingsData);
-        setTempInfo(settingsData);
+        const normalized = {
+          ...settingsData,
+          phones: Array.isArray(settingsData.phones) ? settingsData.phones : [String(settingsData.phones || '')],
+          emails: Array.isArray(settingsData.emails) ? settingsData.emails : [String(settingsData.emails || '')],
+          addresses: Array.isArray(settingsData.addresses)
+            ? settingsData.addresses
+            : [String(settingsData.addresses || '')],
+        };
+        setPlatformInfo(normalized);
+        setTempInfo(normalized);
       }
 
       const catsData = await apiJson<any[]>('/api/equipment/categories');
@@ -174,10 +182,17 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         });
         setNewPartner({ name: '', email: '', phone: '', password: '', confirmPassword: '', subscriptionMonths: 1 });
         setShowPartnerForm(false);
-        fetchData();
+        await fetchData();
         alert('تم إضافة الشريك بنجاح!');
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'فشل إضافة الشريك');
+        const msg = err instanceof ApiError || err instanceof Error ? err.message : 'فشل إضافة الشريك';
+        if (String(msg).includes('Invalid token')) {
+          clearSession();
+          alert('انتهت الجلسة. سجّل الدخول من جديد.');
+          window.location.href = '/';
+          return;
+        }
+        alert(msg);
       }
     }
   };
@@ -958,15 +973,31 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   <button 
                     onClick={async () => {
                       try {
+                        const payload = {
+                          ...tempInfo,
+                          phones: Array.isArray(tempInfo.phones) ? tempInfo.phones : [tempInfo.phones].filter(Boolean),
+                          emails: Array.isArray(tempInfo.emails) ? tempInfo.emails : [tempInfo.emails].filter(Boolean),
+                          addresses: Array.isArray(tempInfo.addresses)
+                            ? tempInfo.addresses
+                            : [tempInfo.addresses].filter(Boolean),
+                        };
                         await apiJson('/api/admin/settings', {
                           method: 'POST',
-                          body: JSON.stringify(tempInfo)
+                          body: JSON.stringify(payload)
                         });
-                        setPlatformInfo(tempInfo);
+                        setPlatformInfo(payload);
+                        setTempInfo(payload);
                         setEditingInfo(false);
                         alert('تم حفظ التغييرات بنجاح');
                       } catch (err) {
-                        alert('فشل حفظ التغييرات');
+                        const msg = err instanceof Error ? err.message : 'فشل حفظ التغييرات';
+                        if (msg.includes('Invalid token') || msg.includes('Unauthorized')) {
+                          alert('انتهت الجلسة. سجّل الدخول من جديد ثم أعد الحفظ.');
+                          clearSession();
+                          window.location.href = '/';
+                          return;
+                        }
+                        alert(msg);
                       }
                     }}
                     className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"

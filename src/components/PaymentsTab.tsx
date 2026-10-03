@@ -16,9 +16,11 @@ export default function PaymentsTab() {
         ...p,
         id: String(p.id)
       })));
-    } catch (err) {
-      console.error('Failed to fetch payments', err);
-    } finally {
+      } catch (err) {
+        console.error('Failed to fetch payments', err);
+        const msg = err instanceof Error ? err.message : 'فشل تحميل المدفوعات';
+        alert(msg);
+      } finally {
       setLoading(false);
     }
   };
@@ -43,15 +45,26 @@ export default function PaymentsTab() {
   };
 
   const addManualPayment = () => {
-    alert('تنبيه: لإضافة دفعة يدوية، يرجى استخدام واجهة حجز العميل واختيار "دفع يدوي"');
+    alert(
+      'لإضافة دفعة شريك (إعلان مميز / تجديد): من حساب الشريك → الإعلان المميز أو الاشتراك. للمراجعة: تبويب موافقات الدفع وكشوف الحسابات.'
+    );
   };
 
   const getPaymentTypeLabel = (type: string) => {
     switch (type) {
-      case 'subscription': return 'اشتراك';
-      case 'commission': return 'عمولة';
-      case 'penalty': return 'غرامة';
-      default: return type;
+      case 'subscription':
+      case 'subscription_renewal':
+        return 'اشتراك';
+      case 'featured_promotion':
+        return 'إعلان مميز';
+      case 'commission':
+        return 'عمولة';
+      case 'penalty':
+        return 'غرامة';
+      case 'booking':
+        return 'حجز';
+      default:
+        return type || '—';
     }
   };
 
@@ -81,8 +94,12 @@ export default function PaymentsTab() {
     }
   };
 
-  const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-  const pendingAmount = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
+  const totalRevenue = payments
+    .filter((p) => ['paid', 'approved', 'completed'].includes(String(p.status)))
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  const pendingAmount = payments
+    .filter((p) => ['pending', 'under_review', 'proof_uploaded'].includes(String(p.status)))
+    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
   return (
     <div className="space-y-6">

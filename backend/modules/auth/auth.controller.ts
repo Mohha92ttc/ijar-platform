@@ -10,7 +10,7 @@ function setAuthCookie(res: Response, token: string) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: isProd,
-    sameSite: isProd ? 'strict' : 'lax',
+    sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000,
     path: '/',
   });
@@ -31,7 +31,11 @@ export class AuthController {
     try {
       const { name, email, phone, password, role, auto_approve } = req.body;
       const result = await this.authService.register({ name, email, phone, password, role, auto_approve });
-      if (result.token) {
+      // Don't overwrite an existing admin/session cookie when admin creates a user
+      const hasExistingSession =
+        Boolean(req.headers.authorization) ||
+        Boolean((req as Request & { cookies?: Record<string, string> }).cookies?.[COOKIE_NAME]);
+      if (result.token && !hasExistingSession) {
         setAuthCookie(res, result.token);
       }
       res.status(201).json(result);

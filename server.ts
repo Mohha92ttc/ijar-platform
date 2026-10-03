@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -24,9 +25,6 @@ import { MigrationService } from './backend/services/migration.service';
 import { WebSocketService } from './backend/services/websocket.service';
 import { authenticateToken, requireRole, AuthenticatedRequest } from './backend/modules/auth/auth.middleware';
 import { ensureUploadDir, UPLOAD_DIR } from './backend/services/upload.service';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const isProd = process.env.NODE_ENV === 'production';
 
