@@ -169,17 +169,36 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       }
       
       try {
-        await apiJson('/api/admin/users', {
-          method: 'POST',
-          body: JSON.stringify({
-            name: newPartner.name,
-            email: newPartner.email,
-            phone: newPartner.phone,
-            password: newPartner.password,
-            role: 'owner',
-            subscriptionMonths: newPartner.subscriptionMonths || 1,
-          })
-        });
+        try {
+          await apiJson('/api/admin/users', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: newPartner.name,
+              email: newPartner.email,
+              phone: newPartner.phone,
+              password: newPartner.password,
+              role: 'owner',
+              subscriptionMonths: newPartner.subscriptionMonths || 1,
+            })
+          });
+        } catch (firstErr) {
+          // Fallback while Render catches up / old deploy
+          if (firstErr instanceof ApiError && firstErr.status === 404) {
+            await apiJson('/api/auth/register', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: newPartner.name,
+                email: newPartner.email,
+                phone: newPartner.phone,
+                password: newPartner.password,
+                role: 'owner',
+                auto_approve: true,
+              })
+            });
+          } else {
+            throw firstErr;
+          }
+        }
         setNewPartner({ name: '', email: '', phone: '', password: '', confirmPassword: '', subscriptionMonths: 1 });
         setShowPartnerForm(false);
         await fetchData();
