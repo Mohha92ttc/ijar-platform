@@ -92,6 +92,7 @@ export class PaymentController {
           wallet_number: '',
           bank_account: '',
           card_number: '',
+          account_holder_name: '',
         });
       }
       res.status(200).json(settings);
@@ -110,6 +111,12 @@ export class PaymentController {
         delivery_fee: Number(settings?.delivery_fee ?? 0) || 0,
         phone_number: settings?.phone_number || '',
         wallet_number: settings?.wallet_number || '',
+        card_number: settings?.card_number || '',
+        bank_account: settings?.bank_account || '',
+        account_holder_name: settings?.account_holder_name || '',
+        /** aliases */
+        mastercard: settings?.card_number || '',
+        zain_cash: settings?.wallet_number || '',
       });
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل جلب بيانات الشريك') });

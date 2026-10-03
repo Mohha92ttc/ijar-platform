@@ -44,8 +44,12 @@ export interface OwnerPaymentSettings {
   owner_id: string;
   phone_number?: string;
   bank_account?: string;
+  /** رقم ماستركارد / فيزا للتحويل */
   card_number?: string;
+  /** رقم زين كاش */
   wallet_number?: string;
+  /** اسم صاحب الحساب */
+  account_holder_name?: string;
   /** رسوم التوصيل بالدينار — 0 مسموح */
   delivery_fee?: number;
 }

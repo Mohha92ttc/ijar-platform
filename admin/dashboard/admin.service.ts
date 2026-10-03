@@ -182,6 +182,8 @@ export class AdminService {
         bank_name: r.bank_name ?? '',
         bank_account_iban: r.bank_account_iban ?? '',
         card_number_display: r.card_number_display ?? '',
+        zain_cash_phone: r.zain_cash_phone ?? '',
+        account_holder_name: r.account_holder_name ?? '',
         transfer_instructions: r.transfer_instructions ?? '',
         featured_ad_price: r.featured_ad_price != null ? Number(r.featured_ad_price) : 50000,
         featured_duration_days: r.featured_duration_days != null ? Number(r.featured_duration_days) : 30,
@@ -200,6 +202,8 @@ export class AdminService {
       bank_name: '',
       bank_account_iban: '',
       card_number_display: '',
+      zain_cash_phone: '',
+      account_holder_name: '',
       transfer_instructions: '',
       featured_ad_price: 50000,
       featured_duration_days: 30,
@@ -218,12 +222,13 @@ export class AdminService {
       `
       INSERT INTO platform_settings (
         id, name, description, phones, emails, addresses, mission, vision,
-        bank_name, bank_account_iban, card_number_display, transfer_instructions,
+        bank_name, bank_account_iban, card_number_display, zain_cash_phone, account_holder_name,
+        transfer_instructions,
         featured_ad_price, featured_duration_days, subscription_renewal_price, commission_rate
       )
       VALUES (
         1, $1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12, $13, $14, $15
+        $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
       )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
@@ -236,6 +241,8 @@ export class AdminService {
         bank_name = EXCLUDED.bank_name,
         bank_account_iban = EXCLUDED.bank_account_iban,
         card_number_display = EXCLUDED.card_number_display,
+        zain_cash_phone = EXCLUDED.zain_cash_phone,
+        account_holder_name = EXCLUDED.account_holder_name,
         transfer_instructions = EXCLUDED.transfer_instructions,
         featured_ad_price = EXCLUDED.featured_ad_price,
         featured_duration_days = EXCLUDED.featured_duration_days,
@@ -253,6 +260,8 @@ export class AdminService {
         data.bank_name ?? null,
         data.bank_account_iban ?? null,
         data.card_number_display ?? null,
+        data.zain_cash_phone ?? null,
+        data.account_holder_name ?? null,
         data.transfer_instructions ?? null,
         Number(data.featured_ad_price ?? 50000),
         Number(data.featured_duration_days ?? 30),

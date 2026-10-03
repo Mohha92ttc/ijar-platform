@@ -356,6 +356,9 @@ async function createTables() {
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     ALTER TABLE owner_payment_settings ADD COLUMN IF NOT EXISTS delivery_fee DECIMAL(12, 2) DEFAULT 0;
+    ALTER TABLE owner_payment_settings ADD COLUMN IF NOT EXISTS account_holder_name VARCHAR(120);
+    ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS zain_cash_phone TEXT;
+    ALTER TABLE platform_settings ADD COLUMN IF NOT EXISTS account_holder_name TEXT;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_requested BOOLEAN DEFAULT FALSE;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_fee DECIMAL(12, 2) DEFAULT 0;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_preference VARCHAR(50);

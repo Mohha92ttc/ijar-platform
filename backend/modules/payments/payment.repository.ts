@@ -111,14 +111,18 @@ export class PaymentRepository {
 
   async saveOwnerSettings(settings: OwnerPaymentSettings): Promise<void> {
     await query(`
-      INSERT INTO owner_payment_settings (owner_id, phone_number, bank_account, card_number, wallet_number, delivery_fee, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+      INSERT INTO owner_payment_settings (
+        owner_id, phone_number, bank_account, card_number, wallet_number,
+        delivery_fee, account_holder_name, updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
       ON CONFLICT (owner_id) DO UPDATE SET
         phone_number = EXCLUDED.phone_number,
         bank_account = EXCLUDED.bank_account,
         card_number = EXCLUDED.card_number,
         wallet_number = EXCLUDED.wallet_number,
         delivery_fee = EXCLUDED.delivery_fee,
+        account_holder_name = EXCLUDED.account_holder_name,
         updated_at = CURRENT_TIMESTAMP
     `, [
       settings.owner_id,
@@ -127,6 +131,7 @@ export class PaymentRepository {
       settings.card_number ?? null,
       settings.wallet_number ?? null,
       Number(settings.delivery_fee ?? 0) || 0,
+      settings.account_holder_name ?? null,
     ]);
   }
 
@@ -140,6 +145,7 @@ export class PaymentRepository {
       bank_account: r.bank_account ?? undefined,
       card_number: r.card_number ?? undefined,
       wallet_number: r.wallet_number ?? undefined,
+      account_holder_name: r.account_holder_name ?? undefined,
       delivery_fee: Number(r.delivery_fee ?? 0) || 0,
     };
   }

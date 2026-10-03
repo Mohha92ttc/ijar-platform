@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Package, Clock, CheckCircle, XCircle, Settings, Plus, BarChart2, Home, Edit2, Trash2, Save, X, Sparkles, CreditCard } from 'lucide-react';
 import ImageUpload from './ImageUpload';
+import TransferAccountsPanel from './TransferAccountsPanel';
 import { apiJson, ApiError } from '../lib/api';
 
 type Eq = {
@@ -46,6 +47,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     bank_name?: string | null;
     bank_account_iban?: string | null;
     card_number_display?: string | null;
+    mastercard?: string | null;
+    zain_cash_phone?: string | null;
+    account_holder_name?: string | null;
     transfer_instructions?: string | null;
     featured_ad_price?: number;
     featured_duration_days?: number;
@@ -62,6 +66,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     wallet_number: '',
     bank_account: '',
     card_number: '',
+    account_holder_name: '',
     delivery_fee: '0',
   });
   const [paySettingsSaving, setPaySettingsSaving] = useState(false);
@@ -137,6 +142,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             wallet_number: String(s.wallet_number || ''),
             bank_account: String(s.bank_account || ''),
             card_number: String(s.card_number || ''),
+            account_holder_name: String(s.account_holder_name || ''),
             delivery_fee: String(s.delivery_fee ?? 0),
           });
         }
@@ -157,6 +163,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           wallet_number: paySettings.wallet_number.trim() || undefined,
           bank_account: paySettings.bank_account.trim() || undefined,
           card_number: paySettings.card_number.trim() || undefined,
+          account_holder_name: paySettings.account_holder_name.trim() || undefined,
           delivery_fee: Math.max(0, Number(paySettings.delivery_fee) || 0),
         }),
       });
@@ -633,43 +640,26 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         {/* Featured promotion Tab */}
         {activeTab === 'featured' && (
           <div className="space-y-8 max-w-3xl">
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm" data-testid="partner-transfer-info">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <CreditCard size={20} className="text-blue-600" />
-                حسابات التحويل (المنصة)
-              </h3>
-              {transferInfo ? (
-                <div className="space-y-2 text-sm text-slate-700">
-                  {transferInfo.bank_name && <p><span className="font-bold">البنك:</span> {transferInfo.bank_name}</p>}
-                  {transferInfo.bank_account_iban && (
-                    <p>
-                      <span className="font-bold">رقم الحساب / الآيبان:</span>{' '}
-                      <span className="font-mono">{transferInfo.bank_account_iban}</span>
-                    </p>
-                  )}
-                  {transferInfo.card_number_display && (
-                    <p>
-                      <span className="font-bold">بطاقة / محفظة:</span>{' '}
-                      <span className="font-mono">{transferInfo.card_number_display}</span>
-                    </p>
-                  )}
-                  {transferInfo.transfer_instructions && (
-                    <p className="text-slate-600 whitespace-pre-wrap">{transferInfo.transfer_instructions}</p>
-                  )}
-                  {!transferInfo.bank_name && !transferInfo.bank_account_iban && !transferInfo.card_number_display && (
-                    <p className="text-amber-700">لم يضبط المدير حساب التحويل بعد. يمكنك التواصل مع الدعم.</p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-slate-500 text-sm">جاري تحميل معلومات التحويل…</p>
-              )}
+            <div data-testid="partner-transfer-info">
+              <TransferAccountsPanel
+                info={{
+                  title: 'حوّل إلى حساب المنصة (إيجار)',
+                  subtitle: 'نفس الآلية التي يستلم بها الزبون منك — ماستركارد أو زين كاش ثم ارفع إثبات التحويل.',
+                  bank_name: transferInfo?.bank_name,
+                  bank_account: transferInfo?.bank_account_iban,
+                  mastercard: transferInfo?.mastercard || transferInfo?.card_number_display,
+                  zain_cash: transferInfo?.zain_cash_phone,
+                  account_holder: transferInfo?.account_holder_name,
+                  instructions: transferInfo?.transfer_instructions,
+                }}
+              />
             </div>
 
             <div className="bg-white rounded-2xl p-6 border border-amber-200 shadow-sm">
               <h3 className="text-lg font-bold text-slate-800 mb-2">طلب إعلان مميز</h3>
               <p className="text-sm text-slate-600 mb-4">
-                خدمة مدفوعة — بعد التحويل ارفع لقطة شاشة. المدة الافتراضية:{' '}
-                {transferInfo?.featured_duration_days ?? 30} يوماً. السعر:{' '}
+                1) حوّل المبلغ للحساب أعلاه — 2) ارفع صورة الإثبات — 3) بانتظار موافقة الإدارة.
+                المدة: {transferInfo?.featured_duration_days ?? 30} يوماً — السعر:{' '}
                 <span className="font-bold text-blue-600">
                   {(transferInfo?.featured_ad_price ?? 50000).toLocaleString()} د.ع
                 </span>
@@ -677,7 +667,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               <textarea
                 value={featNotes}
                 onChange={(e) => setFeatNotes(e.target.value)}
-                placeholder="ملاحظات اختيارية (اسم صاحب الحساب، رقم مرجعي…)"
+                placeholder="ملاحظات (اسم المحوّل، رقم العملية…)"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm mb-3"
                 rows={2}
               />
@@ -702,7 +692,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
               <h3 className="text-lg font-bold text-slate-800 mb-2">تجديد اشتراك المنصة</h3>
               <p className="text-sm text-slate-600 mb-4">
-                نفس حساب التحويل أعلاه. المبلغ:{' '}
+                نفس حسابات التحويل أعلاه. المبلغ:{' '}
                 <span className="font-bold text-blue-600">
                   {(transferInfo?.subscription_renewal_price ?? 100000).toLocaleString()} د.ع
                 </span>
@@ -743,14 +733,22 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             </div>
 
             {transferInfo && (
-              <div className="max-w-4xl mx-auto mb-8 p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm" data-testid="partner-settings-transfer-info">
-                <div className="font-bold text-slate-800 mb-2">معلومات التحويل للاشتراك والخدمات</div>
-                {transferInfo.bank_name && <p>البنك: {transferInfo.bank_name}</p>}
-                {transferInfo.bank_account_iban && <p className="font-mono">حساب: {transferInfo.bank_account_iban}</p>}
-                {transferInfo.card_number_display && <p className="font-mono">بطاقة: {transferInfo.card_number_display}</p>}
+              <div className="max-w-4xl mx-auto mb-8" data-testid="partner-settings-transfer-info">
+                <TransferAccountsPanel
+                  info={{
+                    title: 'حسابات المنصة (للدفع لك كشريك)',
+                    subtitle: 'استخدمها عند تجديد الاشتراك أو الإعلان المميز من تبويب الإعلان.',
+                    bank_name: transferInfo.bank_name,
+                    bank_account: transferInfo.bank_account_iban,
+                    mastercard: transferInfo.mastercard || transferInfo.card_number_display,
+                    zain_cash: transferInfo.zain_cash_phone,
+                    account_holder: transferInfo.account_holder_name,
+                    instructions: transferInfo.transfer_instructions,
+                  }}
+                />
               </div>
             )}
-            
+
             <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">اسم الشريك</label>
@@ -779,11 +777,53 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             </div>
 
             <div className="max-w-4xl mx-auto mt-10 p-6 border border-blue-100 rounded-2xl bg-blue-50/40" data-testid="partner-delivery-payment-settings">
-              <h4 className="text-lg font-bold text-slate-800 mb-2">إعدادات الدفع والتوصيل للزبائن</h4>
+              <h4 className="text-lg font-bold text-slate-800 mb-2">حساباتك لاستلام دفعات الزبائن</h4>
               <p className="text-xs text-slate-500 mb-4">
-                رسوم التوصيل تظهر للزبون عند اختيار «أريد توصيل». يمكنك تركها 0. رقم المحفظة/الهاتف يظهر عند اختيار زين كاش أو الحوالة.
+                أدخل ماستركارد و/أو زين كاش — يظهران للزبون عند الحجز ليحول عليك. رسوم التوصيل اختيارية (0 مسموح).
               </p>
               <div className="grid md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">اسم صاحب الحساب</label>
+                  <input
+                    type="text"
+                    data-testid="partner-account-holder"
+                    value={paySettings.account_holder_name}
+                    onChange={(e) => setPaySettings({ ...paySettings, account_holder_name: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
+                    placeholder="الاسم على البطاقة / المحفظة"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">رقم ماستركارد / فيزا</label>
+                  <input
+                    type="text"
+                    data-testid="partner-mastercard"
+                    value={paySettings.card_number}
+                    onChange={(e) => setPaySettings({ ...paySettings, card_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right font-mono"
+                    placeholder="XXXX XXXX XXXX XXXX"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">رقم زين كاش</label>
+                  <input
+                    type="text"
+                    data-testid="partner-wallet-number"
+                    value={paySettings.wallet_number}
+                    onChange={(e) => setPaySettings({ ...paySettings, wallet_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right font-mono"
+                    placeholder="07xxxxxxxx"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">هاتف تواصل إضافي</label>
+                  <input
+                    type="text"
+                    value={paySettings.phone_number}
+                    onChange={(e) => setPaySettings({ ...paySettings, phone_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
+                  />
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">رسوم التوصيل (د.ع)</label>
                   <input
@@ -795,33 +835,13 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">رقم زين كاش / المحفظة</label>
-                  <input
-                    type="text"
-                    data-testid="partner-wallet-number"
-                    value={paySettings.wallet_number}
-                    onChange={(e) => setPaySettings({ ...paySettings, wallet_number: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
-                    placeholder="07xxxxxxxx"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">هاتف التواصل للدفع</label>
-                  <input
-                    type="text"
-                    value={paySettings.phone_number}
-                    onChange={(e) => setPaySettings({ ...paySettings, phone_number: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">حساب بنكي (اختياري)</label>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">حساب بنكي / آيبان (اختياري)</label>
                   <input
                     type="text"
                     value={paySettings.bank_account}
                     onChange={(e) => setPaySettings({ ...paySettings, bank_account: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-white text-right font-mono"
                   />
                 </div>
               </div>
@@ -832,7 +852,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 onClick={savePaySettings}
                 className="mt-4 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
               >
-                {paySettingsSaving ? 'جاري الحفظ…' : 'حفظ إعدادات الدفع والتوصيل'}
+                {paySettingsSaving ? 'جاري الحفظ…' : 'حفظ حسابات استلام الزبائن'}
               </button>
             </div>
           </div>

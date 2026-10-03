@@ -4,6 +4,7 @@ import { ShoppingBag, Trash2, MapPin, Phone, CreditCard, ArrowRight, X, Truck } 
 import type { CartLine, CartPaymentMethod } from '../lib/cartStorage';
 import { paymentMethodLabel } from '../lib/cartStorage';
 import { apiJson } from '../lib/api';
+import TransferAccountsPanel from './TransferAccountsPanel';
 
 export type CheckoutFormData = {
   phone: string;
@@ -36,16 +37,37 @@ export default function CheckoutPage({
     notes: '',
   });
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>(defaultPay);
-  const [ownerHints, setOwnerHints] = useState<Record<string, { delivery_fee: number; phone_number?: string; wallet_number?: string }>>({});
+  const [ownerHints, setOwnerHints] = useState<
+    Record<
+      string,
+      {
+        delivery_fee: number;
+        phone_number?: string;
+        wallet_number?: string;
+        card_number?: string;
+        bank_account?: string;
+        account_holder_name?: string;
+        mastercard?: string;
+        zain_cash?: string;
+      }
+    >
+  >({});
 
   useEffect(() => {
     const owners = [...new Set(cart.map((c) => c.owner_id).filter(Boolean))] as string[];
     owners.forEach(async (oid) => {
       if (ownerHints[oid]) return;
       try {
-        const data = await apiJson<{ delivery_fee: number; phone_number?: string; wallet_number?: string }>(
-          `/api/payments/public-owner/${oid}`
-        );
+        const data = await apiJson<{
+          delivery_fee: number;
+          phone_number?: string;
+          wallet_number?: string;
+          card_number?: string;
+          bank_account?: string;
+          account_holder_name?: string;
+          mastercard?: string;
+          zain_cash?: string;
+        }>(`/api/payments/public-owner/${oid}`);
         setOwnerHints((prev) => ({ ...prev, [oid]: data }));
       } catch {
         // ignore
@@ -225,20 +247,29 @@ export default function CheckoutPage({
             </div>
 
             {(paymentMethod === 'zain_cash' || paymentMethod === 'asia_hawala' || paymentMethod === 'manual') && (
-              <div className="p-3 bg-white border border-slate-200 rounded-xl text-[11px] text-slate-600 space-y-1">
-                <div className="font-bold text-slate-800 flex items-center gap-1">
-                  <CreditCard size={12} /> تعليمات الدفع
-                </div>
-                <p>بعد موافقة الشريك على الحجز ستصلك بيانات التحويل (رقم المحفظة/الهاتف). ارفع إثبات التحويل من لوحة حجوزاتك عند الطلب.</p>
-                {Object.values(ownerHints).some((h) => h.wallet_number || h.phone_number) && (
-                  <div className="pt-1 border-t border-slate-100 space-y-0.5">
-                    {Object.values(ownerHints).map((h, i) => (
-                      <div key={i}>
-                        {h.wallet_number && <div>محفظة: {h.wallet_number}</div>}
-                        {h.phone_number && <div>هاتف الشريك: {h.phone_number}</div>}
-                      </div>
-                    ))}
-                  </div>
+              <div className="space-y-3" data-testid="checkout-partner-accounts">
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  حوّل لشريك كل معدة حسب الحسابات أدناه (ماستركارد أو زين كاش). بعد موافقة الشريك ارفع إثبات التحويل عند الطلب.
+                </p>
+                {Object.entries(ownerHints).map(([oid, h]) => (
+                  <TransferAccountsPanel
+                    key={oid}
+                    testId={`checkout-owner-${oid.slice(0, 8)}`}
+                    info={{
+                      title: 'حساب الشريك للتحويل',
+                      subtitle: 'انسخ الرقم ثم حوّل',
+                      mastercard: h.mastercard || h.card_number,
+                      zain_cash: h.zain_cash || h.wallet_number,
+                      phone: h.phone_number,
+                      bank_account: h.bank_account,
+                      account_holder: h.account_holder_name,
+                    }}
+                  />
+                ))}
+                {Object.keys(ownerHints).length === 0 && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
+                    الشريك لم يضف حسابات التحويل بعد — سيتم إشعاره لإضافتها من إعداداته.
+                  </p>
                 )}
               </div>
             )}

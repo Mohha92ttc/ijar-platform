@@ -6,7 +6,8 @@ export class PlatformController {
   getTransferInfo = async (_req: Request, res: Response) => {
     try {
       const r = await query(
-        `SELECT bank_name, bank_account_iban, card_number_display, transfer_instructions,
+        `SELECT bank_name, bank_account_iban, card_number_display, zain_cash_phone,
+                account_holder_name, transfer_instructions,
                 featured_ad_price, featured_duration_days, subscription_renewal_price
          FROM platform_settings WHERE id = 1`
       );
@@ -16,16 +17,25 @@ export class PlatformController {
           bank_name: null,
           bank_account_iban: null,
           card_number_display: null,
+          mastercard: null,
+          zain_cash_phone: null,
+          account_holder_name: null,
           transfer_instructions: null,
           featured_ad_price: 50000,
           featured_duration_days: 30,
           subscription_renewal_price: 100000,
         });
       }
+      const mastercard = row.card_number_display ?? null;
+      const zain = row.zain_cash_phone ?? null;
       res.status(200).json({
         bank_name: row.bank_name ?? null,
         bank_account_iban: row.bank_account_iban ?? null,
-        card_number_display: row.card_number_display ?? null,
+        card_number_display: mastercard,
+        /** aliases for clearer UI */
+        mastercard,
+        zain_cash_phone: zain,
+        account_holder_name: row.account_holder_name ?? null,
         transfer_instructions: row.transfer_instructions ?? null,
         featured_ad_price: Number(row.featured_ad_price ?? 50000),
         featured_duration_days: Number(row.featured_duration_days ?? 30),
