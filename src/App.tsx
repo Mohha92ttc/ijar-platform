@@ -25,7 +25,7 @@ import AboutPage from './components/AboutPage';
 import TermsPage from './components/TermsPage';
 import HelpPage from './components/HelpPage';
 import NotificationsPanel from './components/NotificationsPanel';
-import { apiJson, clearSession, getStoredUser, ApiError } from './lib/api';
+import { apiJson, clearSession, ApiError, apiLogout, friendlyAuthMessage, validateSession } from './lib/api';
 import { loadCart, saveCart, type CartLine } from './lib/cartStorage';
 
 type EquipmentRow = {
@@ -85,9 +85,27 @@ export default function App() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const u = getStoredUser();
-    if (u) setUser(u);
-    setCart(loadCart());
+    let cancelled = false;
+    (async () => {
+      const me = await validateSession();
+      if (cancelled) return;
+      if (me) setUser(me);
+      else setUser(null);
+      setCart(loadCart());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Keep Render awake while a browser tab is open
+  useEffect(() => {
+    const ping = () => {
+      fetch('/api/health', { credentials: 'include' }).catch(() => {});
+    };
+    ping();
+    const id = window.setInterval(ping, 4 * 60 * 1000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -161,12 +179,22 @@ export default function App() {
     setView('home');
   };
 
-  const handleLogout = () => {
-    clearSession();
+  const handleLogout = async () => {
+    await apiLogout();
     setUser(null);
     setShowUserMenu(false);
     setView('home');
   };
+
+  React.useEffect(() => {
+    const onExpired = () => {
+      setUser(null);
+      setView('auth');
+      alert('انتهت الجلسة. سجّل الدخول من جديد.');
+    };
+    window.addEventListener('ijar:session-expired', onExpired);
+    return () => window.removeEventListener('ijar:session-expired', onExpired);
+  }, []);
 
   const addToCart = (equipment: EquipmentRow, bookingData: { dates: { start: string; end: string }; total: number }) => {
     const s = new Date(bookingData.dates.start);
@@ -196,6 +224,12 @@ export default function App() {
   const handleCheckoutComplete = async (formData: { phone: string; location: string; notes: string }) => {
     if (!user?.id) {
       alert('يرجى تسجيل الدخول لإتمام الحجز');
+      setView('auth');
+      return;
+    }
+    if (user.role !== 'customer') {
+      alert('الحجز يتم بحساب زبون فقط. سجّل دخولك كزبون (مو أدمن/شريك).');
+      setView('auth');
       return;
     }
     setCheckoutError(null);
@@ -215,14 +249,12 @@ export default function App() {
           }),
         });
 
-        // Deep Audit Fix: Initiate manual payment record for each booking
-        // The manual provider expects booking_id and amount
         await apiJson('/api/payments/initiate', {
           method: 'POST',
           body: JSON.stringify({
             booking_id: booking.id,
             amount: item.total,
-            payment_method: 'manual', // Default for this checkout flow
+            payment_method: 'manual',
             notes: `بواسطة العميل: ${formData.phone}`,
           }),
         });
@@ -231,9 +263,13 @@ export default function App() {
       setView('home');
       alert('تم تسجيل حجوزاتك بنجاح في النظام.');
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'فشل إرسال الحجز';
+      const msg = friendlyAuthMessage(err instanceof ApiError ? err.message : 'فشل إرسال الحجز');
       setCheckoutError(msg);
       alert(msg);
+      if (err instanceof ApiError && err.status === 401) {
+        setUser(null);
+        setView('auth');
+      }
     } finally {
       setCheckoutSubmitting(false);
     }

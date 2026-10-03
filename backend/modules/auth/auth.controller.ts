@@ -37,8 +37,12 @@ export class AuthController {
         Boolean((req as Request & { cookies?: Record<string, string> }).cookies?.[COOKIE_NAME]);
       if (result.token && !hasExistingSession) {
         setAuthCookie(res, result.token);
+        res.status(201).json(result);
+        return;
       }
-      res.status(201).json(result);
+      // Strip token so admin UI never adopts the new user's session
+      const { token: _omit, ...safe } = result as { token?: string } & Record<string, unknown>;
+      res.status(201).json(safe);
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل التسجيل') });
     }

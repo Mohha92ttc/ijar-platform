@@ -15,6 +15,7 @@ router.get('/stats', adminController.getDashboard);
 
 // User Management
 router.get('/users', adminController.getAllUsers);
+router.post('/users', adminController.createUser);
 router.patch('/users/:id/ban', adminController.banUser);
 router.patch('/users/:id/approve', adminController.approveUser);
 router.post('/users/:id/renew', adminController.renewSubscription);

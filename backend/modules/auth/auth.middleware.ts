@@ -19,12 +19,13 @@ function getJwtSecret(): string {
 }
 
 function readTokens(req: Request): string[] {
+  // Prefer httpOnly cookie first — localStorage Bearer often goes stale after JWT_SECRET / redeploy
   const tokens: string[] = [];
   const authHeader = req.headers.authorization;
   const bearer = authHeader && authHeader.split(' ')[1];
-  if (bearer) tokens.push(bearer);
   const cookieToken = (req as Request & { cookies?: Record<string, string> }).cookies?.ijar_token;
-  if (cookieToken && cookieToken !== bearer) tokens.push(cookieToken);
+  if (cookieToken) tokens.push(cookieToken);
+  if (bearer && bearer !== cookieToken) tokens.push(bearer);
   return tokens;
 }
 

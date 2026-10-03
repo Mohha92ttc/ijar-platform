@@ -1,26 +1,26 @@
-# Keep Render free instance awake (ping every 10 minutes)
+# Keep Render free instance awake (external ping every 5 minutes)
 name: keep-alive
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping production health
+      - name: Ping production (health + home)
         run: |
-          URL="https://ijar-platform.onrender.com/api/health"
-          echo "Pinging $URL"
-          for i in 1 2 3; do
-            if curl -fsS --max-time 90 "$URL"; then
+          BASE="https://ijar-platform.onrender.com"
+          echo "Pinging $BASE"
+          for i in 1 2 3 4 5; do
+            if curl -fsS --max-time 120 "$BASE/api/health" && curl -fsS -o /dev/null --max-time 120 "$BASE/"; then
               echo ""
-              echo "OK"
+              echo "OK at attempt $i"
               exit 0
             fi
             echo "retry $i..."
-            sleep 15
+            sleep 20
           done
           exit 1

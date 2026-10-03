@@ -169,7 +169,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       }
       
       try {
-        await apiJson('/api/auth/register', {
+        await apiJson('/api/admin/users', {
           method: 'POST',
           body: JSON.stringify({
             name: newPartner.name,
@@ -177,7 +177,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             phone: newPartner.phone,
             password: newPartner.password,
             role: 'owner',
-            auto_approve: true,
+            subscriptionMonths: newPartner.subscriptionMonths || 1,
           })
         });
         setNewPartner({ name: '', email: '', phone: '', password: '', confirmPassword: '', subscriptionMonths: 1 });
@@ -186,7 +186,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         alert('تم إضافة الشريك بنجاح!');
       } catch (err) {
         const msg = err instanceof ApiError || err instanceof Error ? err.message : 'فشل إضافة الشريك';
-        if (String(msg).includes('Invalid token')) {
+        if (/انتهت الجلسة|Invalid token|Unauthorized/i.test(String(msg))) {
           clearSession();
           alert('انتهت الجلسة. سجّل الدخول من جديد.');
           window.location.href = '/';
@@ -221,7 +221,8 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           setShowCategoryForm(false);
           fetchData();
         } catch (err) {
-          alert('فشل إضافة التصنيف');
+          const msg = err instanceof Error ? err.message : 'فشل إضافة التصنيف';
+          alert(msg);
         }
       };
 
@@ -447,7 +448,17 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             )}
             {activeTab === 'content' && (
               <button 
-                onClick={() => setEditingInfo(!editingInfo)}
+                onClick={() => {
+                  if (!editingInfo) {
+                    setTempInfo({
+                      ...platformInfo,
+                      phones: platformInfo.phones?.length ? [...platformInfo.phones] : [''],
+                      emails: platformInfo.emails?.length ? [...platformInfo.emails] : [''],
+                      addresses: platformInfo.addresses?.length ? [...platformInfo.addresses] : [''],
+                    });
+                  }
+                  setEditingInfo(!editingInfo);
+                }}
                 className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors"
               >
                 {editingInfo ? <X size={16} /> : <Edit2 size={16} />}
@@ -838,18 +849,33 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   {editingInfo ? (
                     <div className="space-y-2">
                       {tempInfo.phones.map((phone: string, index: number) => (
-                        <input
-                          key={index}
-                          type="tel"
-                          value={phone}
-                          onChange={(e) => {
-                            const newPhones = [...tempInfo.phones];
-                            newPhones[index] = e.target.value;
-                            setTempInfo({...tempInfo, phones: newPhones});
-                          }}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                        />
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="tel"
+                            value={phone}
+                            onChange={(e) => {
+                              const newPhones = [...tempInfo.phones];
+                              newPhones[index] = e.target.value;
+                              setTempInfo({...tempInfo, phones: newPhones});
+                            }}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                          />
+                          <button
+                            type="button"
+                            className="text-red-500 px-2"
+                            onClick={() => setTempInfo({ ...tempInfo, phones: tempInfo.phones.filter((_: string, i: number) => i !== index) })}
+                          >
+                            ×
+                          </button>
+                        </div>
                       ))}
+                      <button
+                        type="button"
+                        className="text-sm text-blue-600 font-bold"
+                        onClick={() => setTempInfo({ ...tempInfo, phones: [...tempInfo.phones, ''] })}
+                      >
+                        + إضافة رقم
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -867,18 +893,33 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   {editingInfo ? (
                     <div className="space-y-2">
                       {tempInfo.emails.map((email: string, index: number) => (
-                        <input
-                          key={index}
-                          type="email"
-                          value={email}
-                          onChange={(e) => {
-                            const newEmails = [...tempInfo.emails];
-                            newEmails[index] = e.target.value;
-                            setTempInfo({...tempInfo, emails: newEmails});
-                          }}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                        />
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => {
+                              const newEmails = [...tempInfo.emails];
+                              newEmails[index] = e.target.value;
+                              setTempInfo({...tempInfo, emails: newEmails});
+                            }}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                          />
+                          <button
+                            type="button"
+                            className="text-red-500 px-2"
+                            onClick={() => setTempInfo({ ...tempInfo, emails: tempInfo.emails.filter((_: string, i: number) => i !== index) })}
+                          >
+                            ×
+                          </button>
+                        </div>
                       ))}
+                      <button
+                        type="button"
+                        className="text-sm text-blue-600 font-bold"
+                        onClick={() => setTempInfo({ ...tempInfo, emails: [...tempInfo.emails, ''] })}
+                      >
+                        + إضافة بريد
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -896,18 +937,33 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   {editingInfo ? (
                     <div className="space-y-2">
                       {tempInfo.addresses.map((address: string, index: number) => (
-                        <input
-                          key={index}
-                          type="text"
-                          value={address}
-                          onChange={(e) => {
-                            const newAddresses = [...tempInfo.addresses];
-                            newAddresses[index] = e.target.value;
-                            setTempInfo({...tempInfo, addresses: newAddresses});
-                          }}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                        />
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="text"
+                            value={address}
+                            onChange={(e) => {
+                              const newAddresses = [...tempInfo.addresses];
+                              newAddresses[index] = e.target.value;
+                              setTempInfo({...tempInfo, addresses: newAddresses});
+                            }}
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                          />
+                          <button
+                            type="button"
+                            className="text-red-500 px-2"
+                            onClick={() => setTempInfo({ ...tempInfo, addresses: tempInfo.addresses.filter((_: string, i: number) => i !== index) })}
+                          >
+                            ×
+                          </button>
+                        </div>
                       ))}
+                      <button
+                        type="button"
+                        className="text-sm text-blue-600 font-bold"
+                        onClick={() => setTempInfo({ ...tempInfo, addresses: [...tempInfo.addresses, ''] })}
+                      >
+                        + إضافة عنوان
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -974,30 +1030,45 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                     onClick={async () => {
                       try {
                         const payload = {
-                          ...tempInfo,
-                          phones: Array.isArray(tempInfo.phones) ? tempInfo.phones : [tempInfo.phones].filter(Boolean),
-                          emails: Array.isArray(tempInfo.emails) ? tempInfo.emails : [tempInfo.emails].filter(Boolean),
-                          addresses: Array.isArray(tempInfo.addresses)
-                            ? tempInfo.addresses
-                            : [tempInfo.addresses].filter(Boolean),
+                          name: tempInfo.name || platformInfo.name || 'إيجار',
+                          description: tempInfo.description ?? '',
+                          mission: tempInfo.mission ?? '',
+                          vision: tempInfo.vision ?? '',
+                          phones: (Array.isArray(tempInfo.phones) ? tempInfo.phones : [tempInfo.phones])
+                            .map((x: string) => String(x || '').trim())
+                            .filter(Boolean),
+                          emails: (Array.isArray(tempInfo.emails) ? tempInfo.emails : [tempInfo.emails])
+                            .map((x: string) => String(x || '').trim())
+                            .filter(Boolean),
+                          addresses: (Array.isArray(tempInfo.addresses) ? tempInfo.addresses : [tempInfo.addresses])
+                            .map((x: string) => String(x || '').trim())
+                            .filter(Boolean),
+                          bank_name: tempInfo.bank_name ?? '',
+                          bank_account_iban: tempInfo.bank_account_iban ?? '',
+                          card_number_display: tempInfo.card_number_display ?? '',
+                          transfer_instructions: tempInfo.transfer_instructions ?? '',
+                          featured_ad_price: Number(tempInfo.featured_ad_price ?? 50000),
+                          featured_duration_days: Number(tempInfo.featured_duration_days ?? 30),
+                          subscription_renewal_price: Number(tempInfo.subscription_renewal_price ?? 100000),
+                          commission_rate: Number(tempInfo.commission_rate ?? 0.1),
                         };
                         await apiJson('/api/admin/settings', {
                           method: 'POST',
                           body: JSON.stringify(payload)
                         });
-                        setPlatformInfo(payload);
-                        setTempInfo(payload);
+                        setPlatformInfo({ ...platformInfo, ...payload });
+                        setTempInfo({ ...platformInfo, ...payload });
                         setEditingInfo(false);
                         alert('تم حفظ التغييرات بنجاح');
                       } catch (err) {
                         const msg = err instanceof Error ? err.message : 'فشل حفظ التغييرات';
-                        if (msg.includes('Invalid token') || msg.includes('Unauthorized')) {
+                        if (/انتهت الجلسة|Invalid token|Unauthorized/i.test(msg)) {
                           alert('انتهت الجلسة. سجّل الدخول من جديد ثم أعد الحفظ.');
                           clearSession();
                           window.location.href = '/';
                           return;
                         }
-                        alert(msg);
+                        alert(msg || 'فشل حفظ التغييرات');
                       }
                     }}
                     className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"

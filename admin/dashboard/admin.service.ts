@@ -78,6 +78,48 @@ export class AdminService {
     return res.rows;
   }
 
+  /** Create partner/customer without issuing a login session (admin-only) */
+  async createUser(data: {
+    name: string;
+    email: string;
+    phone?: string;
+    password: string;
+    role?: string;
+    subscriptionMonths?: number;
+  }): Promise<any> {
+    const bcrypt = await import('bcryptjs');
+    const name = String(data.name || '').trim();
+    const email = String(data.email || '').trim().toLowerCase();
+    const password = String(data.password || '');
+    const role = data.role === 'customer' ? 'customer' : 'owner';
+    if (!name || !email || password.length < 8) {
+      throw new Error('الاسم والبريد وكلمة مرور (8 أحرف+) مطلوبة');
+    }
+    const dup = await query(`SELECT id FROM users WHERE email = $1`, [email]);
+    if (dup.rows.length > 0) throw new Error('البريد الإلكتروني مستخدم مسبقاً');
+
+    const hashed = await bcrypt.hash(password, 12);
+    const phone = (data.phone && String(data.phone).replace(/\s/g, '')) || `+964000${Date.now().toString().slice(-7)}`;
+    const months = Math.max(1, Number(data.subscriptionMonths) || 1);
+    const endDate =
+      role === 'owner'
+        ? new Date(Date.now() + months * 30 * 24 * 60 * 60 * 1000)
+        : null;
+
+    const ins = await query(
+      `
+      INSERT INTO users (
+        name, email, phone, password, role,
+        is_email_verified, is_approved, subscription_status, subscription_end_date
+      )
+      VALUES ($1, $2, $3, $4, $5::user_role, true, true, $6, $7)
+      RETURNING id, name, email, phone, role, is_approved, subscription_status, subscription_end_date, created_at as joined
+    `,
+      [name, email, phone, hashed, role, role === 'owner' ? 'active' : 'none', endDate]
+    );
+    return ins.rows[0];
+  }
+
   async updateEquipmentStatus(equipmentId: string, status: any): Promise<void> {
     await query('UPDATE equipment SET status = $1 WHERE id = $2', [status, equipmentId]);
   }
@@ -167,6 +209,11 @@ export class AdminService {
   }
 
   async updatePlatformSettings(data: any): Promise<void> {
+    const asTextArray = (v: unknown): string[] => {
+      if (Array.isArray(v)) return v.map((x) => String(x ?? '').trim()).filter(Boolean);
+      if (typeof v === 'string' && v.trim()) return [v.trim()];
+      return [];
+    };
     await query(
       `
       INSERT INTO platform_settings (
@@ -196,21 +243,21 @@ export class AdminService {
         commission_rate = EXCLUDED.commission_rate
     `,
       [
-        data.name,
-        data.description,
-        data.phones,
-        data.emails,
-        data.addresses,
-        data.mission,
-        data.vision,
+        data.name || 'إيجار',
+        data.description ?? '',
+        asTextArray(data.phones),
+        asTextArray(data.emails),
+        asTextArray(data.addresses),
+        data.mission ?? '',
+        data.vision ?? '',
         data.bank_name ?? null,
         data.bank_account_iban ?? null,
         data.card_number_display ?? null,
         data.transfer_instructions ?? null,
-        data.featured_ad_price ?? 50000,
-        data.featured_duration_days ?? 30,
-        data.subscription_renewal_price ?? 100000,
-        data.commission_rate ?? 0.1,
+        Number(data.featured_ad_price ?? 50000),
+        Number(data.featured_duration_days ?? 30),
+        Number(data.subscription_renewal_price ?? 100000),
+        Number(data.commission_rate ?? 0.1),
       ]
     );
   }

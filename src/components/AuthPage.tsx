@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { User, Mail, Phone, Lock, ArrowRight, UserPlus, Briefcase, ShieldCheck } from 'lucide-react';
 import PartnerRegistration from './PartnerRegistration';
-import { apiJson, setSession, ApiError } from '../lib/api';
+import { apiJson, setSession, ApiError, apiLogout, clearSession } from '../lib/api';
 
 import { UserRole } from '../types';
 
@@ -40,6 +40,8 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
     setLoading(true);
     try {
       if (isLogin) {
+        await apiLogout();
+        clearSession();
         const data = await apiJson<{ token: string; user: { id: string; name: string; email: string; role: string } }>(
           '/api/auth/login',
           {
@@ -50,6 +52,9 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
             }),
           }
         );
+        if (!data.token) {
+          throw new ApiError('لم يُرجع الخادم توكن جلسة', 500);
+        }
         setSession(data.token, data.user);
         onLogin(data.user);
       } else {

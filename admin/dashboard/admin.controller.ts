@@ -27,6 +27,15 @@ export class AdminController {
     }
   };
 
+  createUser = async (req: Request, res: Response) => {
+    try {
+      const user = await this.adminService.createUser(req.body);
+      res.status(201).json({ user, message: 'تم إنشاء المستخدم بنجاح' });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل إنشاء المستخدم') });
+    }
+  };
+
   banUser = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
