@@ -33,16 +33,16 @@ export class BookingService {
     const end = new Date(data.end_date);
 
     if (start < new Date()) {
-      throw new Error('Start date cannot be in the past');
+      throw new Error('تاريخ البداية لا يمكن أن يكون في الماضي');
     }
 
     if (end <= start) {
-      throw new Error('End date must be after start date');
+      throw new Error('تاريخ النهاية يجب أن يكون بعد تاريخ البداية');
     }
 
     const available = await this.checkAvailability(data.equipment_id, start, end);
     if (!available) {
-      throw new Error('Equipment is already booked for these dates');
+      throw new Error('المعدة محجوزة مسبقاً في هذه التواريخ. اختر تواريخ أخرى.');
     }
 
     const diffTime = Math.abs(end.getTime() - start.getTime());

@@ -80,15 +80,21 @@ export default function CheckoutPage({
         </div>
 
         <div className="w-full md:w-[380px] bg-slate-50 p-8 overflow-y-auto">
-          <div className="flex justify-between items-center mb-8 md:hidden">
+          <div className="flex justify-between items-center mb-6">
             <h3 className="text-xl font-bold">معلومات الحجز</h3>
-            <button type="button" data-testid="checkout-close" onClick={onClose}>
-              <X />
+            <button type="button" data-testid="checkout-close" onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full">
+              <X size={20} />
             </button>
           </div>
-          <h3 className="text-xl font-bold mb-6 hidden md:block">معلومات الحجز</h3>
 
-          {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">{error}</div>}
+          {error && (
+            <div
+              data-testid="checkout-error"
+              className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700"
+            >
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">

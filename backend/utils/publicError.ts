@@ -14,12 +14,16 @@ export function publicError(error: unknown, fallback = 'تعذر تنفيذ ال
       msg.includes('فشل') ||
       msg.includes('صلاح') ||
       msg.includes('كلمة المرور') ||
+      msg.includes('محجوزة') ||
+      msg.includes('تاريخ') ||
+      msg.includes('البريد') ||
       msg.includes('Password') ||
       msg.includes('Invalid') ||
       msg.includes('not found') ||
       msg.includes('Unauthorized') ||
       msg.includes('Not allowed') ||
       msg.includes('pending') ||
+      msg.includes('already booked') ||
       msg.includes('يجب') ||
       msg.includes('يرجى') ||
       msg.includes('حجم') ||

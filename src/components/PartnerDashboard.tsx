@@ -425,6 +425,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 <div className="grid md:grid-cols-2 gap-4 mb-4">
                   <input
                     type="text"
+                    data-testid="partner-equipment-title"
                     placeholder="اسم المعدة"
                     value={newEquipment.title}
                     onChange={(e) => setNewEquipment({...newEquipment, title: e.target.value})}
@@ -432,6 +433,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   />
                   <input
                     type="text"
+                    data-testid="partner-equipment-category"
                     placeholder="التصنيف"
                     value={newEquipment.category}
                     onChange={(e) => setNewEquipment({...newEquipment, category: e.target.value})}
@@ -439,6 +441,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   />
                   <input
                     type="number"
+                    data-testid="partner-equipment-price"
                     placeholder="السعر باليوم"
                     value={newEquipment.price}
                     onChange={(e) => setNewEquipment({...newEquipment, price: e.target.value})}

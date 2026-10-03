@@ -33,7 +33,7 @@ export function clearSession() {
   }
 }
 
-/** Normalize API auth errors for Arabic UI */
+/** Normalize API errors for Arabic UI */
 export function friendlyAuthMessage(raw: string): string {
   const m = String(raw || '');
   if (/invalid token/i.test(m) || /access token required/i.test(m) || /unauthorized/i.test(m)) {
@@ -47,6 +47,18 @@ export function friendlyAuthMessage(raw: string): string {
   }
   if (/pending approval/i.test(m)) {
     return 'الحساب بانتظار موافقة الإدارة.';
+  }
+  if (/already booked|unavailable|conflict/i.test(m)) {
+    return 'المعدة محجوزة مسبقاً في هذه التواريخ. اختر تواريخ أخرى.';
+  }
+  if (/start date.*past/i.test(m)) {
+    return 'تاريخ البداية لا يمكن أن يكون في الماضي';
+  }
+  if (/end date must be after/i.test(m)) {
+    return 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية';
+  }
+  if (/user already exists/i.test(m)) {
+    return 'البريد الإلكتروني مستخدم مسبقاً';
   }
   if (/فشل حفظ/i.test(m)) {
     return m;
