@@ -86,6 +86,23 @@ export class CouriersService {
     if (res.rowCount === 0) throw new Error('المندوب غير موجود');
   }
 
+  async resetPassword(ownerId: string, courierId: string, password?: string): Promise<{ email: string; temp_password: string }> {
+    const courier = await this.assertOwned(ownerId, courierId);
+    if (!courier.user_id) throw new Error('لا يوجد حساب دخول لهذا المندوب');
+
+    const tempPassword =
+      password && password.length >= 8
+        ? password
+        : `Ij${Math.random().toString(36).slice(2, 8)}A1`;
+
+    const hash = await bcrypt.hash(tempPassword, this.bcryptRounds);
+    const u = await query(`UPDATE users SET password = $1 WHERE id = $2 RETURNING email`, [
+      hash,
+      courier.user_id,
+    ]);
+    return { email: String(u.rows[0]?.email || ''), temp_password: tempPassword };
+  }
+
   async getByUserId(userId: string): Promise<Courier | null> {
     const res = await query(
       `SELECT c.*, u.email FROM couriers c LEFT JOIN users u ON u.id = c.user_id WHERE c.user_id = $1 LIMIT 1`,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Calendar, MapPin, Star, Settings, LogOut, Home } from 'lucide-react';
+import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone } from 'lucide-react';
 import { apiJson } from '../lib/api';
 
 type Row = {
@@ -10,7 +10,28 @@ type Row = {
   total: number;
   status: string;
   location: string;
+  deliveryRequested?: boolean;
+  deliveryStatus?: string | null;
+  courierName?: string | null;
+  courierPhone?: string | null;
 };
+
+function deliveryLabel(s?: string | null) {
+  switch (s) {
+    case 'pending_assign':
+      return 'بانتظار تعيين مندوب';
+    case 'assigned':
+      return 'تم تعيين مندوب';
+    case 'out_for_delivery':
+      return 'المندوب في الطريق';
+    case 'delivered':
+      return 'تم التسليم';
+    case 'failed':
+      return 'تعذّر التسليم';
+    default:
+      return s || '—';
+  }
+}
 
 export default function CustomerDashboard({
   userId,
@@ -44,7 +65,11 @@ export default function CustomerDashboard({
             dates: ds,
             total: Number(b.total_amount),
             status: b.status,
-            location: b.location || b.equipment_location || '—',
+            location: b.delivery_address || b.location || b.equipment_location || '—',
+            deliveryRequested: Boolean(b.delivery_requested),
+            deliveryStatus: b.delivery_status ? String(b.delivery_status) : null,
+            courierName: b.courier_name ? String(b.courier_name) : null,
+            courierPhone: b.courier_phone ? String(b.courier_phone) : null,
           };
         });
         if (!cancelled) setBookings(rows);
@@ -187,13 +212,14 @@ export default function CustomerDashboard({
                         <th className="p-4 text-sm font-bold text-slate-600">الشريك</th>
                         <th className="p-4 text-sm font-bold text-slate-600">التواريخ</th>
                         <th className="p-4 text-sm font-bold text-slate-600">الموقع</th>
+                        <th className="p-4 text-sm font-bold text-slate-600">التوصيل</th>
                         <th className="p-4 text-sm font-bold text-slate-600">الإجمالي</th>
                         <th className="p-4 text-sm font-bold text-slate-600">الحالة</th>
                       </tr>
                     </thead>
                     <tbody>
                       {bookings.map((booking) => (
-                        <tr key={booking.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <tr key={booking.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors" data-testid="customer-booking-row">
                           <td className="p-4">
                             <div className="font-bold text-slate-800">{booking.equipment}</div>
                           </td>
@@ -204,7 +230,27 @@ export default function CustomerDashboard({
                             <div className="text-sm text-slate-600">{booking.dates}</div>
                           </td>
                           <td className="p-4">
-                            <div className="text-sm text-slate-600">{booking.location}</div>
+                            <div className="text-sm text-slate-600 flex items-center gap-1">
+                              <MapPin size={12} className="shrink-0" /> {booking.location}
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            {booking.deliveryRequested ? (
+                              <div className="space-y-1" data-testid="customer-delivery-status">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                                  <Truck size={10} /> {deliveryLabel(booking.deliveryStatus)}
+                                </span>
+                                {booking.courierName && (
+                                  <div className="text-[11px] text-slate-600 flex items-center gap-1">
+                                    <Phone size={10} />
+                                    {booking.courierName}
+                                    {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">بدون توصيل</span>
+                            )}
                           </td>
                           <td className="p-4">
                             <div className="font-bold text-slate-800">{booking.total.toLocaleString()} د.ع</div>

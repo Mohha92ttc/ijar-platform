@@ -28,6 +28,7 @@ router.post(
 );
 
 router.patch('/:id/active', authenticateToken, requireRole(['owner']), controller.setActive);
+router.post('/:id/reset-password', authenticateToken, requireRole(['owner']), controller.resetPassword);
 router.get('/:id/report', authenticateToken, requireRole(['owner']), controller.partnerCourierReport);
 
 export default router;

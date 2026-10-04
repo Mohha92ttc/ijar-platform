@@ -248,6 +248,20 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     }
   };
 
+  const resetCourierPassword = async (id: string, name: string) => {
+    if (!confirm(`إعادة تعيين كلمة مرور المندوب «${name}»؟`)) return;
+    try {
+      const r = await apiJson<{ email: string; temp_password: string }>(`/api/couriers/${id}/reset-password`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      setCreatedCreds({ name, email: r.email, password: r.temp_password });
+      alert('تم توليد كلمة مرور جديدة — احفظها أو انسخها من البطاقة الخضراء أعلاه');
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إعادة التعيين');
+    }
+  };
+
   const assignCourier = async (bookingId: string, courier_id: string) => {
     if (!courier_id) return;
     try {
@@ -934,6 +948,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                       className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50"
                     >
                       {c.is_active ? 'إيقاف' : 'تفعيل'}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="partner-courier-reset-password"
+                      onClick={() => resetCourierPassword(c.id, c.name)}
+                      className="text-xs font-bold px-3 py-2 rounded-xl border border-amber-200 text-amber-800 bg-amber-50"
+                    >
+                      كلمة مرور جديدة
                     </button>
                     <button
                       type="button"

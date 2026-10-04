@@ -47,6 +47,23 @@ export class CouriersController {
     }
   };
 
+  resetPassword = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      const result = await this.service.resetPassword(
+        actor.userId,
+        req.params.id,
+        typeof req.body.password === 'string' ? req.body.password : undefined
+      );
+      res.json(result);
+    } catch (e: unknown) {
+      res.status(400).json({ error: publicError(e, 'تعذر إعادة تعيين كلمة المرور') });
+    }
+  };
+
   /** شريك يعيّن/ينقل طلب لمندوب */
   assignBooking = async (req: Request, res: Response) => {
     try {
@@ -134,11 +151,30 @@ export class CouriersController {
         UPDATE bookings
         SET delivery_status = $1, updated_at = NOW()
         WHERE id = $2 AND assigned_courier_id = $3
-        RETURNING id
+        RETURNING id, customer_id, delivery_status
         `,
         [status, req.params.bookingId, me.id]
       );
       if (!resu.rows[0]) return res.status(404).json({ error: 'الطلب غير معيّن لك' });
+
+      const customerId = String(resu.rows[0].customer_id || '');
+      if (customerId && (status === 'out_for_delivery' || status === 'delivered')) {
+        try {
+          await this.notifications.create({
+            user_id: customerId,
+            type: 'system',
+            title: status === 'delivered' ? 'تم تسليم طلبك' : 'المندوب في الطريق',
+            message:
+              status === 'delivered'
+                ? 'تم تسليم معدتك بنجاح.'
+                : 'مندوب التوصيل في الطريق إليك الآن.',
+            related_id: String(resu.rows[0].id),
+          });
+        } catch {
+          // non-blocking
+        }
+      }
+
       res.json({ ok: true });
     } catch (e: unknown) {
       res.status(400).json({ error: publicError(e, 'تعذر تحديث الحالة') });

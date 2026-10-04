@@ -190,10 +190,12 @@ export class BookingService {
   async getByCustomer(customerId: string): Promise<any[]> {
     const res = await query(
       `
-      SELECT b.*, e.title as equipment_title, u.name as owner_name, e.location as equipment_location
+      SELECT b.*, e.title as equipment_title, u.name as owner_name, e.location as equipment_location,
+             c.name AS courier_name, c.phone AS courier_phone
       FROM bookings b
       JOIN equipment e ON b.equipment_id = e.id
       JOIN users u ON e.owner_id = u.id
+      LEFT JOIN couriers c ON c.id = b.assigned_courier_id
       WHERE b.customer_id = $1 
       ORDER BY b.start_date DESC
       `,
