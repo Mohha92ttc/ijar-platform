@@ -15,10 +15,20 @@ export async function loginUi(page: Page, email: string, password: string) {
   await page.getByTestId('auth-email').fill(email);
   await page.getByTestId('auth-password').fill(password);
   await page.getByTestId('auth-submit').click();
-  await expect(page.getByTestId('header-user-menu')).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page
+      .getByTestId('header-user-menu')
+      .or(page.getByTestId('partner-nav-bookings'))
+      .or(page.getByTestId('admin-nav-partners'))
+      .or(page.getByTestId('courier-dashboard'))
+  ).toBeVisible({ timeout: 30_000 });
 }
 
 export async function openDashboard(page: Page) {
+  if (await page.getByTestId('partner-nav-bookings').isVisible().catch(() => false)) return;
+  if (await page.getByTestId('admin-nav-partners').isVisible().catch(() => false)) return;
+  if (await page.getByTestId('courier-dashboard').isVisible().catch(() => false)) return;
+  if (await page.getByTestId('customer-nav-rentals').isVisible().catch(() => false)) return;
   await page.getByTestId('header-user-menu').click();
   await page.getByRole('button', { name: 'لوحة التحكم' }).click();
 }
@@ -47,6 +57,8 @@ export async function backToHomeFromDashboard(page: Page) {
 /** تبويبات لوحة الإدارة (بنفس ترتيب الفحص الشامل) */
 export const ADMIN_NAV_TESTIDS = [
   'admin-nav-partners',
+  'admin-nav-customers',
+  'admin-nav-couriers',
   'admin-nav-payment-approval',
   'admin-nav-featured-approval',
   'admin-nav-partner-statement',
@@ -61,6 +73,7 @@ export const ADMIN_NAV_TESTIDS = [
 export const PARTNER_NAV_TESTIDS = [
   'partner-nav-bookings',
   'partner-nav-equipment',
+  'partner-nav-couriers',
   'partner-nav-reports',
   'partner-nav-featured',
   'partner-nav-settings',
