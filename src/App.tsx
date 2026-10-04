@@ -463,7 +463,7 @@ export default function App() {
   if (view === 'auth') return <AuthPage onLogin={handleLogin} />;
   if (view === 'admin') return <AdminDashboard onBack={() => setView('home')} />;
   if (view === 'partner') return <PartnerDashboard ownerId={user?.id} onBack={() => setView('home')} />;
-  if (view === 'courier') return <CourierDashboard onBack={() => setView('home')} />;
+  if (view === 'courier') return <CourierDashboard onBack={() => setView('home')} onLogout={handleLogout} />;
   if (view === 'customer') return <CustomerDashboard userId={user?.id} userEmail={user?.email} onBack={() => setView('home')} />;
   if (view === 'about') return <AboutPage onBack={() => setView('home')} />;
   if (view === 'terms') return <TermsPage onBack={() => setView('home')} />;

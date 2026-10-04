@@ -536,13 +536,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-blue-900 text-white border-t border-blue-800 pb-[env(safe-area-inset-bottom)]"
         data-testid="partner-mobile-nav"
       >
-        <div className="grid grid-cols-5 gap-0.5 px-1 py-1">
+        <div className="grid grid-cols-6 gap-0.5 px-1 py-1 overflow-x-auto">
           {(
             [
               { id: 'bookings', label: 'طلبات', icon: Clock, testId: 'partner-nav-bookings-m' },
               { id: 'equipment', label: 'معدات', icon: Package, testId: 'partner-nav-equipment-m' },
               { id: 'couriers', label: 'مندوبين', icon: Truck, testId: 'partner-nav-couriers-m' },
               { id: 'reports', label: 'تقارير', icon: BarChart2, testId: 'partner-nav-reports-m' },
+              { id: 'featured', label: 'مميز', icon: Sparkles, testId: 'partner-nav-featured-m' },
               { id: 'settings', label: 'إعدادات', icon: Settings, testId: 'partner-nav-settings-m' },
             ] as const
           ).map((item) => {
@@ -831,14 +832,38 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         {activeTab === 'couriers' && (
           <div className="space-y-6" data-testid="partner-couriers-tab">
             {createdCreds && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-sm space-y-1" data-testid="partner-courier-creds">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-sm space-y-2" data-testid="partner-courier-creds">
                 <p className="font-bold text-emerald-800">تم إنشاء حساب المندوب — احفظ بيانات الدخول:</p>
                 <p>الاسم: {createdCreds.name}</p>
                 <p>البريد: <span className="font-mono">{createdCreds.email}</span></p>
                 <p>كلمة المرور: <span className="font-mono">{createdCreds.password}</span></p>
-                <button type="button" className="text-xs font-bold text-emerald-700 underline mt-1" onClick={() => setCreatedCreds(null)}>
-                  إخفاء
-                </button>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    data-testid="partner-courier-copy-creds"
+                    className="text-xs font-bold bg-emerald-700 text-white px-3 py-1.5 rounded-lg"
+                    onClick={() => {
+                      const text = `مندوب: ${createdCreds.name}\nالبريد: ${createdCreds.email}\nكلمة المرور: ${createdCreds.password}\nادخل عبر تطبيق إيجار`;
+                      navigator.clipboard?.writeText(text).then(
+                        () => alert('تم نسخ بيانات الدخول'),
+                        () => alert(text)
+                      );
+                    }}
+                  >
+                    نسخ للمشاركة
+                  </button>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(`حساب مندوب إيجار\nالبريد: ${createdCreds.email}\nكلمة المرور: ${createdCreds.password}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-bold border border-emerald-300 text-emerald-800 px-3 py-1.5 rounded-lg bg-white"
+                  >
+                    إرسال واتساب
+                  </a>
+                  <button type="button" className="text-xs font-bold text-emerald-700 underline px-2" onClick={() => setCreatedCreds(null)}>
+                    إخفاء
+                  </button>
+                </div>
               </div>
             )}
 

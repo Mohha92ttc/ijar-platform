@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Truck, MapPin, Phone, Navigation, CheckCircle, Package, BarChart2, Home, RefreshCw, MessageCircle } from 'lucide-react';
-import { apiJson } from '../lib/api';
-import { googleMapsDirectionsUrl } from './MapPicker';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Truck, MapPin, Phone, Navigation, CheckCircle, Package, BarChart2, Home, RefreshCw, MessageCircle, LogOut, Route } from 'lucide-react';
+import { apiJson, apiLogout } from '../lib/api';
+import { googleMapsDirectionsUrl, googleMapsMultiStopUrl } from './MapPicker';
 
 type CourierBooking = {
   id: string;
@@ -46,7 +46,13 @@ function normalizeIqPhone(raw: string): string | null {
   return null;
 }
 
-export default function CourierDashboard({ onBack }: { onBack: () => void }) {
+export default function CourierDashboard({
+  onBack,
+  onLogout,
+}: {
+  onBack: () => void;
+  onLogout?: () => void;
+}) {
   const [bookings, setBookings] = useState<CourierBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<{ name?: string; phone?: string } | null>(null);
@@ -130,6 +136,35 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
     window.open(googleMapsDirectionsUrl(lat, lng), '_blank', 'noopener,noreferrer');
   };
 
+  const pendingStops = useMemo(
+    () =>
+      bookings.filter(
+        (b) =>
+          b.delivery_status !== 'delivered' &&
+          b.delivery_status !== 'failed' &&
+          Number.isFinite(Number(b.delivery_lat)) &&
+          Number.isFinite(Number(b.delivery_lng))
+      ),
+    [bookings]
+  );
+
+  const openDayRoute = () => {
+    const url = googleMapsMultiStopUrl(
+      pendingStops.map((b) => ({ lat: Number(b.delivery_lat), lng: Number(b.delivery_lng) }))
+    );
+    if (!url) {
+      alert('لا توجد نقاط توصيل مفتوحة بإحداثيات');
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleLogout = async () => {
+    await apiLogout();
+    if (onLogout) onLogout();
+    else onBack();
+  };
+
   return (
     <div className="min-h-screen bg-slate-50" data-testid="courier-dashboard">
       <header className="bg-emerald-800 text-white px-4 py-4 flex items-center justify-between gap-3">
@@ -141,14 +176,24 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
             {profile?.name || 'مندوب'} {profile?.phone ? `· ${profile.phone}` : ''}
           </p>
         </div>
-        <button
-          type="button"
-          data-testid="courier-back-home"
-          onClick={onBack}
-          className="flex items-center gap-1 text-sm font-bold bg-emerald-700 hover:bg-emerald-600 px-3 py-2 rounded-xl"
-        >
-          <Home size={16} /> الرئيسية
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            data-testid="courier-back-home"
+            onClick={onBack}
+            className="flex items-center gap-1 text-sm font-bold bg-emerald-700 hover:bg-emerald-600 px-3 py-2 rounded-xl"
+          >
+            <Home size={16} /> الرئيسية
+          </button>
+          <button
+            type="button"
+            data-testid="courier-logout"
+            onClick={handleLogout}
+            className="flex items-center gap-1 text-sm font-bold bg-emerald-950/40 hover:bg-emerald-950/60 px-3 py-2 rounded-xl"
+          >
+            <LogOut size={16} /> خروج
+          </button>
+        </div>
       </header>
 
       <div className="max-w-3xl mx-auto p-4 space-y-4">
@@ -205,15 +250,27 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
 
         {tab === 'orders' && (
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-2">
               <p className="text-sm text-slate-500">{loading ? 'جاري التحميل…' : `${bookings.length} طلب`}</p>
-              <button
-                type="button"
-                onClick={load}
-                className="text-xs font-bold text-emerald-700 flex items-center gap-1 hover:bg-emerald-50 px-2 py-1 rounded-lg"
-              >
-                <RefreshCw size={14} /> تحديث
-              </button>
+              <div className="flex gap-2">
+                {pendingStops.length > 1 && (
+                  <button
+                    type="button"
+                    data-testid="courier-day-route"
+                    onClick={openDayRoute}
+                    className="text-xs font-bold text-blue-700 flex items-center gap-1 hover:bg-blue-50 px-2 py-1 rounded-lg border border-blue-100"
+                  >
+                    <Route size={14} /> مسار اليوم ({pendingStops.length})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={load}
+                  className="text-xs font-bold text-emerald-700 flex items-center gap-1 hover:bg-emerald-50 px-2 py-1 rounded-lg"
+                >
+                  <RefreshCw size={14} /> تحديث
+                </button>
+              </div>
             </div>
 
             {!loading && bookings.length === 0 && (

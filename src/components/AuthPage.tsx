@@ -180,6 +180,12 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
             {isLogin ? 'مرحباً بك مجدداً في منصة إيجار' : 'انضم إلى أكبر سوق لتأجير المعدات'}
           </p>
 
+          {isLogin && (
+            <p className="text-[11px] text-slate-500 mb-4 leading-relaxed text-center" data-testid="auth-courier-hint">
+              المندوب يدخل بنفس الشاشة بالبريد وكلمة المرور التي يولّدها الشريك عند إنشاء حسابه.
+            </p>
+          )}
+
           {!isLogin && (
             <div className="space-y-2 mb-6">
               <div className="flex p-1 bg-slate-100 rounded-xl">

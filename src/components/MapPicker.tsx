@@ -138,3 +138,13 @@ export default function MapPicker({
 export function googleMapsDirectionsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 }
+
+/** مسار متعدد المحطات: A → B → C عبر Google Maps */
+export function googleMapsMultiStopUrl(points: { lat: number; lng: number }[]): string | null {
+  const valid = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  if (valid.length === 0) return null;
+  if (valid.length === 1) return googleMapsDirectionsUrl(valid[0].lat, valid[0].lng);
+  const path = valid.map((p) => `${p.lat},${p.lng}`).join('/');
+  return `https://www.google.com/maps/dir/${path}`;
+}
+
