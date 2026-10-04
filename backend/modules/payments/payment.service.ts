@@ -72,11 +72,14 @@ export class PaymentService {
       throw new Error(`Payment method ${data.payment_method} not supported`);
     }
 
-    // Check for duplicate payment for this booking
+    // Check for duplicate / blocking payment for this booking
     const existing = await this.repository.findByBookingId(data.booking_id);
-    if (existing && (existing.payment_status === 'approved' || existing.payment_status === 'under_review')) {
+    const existingStatus = String(existing?.payment_status || '');
+    if (existing && ['approved', 'under_review', 'paid', 'completed'].includes(existingStatus)) {
       throw new Error('Payment already exists for this booking');
     }
+    const reuseId =
+      existing && ['rejected', 'failed'].includes(existingStatus) ? String(existing.id) : null;
 
     const bookingParticipants = await this.resolveBookingParticipants(data.booking_id);
     const effectiveCustomerId = customerId || bookingParticipants.customerId;
@@ -109,7 +112,7 @@ export class PaymentService {
     }
 
     const payment: Payment = {
-      id: crypto.randomUUID(),
+      id: reuseId || crypto.randomUUID(),
       booking_id: data.booking_id,
       customer_id: effectiveCustomerId,
       owner_id: effectiveOwnerId,

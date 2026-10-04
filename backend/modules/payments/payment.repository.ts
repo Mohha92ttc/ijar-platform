@@ -96,7 +96,10 @@ export class PaymentRepository {
   }
 
   async findByBookingId(bookingId: string): Promise<(Payment & Record<string, unknown>) | undefined> {
-    const res = await query('SELECT * FROM payments WHERE booking_id = $1', [bookingId]);
+    const res = await query(
+      `SELECT * FROM payments WHERE booking_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [bookingId]
+    );
     return mapPaymentRow(res.rows[0]);
   }
 

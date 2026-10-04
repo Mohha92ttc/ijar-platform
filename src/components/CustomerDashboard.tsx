@@ -104,6 +104,7 @@ export default function CustomerDashboard({
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [reviewDraft, setReviewDraft] = useState<Record<string, { rating: number; comment: string }>>({});
   const [showNotifications, setShowNotifications] = useState(false);
+  const [repayBusy, setRepayBusy] = useState<string | null>(null);
 
   const loadPrefs = useCallback(() => {
     try {
@@ -291,6 +292,34 @@ export default function CustomerDashboard({
       await loadBookings();
     } catch (e) {
       alert(e instanceof ApiError ? e.message : 'تعذر إلغاء الحجز');
+    }
+  };
+
+  const resubmitPaymentProof = async (booking: Row, file: File) => {
+    setRepayBusy(booking.id);
+    try {
+      const proof_image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('تعذر قراءة الصورة'));
+        reader.readAsDataURL(file);
+      });
+      await apiJson('/api/payments/initiate', {
+        method: 'POST',
+        body: JSON.stringify({
+          booking_id: booking.id,
+          amount: booking.total,
+          payment_method: 'manual',
+          proof_image,
+          notes: 'إعادة رفع إثبات بعد الرفض',
+        }),
+      });
+      alert('تم إرسال إثبات الدفع للمراجعة');
+      await loadBookings();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إرسال الإثبات');
+    } finally {
+      setRepayBusy(null);
     }
   };
 
@@ -490,6 +519,26 @@ export default function CustomerDashboard({
                   {booking.paymentNotes &&
                     ['rejected', 'failed'].includes(String(booking.paymentStatus)) && (
                       <p className="text-red-600 text-[11px]">ملاحظة: {booking.paymentNotes}</p>
+                    )}
+                  {['rejected', 'failed'].includes(String(booking.paymentStatus)) &&
+                    booking.status !== 'cancelled' && (
+                      <label
+                        data-testid="customer-repay-proof"
+                        className="inline-flex items-center gap-2 mt-1 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200 cursor-pointer hover:bg-amber-100"
+                      >
+                        {repayBusy === booking.id ? 'جاري الإرسال…' : 'إعادة رفع إثبات الدفع'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={repayBusy === booking.id}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            e.target.value = '';
+                            if (f) resubmitPaymentProof(booking, f);
+                          }}
+                        />
+                      </label>
                     )}
                 </div>
                 {booking.deliveryRequested && (

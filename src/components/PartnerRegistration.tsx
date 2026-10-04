@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, Mail, Phone, Lock, CreditCard, Upload, CheckCircle, XCircle, AlertCircle, ArrowRight, ArrowLeft } from 'lucide-react';
 import ImageUpload from './ImageUpload';
+import { apiJson } from '../lib/api';
 
 interface PartnerRegistrationData {
   name: string;
@@ -24,9 +25,16 @@ interface PaymentInfo {
   cashPhone: string;
 }
 
-export default function PartnerRegistration({ onSubmit, onCancel }: { 
+export default function PartnerRegistration({
+  onSubmit,
+  onCancel,
+  onOpenTerms,
+  onOpenPrivacy,
+}: {
   onSubmit: (data: PartnerRegistrationData) => void;
   onCancel: () => void;
+  onOpenTerms?: () => void;
+  onOpenPrivacy?: () => void;
 }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState<PartnerRegistrationData>({
@@ -41,14 +49,46 @@ export default function PartnerRegistration({ onSubmit, onCancel }: {
     agreeTerms: false
   });
 
-  const paymentInfo: PaymentInfo = {
-    bankAccount: '1234567890',
-    accountName: 'شركة إيجار للخدمات التقنية',
-    bankName: 'بنك الرافدين',
-    swiftCode: 'RFAIQI123',
-    visaNumber: '4111-1111-1111-1111',
-    cashPhone: '+964 7700 123 456'
-  };
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo>({
+    bankAccount: '—',
+    accountName: 'منصة إيجار',
+    bankName: '—',
+    swiftCode: '',
+    visaNumber: '—',
+    cashPhone: '—',
+  });
+  const [transferLoading, setTransferLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const t = await apiJson<{
+          bank_name?: string | null;
+          bank_account_iban?: string | null;
+          card_number_display?: string | null;
+          zain_cash_phone?: string | null;
+          account_holder_name?: string | null;
+        }>('/api/platform/transfer-info');
+        if (cancelled) return;
+        setPaymentInfo({
+          bankAccount: t.bank_account_iban || 'غير مضاف بعد',
+          accountName: t.account_holder_name || 'منصة إيجار',
+          bankName: t.bank_name || '—',
+          swiftCode: '',
+          visaNumber: t.card_number_display || 'غير مضاف بعد',
+          cashPhone: t.zain_cash_phone || 'غير مضاف بعد',
+        });
+      } catch {
+        // keep placeholders
+      } finally {
+        if (!cancelled) setTransferLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const subscriptionPrices = {
     monthly: 50000,
@@ -109,6 +149,9 @@ export default function PartnerRegistration({ onSubmit, onCancel }: {
   };
 
   const renderPaymentInfo = () => {
+    if (transferLoading) {
+      return <p className="text-sm text-slate-500">جاري تحميل حسابات التحويل من المنصة…</p>;
+    }
     switch (formData.paymentMethod) {
       case 'bank':
         return (
@@ -358,7 +401,29 @@ export default function PartnerRegistration({ onSubmit, onCancel }: {
                       className="mt-1"
                     />
                     <span className="text-sm text-slate-600">
-                      أوافق على <a href="#" className="text-blue-600 underline">الشروط والأحكام</a> و<a href="#" className="text-blue-600 underline">سياسة الخصوصية</a> لمنصة إيجار
+                      أوافق على{' '}
+                      <button
+                        type="button"
+                        className="text-blue-600 underline"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onOpenTerms?.();
+                        }}
+                      >
+                        الشروط والأحكام
+                      </button>{' '}
+                      و
+                      <button
+                        type="button"
+                        className="text-blue-600 underline"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onOpenPrivacy?.();
+                        }}
+                      >
+                        سياسة الخصوصية
+                      </button>{' '}
+                      لمنصة إيجار
                     </span>
                   </label>
                 </div>
