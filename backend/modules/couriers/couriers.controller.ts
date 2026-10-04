@@ -64,6 +64,35 @@ export class CouriersController {
     }
   };
 
+  update = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      const updated = await this.service.updateCourier(actor.userId, req.params.id, {
+        name: req.body.name,
+        phone: req.body.phone,
+      });
+      res.json(updated);
+    } catch (e: unknown) {
+      res.status(400).json({ error: publicError(e, 'تعذر تحديث المندوب') });
+    }
+  };
+
+  unassignBooking = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      await this.service.unassignBooking(actor.userId, req.params.bookingId);
+      res.json({ ok: true });
+    } catch (e: unknown) {
+      res.status(400).json({ error: publicError(e, 'تعذر إلغاء التعيين') });
+    }
+  };
+
   /** شريك يعيّن/ينقل طلب لمندوب */
   assignBooking = async (req: Request, res: Response) => {
     try {

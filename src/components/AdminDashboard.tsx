@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, Package, Calendar, Clock, BarChart3, TrendingUp, Settings, LogOut, Search, Filter, Plus, 
   MapPin, Phone, Mail, Globe, Save, X, Edit2, CheckCircle, CreditCard, Bell, Trash2, ArrowRight, Eye, Download, Info,
-  FileText, Home, Sparkles
+  FileText, Home, Sparkles, Truck
 } from 'lucide-react';
 import { apiJson, ApiError, clearSession } from '../lib/api';
 import AdminSettings from './AdminSettings';
@@ -15,6 +15,7 @@ import ImageUpload from './ImageUpload';
 export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [partners, setPartners] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [couriers, setCouriers] = useState<any[]>([]);
   const [passwordResetRequests, setPasswordResetRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +92,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           joined: new Date(u.joined).toISOString().split('T')[0],
         }));
       setCustomers(mappedCustomers);
+      const mappedCouriers = usersData
+        .filter((u) => u.role === 'courier')
+        .map((u) => ({
+          id: String(u.id),
+          name: String(u.name),
+          email: String(u.email),
+          phone: String(u.phone || '—'),
+          joined: new Date(u.joined).toISOString().split('T')[0],
+        }));
+      setCouriers(mappedCouriers);
       
       const statsData = await apiJson<any>('/api/admin/stats');
       if (statsData.stats) {
@@ -317,6 +328,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           >
             <Users size={18} /> إدارة الزبائن
           </button>
+          <button
+            type="button"
+            data-testid="admin-nav-couriers"
+            onClick={() => setActiveTab('couriers')}
+            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+              activeTab === 'couriers' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Truck size={18} /> المندوبين
+          </button>
           <button 
             type="button"
             data-testid="admin-nav-payment-approval"
@@ -426,6 +447,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           <h2 className="text-2xl font-bold">
             {activeTab === 'partners' && 'إدارة الشركاء والمشتركين'}
             {activeTab === 'customers' && 'إدارة الزبائن'}
+            {activeTab === 'couriers' && 'حسابات المندوبين'}
             {activeTab === 'payment-approval' && 'موافقات الدفع'}
             {activeTab === 'featured-approval' && 'موافقات الإعلان المميز'}
             {activeTab === 'password-resets' && 'طلبات تغيير كلمة المرور'}
@@ -844,6 +866,41 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                         </button>
                       )}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'couriers' && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden" data-testid="admin-couriers-tab">
+            <div className="p-4 border-b border-slate-100 text-sm text-slate-500">
+              حسابات المندوبين التي أنشأها الشركاء ({couriers.length})
+            </div>
+            <table className="w-full text-right">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="p-4 text-sm font-bold text-slate-600">المندوب</th>
+                  <th className="p-4 text-sm font-bold text-slate-600">البريد</th>
+                  <th className="p-4 text-sm font-bold text-slate-600">الهاتف</th>
+                  <th className="p-4 text-sm font-bold text-slate-600">تاريخ الإنشاء</th>
+                </tr>
+              </thead>
+              <tbody>
+                {couriers.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-slate-400 text-sm">لا يوجد مندوبون بعد</td>
+                  </tr>
+                )}
+                {couriers.map((c) => (
+                  <tr key={c.id} className="border-b border-slate-100" data-testid="admin-courier-row">
+                    <td className="p-4 font-bold text-slate-800 flex items-center gap-2">
+                      <Truck size={14} className="text-emerald-600" /> {c.name}
+                    </td>
+                    <td className="p-4 text-sm text-slate-600 font-mono">{c.email}</td>
+                    <td className="p-4 text-sm text-slate-600">{c.phone}</td>
+                    <td className="p-4 text-sm text-slate-500">{c.joined}</td>
                   </tr>
                 ))}
               </tbody>

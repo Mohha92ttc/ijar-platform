@@ -164,6 +164,13 @@ export class AuthService {
       throw new Error('Email verification required');
     }
 
+    if (row.role === 'courier') {
+      const c = await query(`SELECT is_active FROM couriers WHERE user_id = $1 LIMIT 1`, [row.id]);
+      if (!c.rows[0] || !c.rows[0].is_active) {
+        throw new Error('حساب المندوب غير نشط — تواصل مع الشريك');
+      }
+    }
+
     const token = jwt.sign({ userId: row.id, role: row.role }, this.jwtSecret, { expiresIn: this.JWT_EXPIRES_IN });
 
     return {

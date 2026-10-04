@@ -26,7 +26,14 @@ router.post(
   requireRole(['owner']),
   controller.assignBooking
 );
+router.post(
+  '/unassign/:bookingId',
+  authenticateToken,
+  requireRole(['owner']),
+  controller.unassignBooking
+);
 
+router.patch('/:id', authenticateToken, requireRole(['owner']), controller.update);
 router.patch('/:id/active', authenticateToken, requireRole(['owner']), controller.setActive);
 router.post('/:id/reset-password', authenticateToken, requireRole(['owner']), controller.resetPassword);
 router.get('/:id/report', authenticateToken, requireRole(['owner']), controller.partnerCourierReport);

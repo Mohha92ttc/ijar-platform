@@ -84,6 +84,85 @@ export class CouriersService {
       [isActive, courierId, ownerId]
     );
     if (res.rowCount === 0) throw new Error('المندوب غير موجود');
+    if (!isActive) {
+      await query(
+        `
+        UPDATE bookings
+        SET assigned_courier_id = NULL,
+            delivery_status = CASE
+              WHEN COALESCE(delivery_requested, FALSE) AND delivery_status IS DISTINCT FROM 'delivered'
+              THEN 'pending_assign'
+              ELSE delivery_status
+            END,
+            updated_at = NOW()
+        WHERE assigned_courier_id = $1
+          AND COALESCE(delivery_status, '') <> 'delivered'
+        `,
+        [courierId]
+      );
+    }
+  }
+
+  async updateCourier(
+    ownerId: string,
+    courierId: string,
+    data: { name?: string; phone?: string }
+  ): Promise<Courier> {
+    const existing = await this.assertOwned(ownerId, courierId);
+    const name = data.name != null ? String(data.name).trim() : existing.name;
+    const phone = data.phone != null ? String(data.phone).replace(/\s/g, '') : existing.phone;
+    if (!name || name.length < 2) throw new Error('اسم المندوب مطلوب');
+    if (!phone || phone.length < 8) throw new Error('رقم هاتف المندوب مطلوب');
+
+    const upd = await query(
+      `
+      UPDATE couriers
+      SET name = $1, phone = $2, updated_at = NOW()
+      WHERE id = $3 AND owner_id = $4
+      RETURNING *
+      `,
+      [name, phone, courierId, ownerId]
+    );
+    if (existing.user_id) {
+      await query(`UPDATE users SET name = $1, phone = $2 WHERE id = $3`, [
+        name,
+        phone,
+        existing.user_id,
+      ]);
+    }
+    const emailRes = await query(
+      `SELECT email FROM users WHERE id = $1`,
+      [existing.user_id]
+    );
+    return rowToCourier({
+      ...upd.rows[0],
+      email: emailRes.rows[0]?.email ?? null,
+    });
+  }
+
+  async unassignBooking(ownerId: string, bookingId: string): Promise<void> {
+    const own = await query(
+      `
+      SELECT b.id FROM bookings b
+      JOIN equipment e ON e.id = b.equipment_id
+      WHERE b.id = $1 AND e.owner_id = $2
+      `,
+      [bookingId, ownerId]
+    );
+    if (!own.rows[0]) throw new Error('الطلب غير موجود');
+    await query(
+      `
+      UPDATE bookings
+      SET assigned_courier_id = NULL,
+          delivery_status = CASE
+            WHEN COALESCE(delivery_requested, FALSE) THEN 'pending_assign'
+            ELSE NULL
+          END,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [bookingId]
+    );
   }
 
   async resetPassword(ownerId: string, courierId: string, password?: string): Promise<{ email: string; temp_password: string }> {

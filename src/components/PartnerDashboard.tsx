@@ -263,15 +263,51 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   };
 
   const assignCourier = async (bookingId: string, courier_id: string) => {
-    if (!courier_id) return;
     try {
-      await apiJson(`/api/couriers/assign/${bookingId}`, {
-        method: 'POST',
-        body: JSON.stringify({ courier_id }),
-      });
+      if (!courier_id) {
+        await apiJson(`/api/couriers/unassign/${bookingId}`, { method: 'POST', body: '{}' });
+      } else {
+        await apiJson(`/api/couriers/assign/${bookingId}`, {
+          method: 'POST',
+          body: JSON.stringify({ courier_id }),
+        });
+      }
       await loadData();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تعيين المندوب');
+      alert(e instanceof ApiError ? e.message : 'تعذر تحديث التعيين');
+    }
+  };
+
+  const saveCourierEdit = async (id: string, name: string, phone: string) => {
+    const n = prompt('اسم المندوب', name);
+    if (n == null) return;
+    const p = prompt('هاتف المندوب', phone);
+    if (p == null) return;
+    try {
+      await apiJson(`/api/couriers/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: n.trim(), phone: p.trim() }),
+      });
+      await loadCouriers();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر التحديث');
+    }
+  };
+
+  const deliveryStatusLabel = (s?: string | null) => {
+    switch (s) {
+      case 'pending_assign':
+        return 'بانتظار تعيين';
+      case 'assigned':
+        return 'معيّن';
+      case 'out_for_delivery':
+        return 'قيد التوصيل';
+      case 'delivered':
+        return 'تم التسليم';
+      case 'failed':
+        return 'فشل';
+      default:
+        return s || '—';
     }
   };
 
@@ -745,7 +781,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         </span>
                         {booking.deliveryStatus && (
                           <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">
-                            {booking.deliveryStatus}
+                            {deliveryStatusLabel(booking.deliveryStatus)}
                           </span>
                         )}
                         {booking.courierName && (
@@ -759,7 +795,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                           value={booking.assignedCourierId || ''}
                           onChange={(e) => assignCourier(booking.id, e.target.value)}
                         >
-                          <option value="">اختر مندوباً / انقل الطلب…</option>
+                          <option value="">بدون مندوب (إلغاء التعيين)</option>
                           {couriers.filter((c) => c.is_active).map((c) => (
                             <option key={c.id} value={c.id}>
                               {c.name} — {c.phone}
@@ -942,6 +978,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      data-testid="partner-courier-edit"
+                      onClick={() => saveCourierEdit(c.id, c.name, c.phone)}
+                      className="text-xs font-bold px-3 py-2 rounded-xl border border-blue-200 text-blue-700 bg-blue-50"
+                    >
+                      تعديل
+                    </button>
                     <button
                       type="button"
                       onClick={() => toggleCourierActive(c.id, !c.is_active)}
