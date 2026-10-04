@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Truck, MapPin, Phone, Navigation, CheckCircle, Package, BarChart2, Home, RefreshCw } from 'lucide-react';
+import { Truck, MapPin, Phone, Navigation, CheckCircle, Package, BarChart2, Home, RefreshCw, MessageCircle } from 'lucide-react';
 import { apiJson } from '../lib/api';
 import { googleMapsDirectionsUrl } from './MapPicker';
 
@@ -37,6 +37,15 @@ function statusLabel(s?: string | null) {
   }
 }
 
+function normalizeIqPhone(raw: string): string | null {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('964') && digits.length >= 12) return digits;
+  if (digits.startsWith('0') && digits.length >= 10) return `964${digits.slice(1)}`;
+  if (digits.length >= 9) return `964${digits}`;
+  return null;
+}
+
 export default function CourierDashboard({ onBack }: { onBack: () => void }) {
   const [bookings, setBookings] = useState<CourierBooking[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +58,8 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
     items: any[];
   } | null>(null);
   const [tab, setTab] = useState<'orders' | 'report'>('orders');
+  const [notes, setNotes] = useState<{ id: string; title: string; message: string; is_read: boolean }[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,6 +68,21 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
       setProfile(me);
       const rows = await apiJson<CourierBooking[]>('/api/couriers/me/bookings');
       setBookings(rows);
+      try {
+        const authMe = await apiJson<{ id: string }>('/api/auth/me');
+        setUserId(authMe.id);
+        const n = await apiJson<any[]>(`/api/notifications/user/${authMe.id}`);
+        setNotes(
+          (n || []).slice(0, 8).map((x) => ({
+            id: String(x.id),
+            title: String(x.title || ''),
+            message: String(x.message || ''),
+            is_read: Boolean(x.is_read),
+          }))
+        );
+      } catch {
+        // ignore
+      }
     } catch {
       setBookings([]);
     } finally {
@@ -126,6 +152,34 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
       </header>
 
       <div className="max-w-3xl mx-auto p-4 space-y-4">
+        {notes.some((n) => !n.is_read) && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-2" data-testid="courier-notifications">
+            <p className="text-xs font-bold text-amber-800">إشعارات جديدة</p>
+            {notes
+              .filter((n) => !n.is_read)
+              .slice(0, 3)
+              .map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className="w-full text-right text-xs text-amber-900 bg-white/70 rounded-xl px-3 py-2"
+                  onClick={async () => {
+                    if (!userId) return;
+                    try {
+                      await apiJson(`/api/notifications/${n.id}/read`, { method: 'PATCH', body: '{}' });
+                      setNotes((prev) => prev.map((x) => (x.id === n.id ? { ...x, is_read: true } : x)));
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                >
+                  <span className="font-bold block">{n.title}</span>
+                  {n.message}
+                </button>
+              ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
           <button
             type="button"
@@ -170,6 +224,7 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
 
             {bookings.map((b) => {
               const phone = b.customer_phone || b.customer_user_phone || '—';
+              const wa = normalizeIqPhone(phone);
               const addr = b.delivery_address || b.location || '—';
               return (
                 <div
@@ -208,6 +263,26 @@ export default function CourierDashboard({ onBack }: { onBack: () => void }) {
                     >
                       <Navigation size={16} /> افتح الطريق
                     </button>
+                    {wa && (
+                      <>
+                        <a
+                          href={`tel:+${wa}`}
+                          data-testid="courier-call-customer"
+                          className="px-3 py-2.5 rounded-xl text-sm font-bold border border-slate-200 text-slate-700 bg-white flex items-center gap-1"
+                        >
+                          <Phone size={14} /> اتصال
+                        </a>
+                        <a
+                          href={`https://wa.me/${wa}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid="courier-whatsapp-customer"
+                          className="px-3 py-2.5 rounded-xl text-sm font-bold border border-emerald-200 text-emerald-800 bg-emerald-50 flex items-center gap-1"
+                        >
+                          <MessageCircle size={14} /> واتساب
+                        </a>
+                      </>
+                    )}
                     {b.delivery_status !== 'out_for_delivery' && b.delivery_status !== 'delivered' && (
                       <button
                         type="button"

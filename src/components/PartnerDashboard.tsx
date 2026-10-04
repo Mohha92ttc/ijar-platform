@@ -531,7 +531,42 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         </nav>
       </aside>
 
-      <main className="flex-1 p-8">
+      {/* موبايل: شريط تنقل سفلي */}
+      <nav
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-blue-900 text-white border-t border-blue-800 pb-[env(safe-area-inset-bottom)]"
+        data-testid="partner-mobile-nav"
+      >
+        <div className="grid grid-cols-5 gap-0.5 px-1 py-1">
+          {(
+            [
+              { id: 'bookings', label: 'طلبات', icon: Clock, testId: 'partner-nav-bookings-m' },
+              { id: 'equipment', label: 'معدات', icon: Package, testId: 'partner-nav-equipment-m' },
+              { id: 'couriers', label: 'مندوبين', icon: Truck, testId: 'partner-nav-couriers-m' },
+              { id: 'reports', label: 'تقارير', icon: BarChart2, testId: 'partner-nav-reports-m' },
+              { id: 'settings', label: 'إعدادات', icon: Settings, testId: 'partner-nav-settings-m' },
+            ] as const
+          ).map((item) => {
+            const Icon = item.icon;
+            const on = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-testid={item.testId}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center gap-0.5 py-2 rounded-xl text-[10px] font-bold ${
+                  on ? 'bg-blue-700 text-white' : 'text-blue-200'
+                }`}
+              >
+                <Icon size={16} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      <main className="flex-1 p-4 sm:p-8 pb-24 lg:pb-8">
         <header className="flex justify-between items-center mb-8">
           <div>
             <h2 className="text-2xl font-bold text-slate-800">

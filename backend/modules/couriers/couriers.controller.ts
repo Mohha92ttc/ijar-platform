@@ -2,9 +2,11 @@ import { Request, Response } from 'express';
 import { CouriersService } from './couriers.service';
 import { query } from '../../database/connection';
 import { publicError } from '../../utils/publicError';
+import { NotificationService } from '../notifications/notification.service';
 
 export class CouriersController {
   private service = new CouriersService();
+  private notifications = new NotificationService();
 
   listMine = async (req: Request, res: Response) => {
     try {
@@ -56,11 +58,12 @@ export class CouriersController {
       const courierId = String(req.body.courier_id || '');
       if (!courierId) return res.status(400).json({ error: 'courier_id مطلوب' });
 
-      await this.service.assertOwned(actor.userId, courierId);
+      const courier = await this.service.assertOwned(actor.userId, courierId);
 
       const own = await query(
         `
-        SELECT b.id FROM bookings b
+        SELECT b.id, e.title AS equipment_title
+        FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         WHERE b.id = $1 AND e.owner_id = $2
         `,
@@ -78,6 +81,21 @@ export class CouriersController {
         `,
         [courierId, bookingId]
       );
+
+      if (courier.user_id) {
+        try {
+          await this.notifications.create({
+            user_id: courier.user_id,
+            type: 'system',
+            title: 'طلب توصيل جديد',
+            message: `تم تعيينك لتوصيل: ${String(own.rows[0].equipment_title || 'طلب')} — افتح لوحة المندوب.`,
+            related_id: bookingId,
+          });
+        } catch {
+          // non-blocking
+        }
+      }
+
       res.json({ ok: true, assigned_courier_id: courierId });
     } catch (e: unknown) {
       res.status(400).json({ error: publicError(e, 'تعذر تعيين المندوب') });

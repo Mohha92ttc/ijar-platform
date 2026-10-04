@@ -5,9 +5,9 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 const router = Router();
 const controller = new NotificationController();
 
-router.get('/user/:userId', authenticateToken, requireRole(['customer', 'owner', 'admin']), controller.getByUser);
-router.patch('/:id/read', authenticateToken, requireRole(['customer', 'owner', 'admin']), controller.markAsRead);
-router.patch('/user/:userId/read-all', authenticateToken, requireRole(['customer', 'owner', 'admin']), controller.markAllAsRead);
-router.delete('/:id', authenticateToken, requireRole(['customer', 'owner', 'admin']), controller.delete);
+router.get('/user/:userId', authenticateToken, requireRole(['customer', 'owner', 'admin', 'courier']), controller.getByUser);
+router.patch('/:id/read', authenticateToken, requireRole(['customer', 'owner', 'admin', 'courier']), controller.markAsRead);
+router.patch('/user/:userId/read-all', authenticateToken, requireRole(['customer', 'owner', 'admin', 'courier']), controller.markAllAsRead);
+router.delete('/:id', authenticateToken, requireRole(['customer', 'owner', 'admin', 'courier']), controller.delete);
 
 export default router;
