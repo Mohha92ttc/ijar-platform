@@ -675,7 +675,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         booking.status === 'cancelled' ? 'bg-red-100 text-red-700' : 
                         'bg-amber-100 text-amber-700'
                       }`}>
-                        {booking.status === 'confirmed' ? 'مثبت' : booking.status === 'cancelled' ? 'ملغي' : 'بانتظار الموافقة'}
+                        {booking.status === 'confirmed' ? 'مثبت' : booking.status === 'cancelled' ? 'ملغي' : booking.status === 'completed' ? 'مكتمل' : 'بانتظار الموافقة'}
                       </span>
                       <span className="px-3 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
                         {mapPayLabel(booking.paymentPreference)}
@@ -695,7 +695,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                       <div className="text-lg font-bold text-blue-600">{booking.total.toLocaleString()} د.ع</div>
                     </div>
                     
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       {booking.status === 'pending' && (
                         <>
                           <button 
@@ -717,6 +717,17 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                             <XCircle size={18} />
                           </button>
                         </>
+                      )}
+                      {booking.status === 'confirmed' && (
+                        <button
+                          type="button"
+                          data-testid="partner-booking-complete"
+                          onClick={() => updateBookingStatus(booking.id, 'completed')}
+                          className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg"
+                          title="إكمال الإيجار"
+                        >
+                          إكمال الإيجار
+                        </button>
                       )}
                     </div>
                   </div>

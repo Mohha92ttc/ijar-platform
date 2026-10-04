@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone } from 'lucide-react';
-import { apiJson } from '../lib/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone, Save } from 'lucide-react';
+import { apiJson, ApiError, apiLogout } from '../lib/api';
 
 type Row = {
   id: string;
+  equipmentId?: string;
   equipment: string;
   partner: string;
   dates: string;
@@ -14,6 +15,17 @@ type Row = {
   deliveryStatus?: string | null;
   courierName?: string | null;
   courierPhone?: string | null;
+  reviewed?: boolean;
+};
+
+type Fav = {
+  id: string;
+  title: string;
+  category: string;
+  price: number;
+  partner: string;
+  rating: number;
+  image?: string;
 };
 
 function deliveryLabel(s?: string | null) {
@@ -33,87 +45,212 @@ function deliveryLabel(s?: string | null) {
   }
 }
 
+const PREFS_KEY = (uid?: string) => `ijar_customer_prefs_${uid || 'anon'}`;
+
 export default function CustomerDashboard({
   userId,
   userEmail,
   onBack,
+  onLogout,
 }: {
   userId?: string;
   userEmail?: string;
   onBack: () => void;
+  onLogout?: () => void;
 }) {
   const [activeTab, setActiveTab] = useState('rentals');
   const [bookings, setBookings] = useState<Row[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [profile, setProfile] = useState<any>(null);
+  const [favorites, setFavorites] = useState<Fav[]>([]);
+  const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' });
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [notifyOn, setNotifyOn] = useState(true);
+  const [lang, setLang] = useState('ar');
+  const [reviewDraft, setReviewDraft] = useState<Record<string, { rating: number; comment: string }>>({});
 
-  const [favorites, setFavorites] = useState<any[]>([]);
+  const loadPrefs = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(PREFS_KEY(userId));
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      if (typeof p.notifyOn === 'boolean') setNotifyOn(p.notifyOn);
+      if (p.lang) setLang(String(p.lang));
+    } catch {
+      // ignore
+    }
+  }, [userId]);
+
+  const savePrefs = (next: { notifyOn?: boolean; lang?: string }) => {
+    const merged = {
+      notifyOn: next.notifyOn ?? notifyOn,
+      lang: next.lang ?? lang,
+    };
+    if (next.notifyOn != null) setNotifyOn(next.notifyOn);
+    if (next.lang != null) setLang(next.lang);
+    localStorage.setItem(PREFS_KEY(userId), JSON.stringify(merged));
+  };
+
+  const loadFavorites = useCallback(async () => {
+    try {
+      const rows = await apiJson<any[]>('/api/favorites');
+      setFavorites(
+        rows.map((e) => ({
+          id: String(e.id),
+          title: String(e.title || '—'),
+          category: String(e.category || ''),
+          price: Number(e.price_per_day || 0),
+          partner: String(e.owner_name || ''),
+          rating: Number(e.average_rating || 0),
+          image: Array.isArray(e.images) && e.images[0] ? String(e.images[0]) : undefined,
+        }))
+      );
+    } catch {
+      setFavorites([]);
+    }
+  }, []);
+
+  const loadBookings = useCallback(async () => {
+    if (!userId) return;
+    setLoadingBookings(true);
+    try {
+      const raw = await apiJson<any[]>(`/api/bookings/customer/${userId}`);
+      setBookings(
+        raw.map((b) => ({
+          id: String(b.id),
+          equipmentId: String(b.equipment_id || ''),
+          equipment: String(b.equipment_title || '—'),
+          partner: String(b.owner_name || '—'),
+          dates: `${new Date(b.start_date).toLocaleDateString('ar-IQ')} – ${new Date(b.end_date).toLocaleDateString('ar-IQ')}`,
+          total: Number(b.total_amount),
+          status: String(b.status),
+          location: String(b.delivery_address || b.location || b.equipment_location || '—'),
+          deliveryRequested: Boolean(b.delivery_requested),
+          deliveryStatus: b.delivery_status ? String(b.delivery_status) : null,
+          courierName: b.courier_name ? String(b.courier_name) : null,
+          courierPhone: b.courier_phone ? String(b.courier_phone) : null,
+        }))
+      );
+    } catch {
+      setBookings([]);
+    } finally {
+      setLoadingBookings(false);
+    }
+  }, [userId]);
 
   useEffect(() => {
     if (!userId) return;
-    let cancelled = false;
+    loadPrefs();
+    loadBookings();
+    loadFavorites();
     (async () => {
-      setLoadingBookings(true);
-      try {
-        const raw = await apiJson<any[]>(`/api/bookings/customer/${userId}`);
-        const rows: Row[] = raw.map((b) => {
-          const ds = `${new Date(b.start_date).toLocaleDateString('ar-IQ')} – ${new Date(b.end_date).toLocaleDateString('ar-IQ')}`;
-          return {
-            id: b.id,
-            equipment: b.equipment_title || '—',
-            partner: b.owner_name || '—',
-            dates: ds,
-            total: Number(b.total_amount),
-            status: b.status,
-            location: b.delivery_address || b.location || b.equipment_location || '—',
-            deliveryRequested: Boolean(b.delivery_requested),
-            deliveryStatus: b.delivery_status ? String(b.delivery_status) : null,
-            courierName: b.courier_name ? String(b.courier_name) : null,
-            courierPhone: b.courier_phone ? String(b.courier_phone) : null,
-          };
-        });
-        if (!cancelled) setBookings(rows);
-      } catch {
-        if (!cancelled) setBookings([]);
-      } finally {
-        if (!cancelled) setLoadingBookings(false);
-      }
       try {
         const prof = await apiJson<any>('/api/auth/me');
-        if (!cancelled) setProfile(prof);
+        setProfile(prof);
+        setProfileForm({
+          name: String(prof.name || ''),
+          phone: String(prof.phone || ''),
+          email: String(prof.email || userEmail || ''),
+        });
       } catch {
         // ignore
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId]);
+  }, [userId, userEmail, loadBookings, loadFavorites, loadPrefs]);
+
+  const handleLogout = async () => {
+    await apiLogout();
+    if (onLogout) onLogout();
+    else onBack();
+  };
+
+  const saveProfile = async () => {
+    setSavingProfile(true);
+    try {
+      await apiJson('/api/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: profileForm.name.trim(),
+          phone: profileForm.phone.trim(),
+        }),
+      });
+      const prof = await apiJson<any>('/api/auth/me');
+      setProfile(prof);
+      alert('تم حفظ الملف الشخصي');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const removeFavorite = async (equipmentId: string) => {
+    try {
+      await apiJson(`/api/favorites/${equipmentId}`, { method: 'DELETE' });
+      await loadFavorites();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر الحذف');
+    }
+  };
+
+  const submitReview = async (bookingId: string) => {
+    const draft = reviewDraft[bookingId] || { rating: 5, comment: '' };
+    try {
+      await apiJson('/api/reviews', {
+        method: 'POST',
+        body: JSON.stringify({
+          booking_id: bookingId,
+          rating: draft.rating,
+          comment: draft.comment || undefined,
+        }),
+      });
+      alert('شكراً لتقييمك');
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, reviewed: true } : b)));
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إرسال التقييم');
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'confirmed': return 'bg-green-100 text-green-700';
-      case 'pending': return 'bg-amber-100 text-amber-700';
-      case 'cancelled': return 'bg-red-100 text-red-700';
-      case 'completed': return 'bg-blue-100 text-blue-700';
-      default: return 'bg-slate-100 text-slate-700';
+      case 'confirmed':
+        return 'bg-green-100 text-green-700';
+      case 'pending':
+        return 'bg-amber-100 text-amber-700';
+      case 'cancelled':
+        return 'bg-red-100 text-red-700';
+      case 'completed':
+        return 'bg-blue-100 text-blue-700';
+      default:
+        return 'bg-slate-100 text-slate-700';
     }
   };
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'confirmed': return 'مؤكد';
-      case 'pending': return 'في الانتظار';
-      case 'cancelled': return 'ملغي';
-      case 'completed': return 'مكتمل';
-      default: return status;
+      case 'confirmed':
+        return 'مؤكد';
+      case 'pending':
+        return 'في الانتظار';
+      case 'cancelled':
+        return 'ملغي';
+      case 'completed':
+        return 'مكتمل';
+      default:
+        return status;
     }
   };
 
+  const navItems = [
+    { id: 'rentals', label: 'حجوزاتي', icon: Calendar, testId: 'customer-nav-rentals' },
+    { id: 'favorites', label: 'مفضلة', icon: Star, testId: 'customer-nav-favorites' },
+    { id: 'profile', label: 'حسابي', icon: User, testId: 'customer-nav-profile' },
+    { id: 'settings', label: 'إعدادات', icon: Settings, testId: 'customer-nav-settings' },
+  ] as const;
+
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-slate-900 text-white">
+    <div className="min-h-screen bg-slate-50 flex" data-testid="customer-dashboard">
+      <aside className="w-64 bg-slate-900 text-white hidden lg:flex flex-col">
         <div className="p-6 border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -125,178 +262,227 @@ export default function CustomerDashboard({
             </div>
           </div>
         </div>
-        
         <nav className="flex-1 p-4 space-y-2">
-          <button 
-            type="button"
-            data-testid="customer-nav-rentals"
-            onClick={() => setActiveTab('rentals')}
-            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
-              activeTab === 'rentals' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
-            }`}
-          >
-            <Calendar size={18} /> حجوزاتي
-          </button>
-          <button 
-            type="button"
-            data-testid="customer-nav-favorites"
-            onClick={() => setActiveTab('favorites')}
-            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
-              activeTab === 'favorites' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
-            }`}
-          >
-            <Star size={18} /> المفضلة
-          </button>
-          <button 
-            type="button"
-            data-testid="customer-nav-profile"
-            onClick={() => setActiveTab('profile')}
-            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
-              activeTab === 'profile' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
-            }`}
-          >
-            <User size={18} /> الملف الشخصي
-          </button>
-          <button 
-            type="button"
-            data-testid="customer-nav-settings"
-            onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
-              activeTab === 'settings' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
-            }`}
-          >
-            <Settings size={18} /> الإعدادات
-          </button>
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-testid={item.testId}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+                  activeTab === item.id ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+                }`}
+              >
+                <Icon size={18} /> {item.label === 'مفضلة' ? 'المفضلة' : item.label === 'حسابي' ? 'الملف الشخصي' : item.label}
+              </button>
+            );
+          })}
         </nav>
-
-        <div className="p-4 border-t border-slate-800">
-          <button 
+        <div className="p-4 border-t border-slate-800 space-y-2">
+          <button
             type="button"
             data-testid="customer-back-home"
             onClick={onBack}
             className="flex items-center gap-3 p-3 rounded-xl text-sm font-bold hover:bg-slate-800 text-slate-400 w-full text-right"
+          >
+            <Home size={18} /> العودة للرئيسية
+          </button>
+          <button
+            type="button"
+            data-testid="customer-logout"
+            onClick={handleLogout}
+            className="flex items-center gap-3 p-3 rounded-xl text-sm font-bold hover:bg-red-900/40 text-red-300 w-full text-right"
           >
             <LogOut size={18} /> تسجيل الخروج
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-8">
-        <header className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-bold">
+      <nav
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-900 text-white border-t border-slate-800 pb-[env(safe-area-inset-bottom)]"
+        data-testid="customer-mobile-nav"
+      >
+        <div className="grid grid-cols-5 gap-0.5 px-1 py-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-testid={`${item.testId}-m`}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center gap-0.5 py-2 rounded-xl text-[10px] font-bold ${
+                  activeTab === item.id ? 'bg-blue-600 text-white' : 'text-slate-400'
+                }`}
+              >
+                <Icon size={16} />
+                {item.label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex flex-col items-center gap-0.5 py-2 rounded-xl text-[10px] font-bold text-slate-400"
+          >
+            <Home size={16} /> رئيسية
+          </button>
+        </div>
+      </nav>
+
+      <main className="flex-1 p-4 sm:p-8 pb-24 lg:pb-8 min-w-0">
+        <header className="flex justify-between items-center mb-6 gap-3">
+          <h2 className="text-xl sm:text-2xl font-bold">
             {activeTab === 'rentals' && 'حجوزاتي'}
             {activeTab === 'favorites' && 'المعدات المفضلة'}
             {activeTab === 'profile' && 'الملف الشخصي'}
             {activeTab === 'settings' && 'الإعدادات'}
           </h2>
+          <button
+            type="button"
+            className="lg:hidden text-xs font-bold text-red-600 border border-red-200 px-3 py-1.5 rounded-lg"
+            onClick={handleLogout}
+          >
+            خروج
+          </button>
         </header>
 
-        {/* Rentals Tab */}
         {activeTab === 'rentals' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {loadingBookings && <p className="text-sm text-slate-500">جاري تحميل الحجوزات…</p>}
-            {!loadingBookings && bookings.length === 0 ? (
-              <div className="bg-white rounded-2xl p-12 text-center">
-                <Calendar className="mx-auto text-slate-400 mb-4" size={48} />
-                <h3 className="text-xl font-bold text-slate-700 mb-2">لا توجد حجوزات حالياً</h3>
-                <p className="text-slate-500">ابدأ باستكشاف المعدات المتاحة للحجز</p>
-              </div>
-            ) : (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-right">
-                    <thead className="bg-slate-50 border-b border-slate-200">
-                      <tr>
-                        <th className="p-4 text-sm font-bold text-slate-600">المعدات</th>
-                        <th className="p-4 text-sm font-bold text-slate-600">الشريك</th>
-                        <th className="p-4 text-sm font-bold text-slate-600">التواريخ</th>
-                        <th className="p-4 text-sm font-bold text-slate-600">الموقع</th>
-                        <th className="p-4 text-sm font-bold text-slate-600">التوصيل</th>
-                        <th className="p-4 text-sm font-bold text-slate-600">الإجمالي</th>
-                        <th className="p-4 text-sm font-bold text-slate-600">الحالة</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {bookings.map((booking) => (
-                        <tr key={booking.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors" data-testid="customer-booking-row">
-                          <td className="p-4">
-                            <div className="font-bold text-slate-800">{booking.equipment}</div>
-                          </td>
-                          <td className="p-4">
-                            <div className="text-sm text-slate-600">{booking.partner}</div>
-                          </td>
-                          <td className="p-4">
-                            <div className="text-sm text-slate-600">{booking.dates}</div>
-                          </td>
-                          <td className="p-4">
-                            <div className="text-sm text-slate-600 flex items-center gap-1">
-                              <MapPin size={12} className="shrink-0" /> {booking.location}
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            {booking.deliveryRequested ? (
-                              <div className="space-y-1" data-testid="customer-delivery-status">
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
-                                  <Truck size={10} /> {deliveryLabel(booking.deliveryStatus)}
-                                </span>
-                                {booking.courierName && (
-                                  <div className="text-[11px] text-slate-600 flex items-center gap-1">
-                                    <Phone size={10} />
-                                    {booking.courierName}
-                                    {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">بدون توصيل</span>
-                            )}
-                          </td>
-                          <td className="p-4">
-                            <div className="font-bold text-slate-800">{booking.total.toLocaleString()} د.ع</div>
-                          </td>
-                          <td className="p-4">
-                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${getStatusColor(booking.status)}`}>
-                              {getStatusLabel(booking.status)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            {!loadingBookings && bookings.length === 0 && (
+              <div className="bg-white rounded-2xl p-10 text-center border border-slate-100">
+                <Calendar className="mx-auto text-slate-400 mb-3" size={40} />
+                <h3 className="font-bold text-slate-700 mb-1">لا توجد حجوزات حالياً</h3>
+                <p className="text-slate-500 text-sm">ابدأ باستكشاف المعدات المتاحة للحجز</p>
               </div>
             )}
+            {bookings.map((booking) => (
+              <div
+                key={booking.id}
+                data-testid="customer-booking-row"
+                className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm"
+              >
+                <div className="flex justify-between gap-3 items-start">
+                  <div>
+                    <h3 className="font-bold text-slate-800">{booking.equipment}</h3>
+                    <p className="text-xs text-slate-500 mt-1">{booking.partner}</p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-bold shrink-0 ${getStatusColor(booking.status)}`}>
+                    {getStatusLabel(booking.status)}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-600 space-y-1">
+                  <p>{booking.dates}</p>
+                  <p className="flex items-center gap-1">
+                    <MapPin size={12} /> {booking.location}
+                  </p>
+                  <p className="font-bold text-slate-800">{booking.total.toLocaleString()} د.ع</p>
+                </div>
+                {booking.deliveryRequested && (
+                  <div className="text-xs space-y-1" data-testid="customer-delivery-status">
+                    <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
+                      <Truck size={10} /> {deliveryLabel(booking.deliveryStatus)}
+                    </span>
+                    {booking.courierName && (
+                      <p className="flex items-center gap-1 text-slate-600">
+                        <Phone size={10} />
+                        {booking.courierName}
+                        {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {booking.status === 'completed' && !booking.reviewed && (
+                  <div className="border-t border-slate-100 pt-3 space-y-2" data-testid="customer-review-box">
+                    <p className="text-xs font-bold text-slate-700">قيّم تجربتك</p>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() =>
+                            setReviewDraft((prev) => ({
+                              ...prev,
+                              [booking.id]: { rating: n, comment: prev[booking.id]?.comment || '' },
+                            }))
+                          }
+                          className="p-1"
+                        >
+                          <Star
+                            size={18}
+                            className={
+                              (reviewDraft[booking.id]?.rating || 5) >= n
+                                ? 'text-amber-400 fill-amber-400'
+                                : 'text-slate-300'
+                            }
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      className="w-full border border-slate-200 rounded-xl p-2 text-sm"
+                      rows={2}
+                      placeholder="تعليق اختياري"
+                      value={reviewDraft[booking.id]?.comment || ''}
+                      onChange={(e) =>
+                        setReviewDraft((prev) => ({
+                          ...prev,
+                          [booking.id]: {
+                            rating: prev[booking.id]?.rating || 5,
+                            comment: e.target.value,
+                          },
+                        }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      data-testid="customer-submit-review"
+                      onClick={() => submitReview(booking.id)}
+                      className="text-xs font-bold bg-blue-600 text-white px-3 py-2 rounded-xl"
+                    >
+                      إرسال التقييم
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Favorites Tab */}
         {activeTab === 'favorites' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {favorites.length === 0 ? (
-              <div className="bg-white rounded-2xl p-12 text-center">
-                <Star className="mx-auto text-slate-400 mb-4" size={48} />
-                <h3 className="text-xl font-bold text-slate-700 mb-2">لا توجد معدات مفضلة</h3>
-                <p className="text-slate-500">أضف معدات إلى المفضلة للوصول السريع</p>
+              <div className="bg-white rounded-2xl p-10 text-center border border-slate-100">
+                <Star className="mx-auto text-slate-400 mb-3" size={40} />
+                <h3 className="font-bold text-slate-700 mb-1">لا توجد معدات مفضلة</h3>
+                <p className="text-slate-500 text-sm">اضغط النجمة على بطاقة المعدة في الرئيسية</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {favorites.map((item) => (
-                  <div key={item.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hover:shadow-lg transition-shadow">
-                    <div className="h-48 bg-slate-200"></div>
+                  <div key={item.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden" data-testid="customer-favorite-card">
+                    {item.image ? (
+                      <img src={item.image} alt="" className="h-36 w-full object-cover" />
+                    ) : (
+                      <div className="h-36 bg-slate-200" />
+                    )}
                     <div className="p-4">
-                      <h3 className="font-bold text-slate-800 mb-2">{item.title}</h3>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-slate-500">{item.category}</span>
-                        <div className="flex items-center gap-1">
-                          <Star className="text-amber-400 fill-current" size={14} />
-                          <span className="text-sm text-slate-600">{item.rating}</span>
-                        </div>
-                      </div>
-                      <div className="text-sm text-slate-500 mb-3">{item.partner}</div>
+                      <h3 className="font-bold text-slate-800 mb-1">{item.title}</h3>
+                      <p className="text-xs text-slate-500 mb-2">
+                        {item.category} · {item.partner}
+                      </p>
                       <div className="flex items-center justify-between">
-                        <span className="text-lg font-bold text-blue-600">{item.price.toLocaleString()} د.ع/يوم</span>
-                        <button className="text-red-500 hover:text-red-600">
+                        <span className="font-bold text-blue-600">{item.price.toLocaleString()} د.ع/يوم</span>
+                        <button
+                          type="button"
+                          data-testid="customer-favorite-remove"
+                          onClick={() => removeFavorite(item.id)}
+                          className="text-red-500 hover:text-red-600"
+                          title="إزالة من المفضلة"
+                        >
                           <Star size={20} fill="currentColor" />
                         </button>
                       </div>
@@ -308,51 +494,94 @@ export default function CustomerDashboard({
           </div>
         )}
 
-        {/* Profile Tab */}
         {activeTab === 'profile' && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6" data-testid="customer-profile-panel">
-            <h3 className="text-lg font-bold mb-6">الملف الشخصي</h3>
-            <div className="grid md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4" data-testid="customer-profile-panel">
+            <h3 className="text-lg font-bold">الملف الشخصي</h3>
+            <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">الاسم الكامل</label>
-                <input type="text" value={profile?.name || 'العميل'} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50" />
+                <input
+                  type="text"
+                  data-testid="customer-profile-name"
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">البريد الإلكتروني</label>
-                <input type="email" value={profile?.email || userEmail || ''} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50" />
+                <input
+                  type="email"
+                  value={profileForm.email}
+                  readOnly
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">رقم الهاتف</label>
-                <input type="tel" value={profile?.phone || '—'} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50" />
+                <input
+                  type="tel"
+                  data-testid="customer-profile-phone"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">تاريخ الانضمام</label>
-                <input type="text" value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ar-IQ') : '—'} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50" />
+                <input
+                  type="text"
+                  value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ar-IQ') : '—'}
+                  readOnly
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50"
+                />
               </div>
             </div>
+            <button
+              type="button"
+              data-testid="customer-profile-save"
+              disabled={savingProfile}
+              onClick={saveProfile}
+              className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+            >
+              <Save size={16} /> {savingProfile ? 'جاري الحفظ…' : 'حفظ التعديلات'}
+            </button>
           </div>
         )}
 
-        {/* Settings Tab */}
         {activeTab === 'settings' && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h3 className="text-lg font-bold mb-6">الإعدادات</h3>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
                 <div>
                   <div className="font-bold">الإشعارات</div>
                   <div className="text-sm text-slate-500">تلقي إشعارات حول الحجوزات والعروض</div>
                 </div>
-                <button type="button" data-testid="customer-settings-notify" className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">تفعيل</button>
+                <button
+                  type="button"
+                  data-testid="customer-settings-notify"
+                  onClick={() => savePrefs({ notifyOn: !notifyOn })}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold ${
+                    notifyOn ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {notifyOn ? 'مفعّلة' : 'معطّلة'}
+                </button>
               </div>
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
                 <div>
                   <div className="font-bold">اللغة</div>
-                  <div className="text-sm text-slate-500">اختيار لغة التطبيق</div>
+                  <div className="text-sm text-slate-500">تفضيل العرض المحلي</div>
                 </div>
-                <select data-testid="customer-settings-lang" className="px-4 py-2 border border-slate-200 rounded-lg">
-                  <option>العربية</option>
-                  <option>English</option>
+                <select
+                  data-testid="customer-settings-lang"
+                  value={lang}
+                  onChange={(e) => savePrefs({ lang: e.target.value })}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="ar">العربية</option>
+                  <option value="en">English</option>
                 </select>
               </div>
             </div>

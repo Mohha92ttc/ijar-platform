@@ -61,6 +61,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [showCategoryForm, setShowCategoryForm] = useState(false);
 
   const [activeTab, setActiveTab] = useState('partners');
+  const [partnerSearch, setPartnerSearch] = useState('');
   const [editingInfo, setEditingInfo] = useState(false);
   const [tempInfo, setTempInfo] = useState({...platformInfo});
 
@@ -441,8 +442,38 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         </nav>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 p-8">
+      <nav
+        className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-slate-900 text-white border-t border-slate-800 pb-[env(safe-area-inset-bottom)] overflow-x-auto"
+        data-testid="admin-mobile-nav"
+      >
+        <div className="flex gap-1 px-2 py-1 min-w-max">
+          {(
+            [
+              { id: 'partners', label: 'شركاء', testId: 'admin-nav-partners-m' },
+              { id: 'customers', label: 'زبائن', testId: 'admin-nav-customers-m' },
+              { id: 'couriers', label: 'مندوبين', testId: 'admin-nav-couriers-m' },
+              { id: 'payment-approval', label: 'دفعات', testId: 'admin-nav-payment-approval-m' },
+              { id: 'categories', label: 'تصنيفات', testId: 'admin-nav-categories-m' },
+              { id: 'settings', label: 'إعدادات', testId: 'admin-nav-settings-m' },
+              { id: 'stats', label: 'إحصاء', testId: 'admin-nav-stats-m' },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              data-testid={item.testId}
+              onClick={() => setActiveTab(item.id)}
+              className={`px-3 py-2 rounded-xl text-[10px] font-bold whitespace-nowrap ${
+                activeTab === item.id ? 'bg-blue-600 text-white' : 'text-slate-400'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <main className="flex-1 p-4 sm:p-8 pb-24 lg:pb-8 min-w-0">
         <header className="flex justify-between items-center mb-8">
           <h2 className="text-2xl font-bold">
             {activeTab === 'partners' && 'إدارة الشركاء والمشتركين'}
@@ -463,7 +494,14 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               <>
                 <div className="relative">
                   <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                  <input type="text" placeholder="بحث عن شريك..." className="bg-white border border-slate-200 rounded-lg py-2 pr-10 pl-4 text-sm outline-none w-64" />
+                  <input
+                    type="text"
+                    data-testid="admin-partner-search"
+                    placeholder="بحث عن شريك..."
+                    value={partnerSearch}
+                    onChange={(e) => setPartnerSearch(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-lg py-2 pr-10 pl-4 text-sm outline-none w-64"
+                  />
                 </div>
                 <button 
                   type="button"
@@ -751,7 +789,17 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {partners.map((p) => (
+                  {partners
+                    .filter((p) => {
+                      const q = partnerSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        String(p.name).toLowerCase().includes(q) ||
+                        String(p.email).toLowerCase().includes(q) ||
+                        String(p.phone || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((p) => (
                     <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">

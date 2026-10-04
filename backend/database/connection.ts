@@ -392,6 +392,15 @@ async function createTables() {
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(30) DEFAULT NULL;
     CREATE INDEX IF NOT EXISTS idx_bookings_courier ON bookings (assigned_courier_id);
 
+    CREATE TABLE IF NOT EXISTS favorites (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      equipment_id UUID NOT NULL REFERENCES equipment(id) ON DELETE CASCADE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, equipment_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites (user_id);
+
     -- Messages Table
     CREATE TABLE IF NOT EXISTS messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -14,7 +14,7 @@ import {
   Briefcase,
   X,
 } from 'lucide-react';
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent } from 'react';
 import AuthPage from './components/AuthPage';
 import AdminDashboard from './components/AdminDashboard';
 import PartnerDashboard from './components/PartnerDashboard';
@@ -105,6 +105,7 @@ export default function App() {
   const [listError, setListError] = useState<string | null>(null);
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
 
   const menuRef = useRef<HTMLDivElement>(null);
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
@@ -120,6 +121,11 @@ export default function App() {
         setCart(loadCart(me.id));
         prevUserIdRef.current = me.id;
         if (me.role === 'courier') setView('courier');
+        if (me.role === 'customer') {
+          apiJson<string[]>('/api/favorites/ids')
+            .then((ids) => setFavoriteIds(new Set(ids)))
+            .catch(() => setFavoriteIds(new Set()));
+        }
       } else {
         setUser(null);
         setCart(loadCart(null));
@@ -275,8 +281,40 @@ export default function App() {
     return GOVERNORATE_AREAS[filterGovernorate] || [];
   }, [filterGovernorate]);
 
+  const toggleFavorite = async (equipmentId: string, e: MouseEvent) => {
+    e.stopPropagation();
+    if (!user?.id || user.role !== 'customer') {
+      alert('سجّل دخولك كزبون لإضافة المفضلة');
+      setView('auth');
+      return;
+    }
+    const isFav = favoriteIds.has(equipmentId);
+    try {
+      if (isFav) {
+        await apiJson(`/api/favorites/${equipmentId}`, { method: 'DELETE' });
+        setFavoriteIds((prev) => {
+          const n = new Set(prev);
+          n.delete(equipmentId);
+          return n;
+        });
+      } else {
+        await apiJson(`/api/favorites/${equipmentId}`, { method: 'POST', body: '{}' });
+        setFavoriteIds((prev) => new Set(prev).add(equipmentId));
+      }
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'تعذر تحديث المفضلة');
+    }
+  };
+
   const handleLogin = (userData: any) => {
     setUser(userData);
+    if (userData?.role === 'customer') {
+      apiJson<string[]>('/api/favorites/ids')
+        .then((ids) => setFavoriteIds(new Set(ids)))
+        .catch(() => setFavoriteIds(new Set()));
+    } else {
+      setFavoriteIds(new Set());
+    }
     if (userData?.role === 'courier') {
       setView('courier');
     } else if (userData?.role === 'owner') {
@@ -464,7 +502,15 @@ export default function App() {
   if (view === 'admin') return <AdminDashboard onBack={() => setView('home')} />;
   if (view === 'partner') return <PartnerDashboard ownerId={user?.id} onBack={() => setView('home')} />;
   if (view === 'courier') return <CourierDashboard onBack={() => setView('home')} onLogout={handleLogout} />;
-  if (view === 'customer') return <CustomerDashboard userId={user?.id} userEmail={user?.email} onBack={() => setView('home')} />;
+  if (view === 'customer')
+    return (
+      <CustomerDashboard
+        userId={user?.id}
+        userEmail={user?.email}
+        onBack={() => setView('home')}
+        onLogout={handleLogout}
+      />
+    );
   if (view === 'about') return <AboutPage onBack={() => setView('home')} />;
   if (view === 'terms') return <TermsPage onBack={() => setView('home')} />;
   if (view === 'help') return <HelpPage onBack={() => setView('home')} />;
@@ -797,6 +843,18 @@ export default function App() {
                       </span>
                     )}
                   </div>
+                  <button
+                    type="button"
+                    data-testid="equipment-favorite-toggle"
+                    onClick={(e) => toggleFavorite(item.id, e)}
+                    className="absolute top-3 right-3 p-2 rounded-full bg-white/90 backdrop-blur shadow-sm hover:bg-white"
+                    title={favoriteIds.has(item.id) ? 'إزالة من المفضلة' : 'إضافة للمفضلة'}
+                  >
+                    <Star
+                      size={16}
+                      className={favoriteIds.has(item.id) ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}
+                    />
+                  </button>
                 </div>
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-1">

@@ -4,8 +4,18 @@ import { EquipmentService } from '../equipment/equipment.service';
 import { NotificationService } from '../notifications/notification.service';
 import { query } from '../../database/connection';
 
-// Mocking database interaction
-let mockReviews: Review[] = [];
+function rowToReview(row: Record<string, unknown>): Review {
+  return {
+    id: String(row.id),
+    booking_id: row.booking_id ? String(row.booking_id) : '',
+    equipment_id: String(row.equipment_id),
+    owner_id: row.owner_id ? String(row.owner_id) : '',
+    customer_id: String(row.reviewer_id || row.customer_id || ''),
+    rating: Number(row.rating),
+    comment: row.comment != null ? String(row.comment) : undefined,
+    created_at: new Date(String(row.created_at)),
+  };
+}
 
 export class ReviewService {
   private bookingService: BookingService;
@@ -19,84 +29,105 @@ export class ReviewService {
   }
 
   async create(customerId: string, data: CreateReviewDTO): Promise<Review> {
-    // 1. Validate booking exists and belongs to customer
     const booking = await this.bookingService.getById(data.booking_id);
     if (booking.customer_id !== customerId) {
-      throw new Error('Unauthorized to review this booking');
+      throw new Error('غير مصرح بتقييم هذا الحجز');
     }
-
-    // 2. Validate booking is completed
     if (booking.status !== 'completed') {
-      throw new Error('Can only review completed bookings');
+      throw new Error('يمكن التقييم فقط بعد اكتمال الحجز');
     }
+    const rating = Math.min(5, Math.max(1, Number(data.rating) || 0));
+    if (!rating) throw new Error('التقييم مطلوب (1-5)');
 
-    // 3. Check if review already exists
-    const existing = mockReviews.find(r => r.booking_id === data.booking_id);
-    if (existing) {
-      throw new Error('Review already submitted for this booking');
-    }
+    const dup = await query(
+      `SELECT id FROM reviews WHERE booking_id = $1 OR (equipment_id = $2 AND reviewer_id = $3) LIMIT 1`,
+      [data.booking_id, booking.equipment_id, customerId]
+    );
+    if (dup.rows[0]) throw new Error('تم إرسال تقييم لهذا الحجز مسبقاً');
 
-    // 4. Get equipment details to find owner
     const equipment = await this.equipmentService.getById(booking.equipment_id);
 
-    const newReview: Review = {
-      id: Math.random().toString(36).substr(2, 9),
-      booking_id: data.booking_id,
-      equipment_id: booking.equipment_id,
-      owner_id: equipment.owner_id,
-      customer_id: customerId,
-      rating: data.rating,
-      comment: data.comment,
-      created_at: new Date()
-    };
+    const ins = await query(
+      `
+      INSERT INTO reviews (equipment_id, reviewer_id, booking_id, rating, comment)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+      `,
+      [booking.equipment_id, customerId, data.booking_id, rating, data.comment || null]
+    );
 
-    mockReviews.push(newReview);
-
-    // 5. Update equipment rating automatically
     await this.updateEquipmentRating(booking.equipment_id);
 
-    // 6. Notify owner about new review
     await this.notificationService.create({
       user_id: equipment.owner_id,
       type: 'new_review',
-      title: 'New Review Received',
-      message: `You received a ${data.rating}-star review for ${equipment.title}.`,
-      related_id: newReview.id
+      title: 'تقييم جديد',
+      message: `حصلت على تقييم ${rating} نجوم لـ ${equipment.title}.`,
+      related_id: String(ins.rows[0].id),
     });
 
-    return newReview;
+    return rowToReview({ ...ins.rows[0], owner_id: equipment.owner_id });
   }
 
   private async updateEquipmentRating(equipmentId: string): Promise<void> {
-    const equipmentReviews = mockReviews.filter(r => r.equipment_id === equipmentId);
-    const count = equipmentReviews.length;
-    const sum = equipmentReviews.reduce((acc, r) => acc + r.rating, 0);
-    const average = count > 0 ? sum / count : 0;
-
-    // Update derived stats directly; avoids owner-based authorization in equipmentService.
+    const res = await query(
+      `
+      SELECT COALESCE(AVG(rating), 0) AS avg, COUNT(*)::int AS cnt
+      FROM reviews WHERE equipment_id = $1
+      `,
+      [equipmentId]
+    );
+    const average = Number(res.rows[0]?.avg || 0);
+    const count = Number(res.rows[0]?.cnt || 0);
     await query(
-      `UPDATE equipment
-       SET average_rating = $1,
-           review_count = $2,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3`,
+      `
+      UPDATE equipment
+      SET average_rating = $1, review_count = $2, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3
+      `,
       [average, count, equipmentId]
     );
   }
 
   async getByEquipment(equipmentId: string): Promise<Review[]> {
-    return mockReviews.filter(r => r.equipment_id === equipmentId);
+    const res = await query(
+      `
+      SELECT r.*, e.owner_id
+      FROM reviews r
+      JOIN equipment e ON e.id = r.equipment_id
+      WHERE r.equipment_id = $1
+      ORDER BY r.created_at DESC
+      `,
+      [equipmentId]
+    );
+    return res.rows.map(rowToReview);
   }
 
   async getByOwner(ownerId: string): Promise<Review[]> {
-    return mockReviews.filter(r => r.owner_id === ownerId);
+    const res = await query(
+      `
+      SELECT r.*, e.owner_id
+      FROM reviews r
+      JOIN equipment e ON e.id = r.equipment_id
+      WHERE e.owner_id = $1
+      ORDER BY r.created_at DESC
+      `,
+      [ownerId]
+    );
+    return res.rows.map(rowToReview);
   }
 
   async getById(id: string): Promise<Review> {
-    const review = mockReviews.find(r => r.id === id);
-    if (!review) {
-      throw new Error('Review not found');
-    }
-    return review;
+    const res = await query(
+      `
+      SELECT r.*, e.owner_id
+      FROM reviews r
+      JOIN equipment e ON e.id = r.equipment_id
+      WHERE r.id = $1
+      `,
+      [id]
+    );
+    if (!res.rows[0]) throw new Error('التقييم غير موجود');
+    return rowToReview(res.rows[0]);
   }
 }

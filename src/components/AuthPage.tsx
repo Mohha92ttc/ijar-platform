@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { User, Mail, Phone, Lock, ArrowRight, UserPlus, Briefcase, ShieldCheck } from 'lucide-react';
-import PartnerRegistration from './PartnerRegistration';
+import { User, Mail, Phone, Lock, ArrowRight, Briefcase, ShieldCheck } from 'lucide-react';
 import { apiJson, setSession, ApiError, apiLogout, clearSession } from '../lib/api';
 
 import { UserRole } from '../types';
@@ -9,7 +8,6 @@ import { UserRole } from '../types';
 export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) {
   const [isLogin, setIsLogin] = useState(true);
   const [role, setRole] = useState<UserRole>('customer');
-  const [showPartnerRegistration, setShowPartnerRegistration] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -28,11 +26,6 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
   React.useEffect(() => {
     setFormData({ name: '', email: '', phone: '', password: '' });
   }, [role]);
-
-  const handlePartnerRegistration = () => {
-    alert('تم إرسال طلب التسجيل بنجاح! سيتم مراجعة طلبك وإشعارك بالنتيجة.');
-    setShowPartnerRegistration(false);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -211,20 +204,13 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
 
           {role === 'owner' && !isLogin && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-              <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center gap-3 mb-2">
                 <Briefcase className="text-blue-600" size={20} />
                 <h4 className="font-bold text-blue-800">التسجيل كشريك تجاري</h4>
               </div>
-              <p className="text-sm text-blue-700 mb-3">انضم كشريك تجاري وابدأ كسب المال من تأجير معداتك</p>
-              <button
-                type="button"
-                data-testid="auth-open-partner-extra"
-                onClick={() => setShowPartnerRegistration(true)}
-                className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 flex items-center justify-center gap-2"
-              >
-                <UserPlus size={16} />
-                نموذج تفاصيل إضافية
-              </button>
+              <p className="text-sm text-blue-700 leading-relaxed">
+                عبّئ الاسم والبريد والهاتف وكلمة المرور أدناه ثم اضغط إنشاء حساب. بعد التسجيل تراجع الإدارة طلبك ثم تفعّل لوحة الشريك.
+              </p>
             </div>
           )}
 
@@ -361,10 +347,6 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
           </div>
         </div>
       </motion.div>
-
-      {showPartnerRegistration && (
-        <PartnerRegistration onSubmit={handlePartnerRegistration} onCancel={() => setShowPartnerRegistration(false)} />
-      )}
     </div>
   );
 }
