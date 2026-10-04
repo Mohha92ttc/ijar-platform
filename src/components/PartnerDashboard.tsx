@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Package, Clock, CheckCircle, XCircle, Settings, Plus, BarChart2, Home, Edit2, Trash2, Save, X, Sparkles, CreditCard, Image as ImageIcon, Eye, Truck, Navigation } from 'lucide-react';
+import { Package, Clock, CheckCircle, XCircle, Settings, Plus, BarChart2, Home, Edit2, Trash2, Save, X, Sparkles, CreditCard, Image as ImageIcon, Eye, Truck, Navigation, Bell } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 import TransferAccountsPanel from './TransferAccountsPanel';
+import NotificationsPanel from './NotificationsPanel';
 import { apiJson, ApiError } from '../lib/api';
 import { paymentMethodLabel, type CartPaymentMethod } from '../lib/cartStorage';
-import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation } from '../lib/iraqLocations';
+import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from '../lib/iraqLocations';
 import { googleMapsDirectionsUrl } from './MapPicker';
 
 type Eq = {
@@ -16,6 +17,9 @@ type Eq = {
   price: number;
   description: string;
   image: string;
+  location?: string;
+  governorate?: string;
+  area?: string;
 };
 
 type Bk = {
@@ -83,6 +87,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     imageFile: null as File | null
   });
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingEquipmentId, setEditingEquipmentId] = useState<string | null>(null);
+  const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const [bookings, setBookings] = useState<Bk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -133,15 +141,22 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     setLoading(true);
     try {
       const equip = await apiJson<Record<string, unknown>[]>(`/api/equipment/owner/${ownerId}`);
-      const mapped: Eq[] = equip.map((e) => ({
-        id: String(e.id),
-        title: String(e.title),
-        category: String(e.category),
-        status: String(e.status),
-        price: Number(e.price_per_day),
-        description: String(e.description || ''),
-        image: Array.isArray(e.images) && (e.images as string[])[0] ? (e.images as string[])[0] : 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400',
-      }));
+      const mapped: Eq[] = equip.map((e) => {
+        const loc = String(e.location || '');
+        const hint = parseLocationHint(loc);
+        return {
+          id: String(e.id),
+          title: String(e.title),
+          category: String(e.category),
+          status: String(e.status),
+          price: Number(e.price_per_day),
+          description: String(e.description || ''),
+          image: Array.isArray(e.images) && (e.images as string[])[0] ? (e.images as string[])[0] : 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400',
+          location: loc,
+          governorate: String(e.governorate || hint.governorate || 'بغداد'),
+          area: String(e.area || hint.area || ''),
+        };
+      });
       setMyEquipment(mapped);
 
       const bList = await apiJson<any[]>(`/api/bookings/owner/${ownerId}`);
@@ -175,6 +190,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       try {
         const prof = await apiJson<any>('/api/auth/me');
         setProfile(prof);
+        setProfileForm({
+          name: String(prof.name || ''),
+          phone: String(prof.phone || ''),
+        });
       } catch {
         // ignore
       }
@@ -467,25 +486,82 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     const location = formatEquipmentLocation(governorate, area);
 
     try {
-      await apiJson('/api/equipment', {
-        method: 'POST',
-        body: JSON.stringify({
-          title: newEquipment.title,
-          description: newEquipment.description || '—',
-          category: newEquipment.category,
-          price_per_day: price,
-          location,
-          governorate,
-          area,
-          images: [imageUrl],
-          ownerId,
-        }),
-      });
+      if (editingEquipmentId) {
+        await apiJson(`/api/equipment/${editingEquipmentId}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            title: newEquipment.title,
+            description: newEquipment.description || '—',
+            category: newEquipment.category,
+            price_per_day: price,
+            location,
+            governorate,
+            area,
+            images: [imageUrl],
+            ownerId,
+          }),
+        });
+      } else {
+        await apiJson('/api/equipment', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: newEquipment.title,
+            description: newEquipment.description || '—',
+            category: newEquipment.category,
+            price_per_day: price,
+            location,
+            governorate,
+            area,
+            images: [imageUrl],
+            ownerId,
+          }),
+        });
+      }
       setNewEquipment({ title: '', category: '', price: '', description: '', governorate: 'بغداد', area: '', imageFile: null });
       setShowAddForm(false);
+      setEditingEquipmentId(null);
       await loadData();
     } catch {
-      alert('تعذر حفظ المعدة');
+      alert(editingEquipmentId ? 'تعذر تحديث المعدة' : 'تعذر حفظ المعدة');
+    }
+  };
+
+  const startEditEquipment = (equipment: Eq) => {
+    setEditingEquipmentId(equipment.id);
+    setNewEquipment({
+      title: equipment.title,
+      category: equipment.category,
+      price: String(equipment.price),
+      description: equipment.description || '',
+      governorate: equipment.governorate || 'بغداد',
+      area: equipment.area || '',
+      imageFile: null,
+    });
+    setShowAddForm(true);
+    setActiveTab('equipment');
+  };
+
+  const savePartnerProfile = async () => {
+    setProfileSaving(true);
+    try {
+      await apiJson('/api/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: profileForm.name.trim(),
+          phone: profileForm.phone.trim(),
+        }),
+      });
+      const prof = await apiJson<any>('/api/auth/me');
+      setProfile(prof);
+      setProfileForm({
+        name: String(prof.name || ''),
+        phone: String(prof.phone || ''),
+      });
+      alert('تم حفظ الملف الشخصي');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
+    } finally {
+      setProfileSaving(false);
     }
   };
 
@@ -638,17 +714,33 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               {!loading && activeTab === 'settings' && 'إدارة معلومات حسابك'}
             </p>
           </div>
-          {activeTab === 'equipment' && (
-            <button 
+          <div className="flex items-center gap-2">
+            <button
               type="button"
-              data-testid="partner-open-add-equipment"
-              onClick={() => setShowAddForm(true)}
-              className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200"
+              data-testid="partner-notifications"
+              onClick={() => setShowNotifications(true)}
+              className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50"
+              title="الإشعارات"
             >
-              <Plus size={18} /> إضافة معدة جديدة
+              <Bell size={18} className="text-slate-600" />
             </button>
-          )}
+            {activeTab === 'equipment' && (
+              <button 
+                type="button"
+                data-testid="partner-open-add-equipment"
+                onClick={() => setShowAddForm(true)}
+                className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 shadow-lg shadow-blue-200"
+              >
+                <Plus size={18} /> إضافة معدة جديدة
+              </button>
+            )}
+          </div>
         </header>
+        <NotificationsPanel
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          userId={ownerId}
+        />
 
         {/* Bookings Tab */}
         {activeTab === 'bookings' && (
@@ -1088,7 +1180,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm"
               >
-                <h3 className="text-lg font-bold mb-4">إضافة معدة جديدة</h3>
+                <h3 className="text-lg font-bold mb-4">{editingEquipmentId ? 'تعديل المعدة' : 'إضافة معدة جديدة'}</h3>
                 <div className="grid md:grid-cols-2 gap-4 mb-4">
                   <input
                     type="text"
@@ -1174,7 +1266,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   <button 
                     type="button"
                     data-testid="partner-equipment-cancel-form"
-                    onClick={() => setShowAddForm(false)}
+                    onClick={() => {
+                      setShowAddForm(false);
+                      setEditingEquipmentId(null);
+                      setNewEquipment({ title: '', category: '', price: '', description: '', governorate: 'بغداد', area: '', imageFile: null });
+                    }}
                     className="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-700"
                   >
                     <X size={16} /> إلغاء
@@ -1205,7 +1301,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         {equipment.status === 'available' ? 'متاحة' : 'مؤجرة'}
                       </span>
                       <div className="flex gap-2">
-                        <button type="button" data-testid="partner-equipment-edit" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                        <button
+                          type="button"
+                          data-testid="partner-equipment-edit"
+                          onClick={() => startEditEquipment(equipment)}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        >
                           <Edit2 size={16} />
                         </button>
                         <button 
@@ -1405,7 +1506,13 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">اسم الشريك</label>
-                <input type="text" value={profile?.name || '—'} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-right" />
+                <input
+                  type="text"
+                  data-testid="partner-profile-name"
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg text-right"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">البريد الإلكتروني</label>
@@ -1413,7 +1520,13 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">رقم الهاتف</label>
-                <input type="tel" value={profile?.phone || '—'} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-right" />
+                <input
+                  type="tel"
+                  data-testid="partner-profile-phone"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg text-right"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">حالة الاشتراك</label>
@@ -1426,6 +1539,17 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">تاريخ الانضمام</label>
                 <input type="text" value={profile?.created_at ? new Date(profile.created_at).toLocaleDateString('ar-IQ') : '—'} readOnly className="w-full px-4 py-2 border border-slate-200 rounded-lg bg-slate-50 text-right" />
+              </div>
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  data-testid="partner-profile-save"
+                  disabled={profileSaving}
+                  onClick={savePartnerProfile}
+                  className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+                >
+                  <Save size={16} /> {profileSaving ? 'جاري الحفظ…' : 'حفظ الملف الشخصي'}
+                </button>
               </div>
             </div>
 

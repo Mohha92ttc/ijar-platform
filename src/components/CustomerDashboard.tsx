@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone, Save } from 'lucide-react';
+import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone, Save, Bell, Navigation } from 'lucide-react';
 import { apiJson, ApiError, apiLogout } from '../lib/api';
+import NotificationsPanel from './NotificationsPanel';
+import { googleMapsDirectionsUrl } from './MapPicker';
 
 type Row = {
   id: string;
@@ -13,6 +15,8 @@ type Row = {
   location: string;
   deliveryRequested?: boolean;
   deliveryStatus?: string | null;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
   courierName?: string | null;
   courierPhone?: string | null;
   reviewed?: boolean;
@@ -68,6 +72,7 @@ export default function CustomerDashboard({
   const [notifyOn, setNotifyOn] = useState(true);
   const [lang, setLang] = useState('ar');
   const [reviewDraft, setReviewDraft] = useState<Record<string, { rating: number; comment: string }>>({});
+  const [showNotifications, setShowNotifications] = useState(false);
 
   const loadPrefs = useCallback(() => {
     try {
@@ -127,6 +132,8 @@ export default function CustomerDashboard({
           location: String(b.delivery_address || b.location || b.equipment_location || '—'),
           deliveryRequested: Boolean(b.delivery_requested),
           deliveryStatus: b.delivery_status ? String(b.delivery_status) : null,
+          deliveryLat: b.delivery_lat != null ? Number(b.delivery_lat) : null,
+          deliveryLng: b.delivery_lng != null ? Number(b.delivery_lng) : null,
           courierName: b.courier_name ? String(b.courier_name) : null,
           courierPhone: b.courier_phone ? String(b.courier_phone) : null,
         }))
@@ -340,14 +347,30 @@ export default function CustomerDashboard({
             {activeTab === 'profile' && 'الملف الشخصي'}
             {activeTab === 'settings' && 'الإعدادات'}
           </h2>
-          <button
-            type="button"
-            className="lg:hidden text-xs font-bold text-red-600 border border-red-200 px-3 py-1.5 rounded-lg"
-            onClick={handleLogout}
-          >
-            خروج
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              data-testid="customer-notifications"
+              onClick={() => setShowNotifications(true)}
+              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100"
+              title="الإشعارات"
+            >
+              <Bell size={18} className="text-slate-600" />
+            </button>
+            <button
+              type="button"
+              className="lg:hidden text-xs font-bold text-red-600 border border-red-200 px-3 py-1.5 rounded-lg"
+              onClick={handleLogout}
+            >
+              خروج
+            </button>
+          </div>
         </header>
+        <NotificationsPanel
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          userId={userId}
+        />
 
         {activeTab === 'rentals' && (
           <div className="space-y-4">
@@ -382,7 +405,7 @@ export default function CustomerDashboard({
                   <p className="font-bold text-slate-800">{booking.total.toLocaleString()} د.ع</p>
                 </div>
                 {booking.deliveryRequested && (
-                  <div className="text-xs space-y-1" data-testid="customer-delivery-status">
+                  <div className="text-xs space-y-2" data-testid="customer-delivery-status">
                     <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
                       <Truck size={10} /> {deliveryLabel(booking.deliveryStatus)}
                     </span>
@@ -393,6 +416,20 @@ export default function CustomerDashboard({
                         {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
                       </p>
                     )}
+                    {booking.deliveryLat != null &&
+                      booking.deliveryLng != null &&
+                      Number.isFinite(booking.deliveryLat) &&
+                      Number.isFinite(booking.deliveryLng) && (
+                        <a
+                          href={googleMapsDirectionsUrl(booking.deliveryLat, booking.deliveryLng)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          data-testid="customer-open-delivery-map"
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-bold border border-blue-100"
+                        >
+                          <Navigation size={12} /> تتبع موقع التوصيل على الخريطة
+                        </a>
+                      )}
                   </div>
                 )}
                 {booking.status === 'completed' && !booking.reviewed && (

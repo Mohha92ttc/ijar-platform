@@ -5,12 +5,13 @@ import {
   MapPin, Phone, Mail, Globe, Save, X, Edit2, CheckCircle, CreditCard, Bell, Trash2, ArrowRight, Eye, Download, Info,
   FileText, Home, Sparkles, Truck
 } from 'lucide-react';
-import { apiJson, ApiError, clearSession } from '../lib/api';
+import { apiJson, ApiError, clearSession, getStoredUser } from '../lib/api';
 import AdminSettings from './AdminSettings';
 import PaymentsTab from './PaymentsTab';
 import PaymentApproval from './PaymentApproval';
 import PartnerStatement from './PartnerStatement';
 import ImageUpload from './ImageUpload';
+import NotificationsPanel from './NotificationsPanel';
 
 export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [partners, setPartners] = useState<any[]>([]);
@@ -64,6 +65,14 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [partnerSearch, setPartnerSearch] = useState('');
   const [editingInfo, setEditingInfo] = useState(false);
   const [tempInfo, setTempInfo] = useState({...platformInfo});
+  const [lastResetToken, setLastResetToken] = useState<{
+    email: string;
+    token: string;
+    at: string;
+  } | null>(null);
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const adminUserId = getStoredUser()?.id;
 
   const fetchData = async () => {
     setLoading(true);
@@ -277,7 +286,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
     }
   };
 
-  const reviewPasswordReset = async (id: string, approve: boolean) => {
+  const reviewPasswordReset = async (id: string, approve: boolean, emailHint?: string) => {
     let notes = '';
     if (!approve) {
       notes = prompt('سبب الرفض') || '';
@@ -292,8 +301,13 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         }
       );
       if (approve && result.completionToken) {
-        // When SMTP is off, admin can hand the token to the user (also returned for E2E)
-        alert(`تمت الموافقة. رمز التأكيد (صالح 30 دقيقة):\n${result.completionToken}`);
+        setLastResetToken({
+          email: emailHint || '—',
+          token: result.completionToken,
+          at: new Date().toLocaleString('ar-IQ'),
+        });
+        setTokenCopied(false);
+        setActiveTab('password-resets');
       }
       await fetchData();
     } catch (err) {
@@ -490,6 +504,15 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'stats' && 'الإحصائيات والتقارير'}
           </h2>
           <div className="flex gap-4">
+            <button
+              type="button"
+              data-testid="admin-notifications"
+              onClick={() => setShowNotifications(true)}
+              className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 self-start"
+              title="الإشعارات"
+            >
+              <Bell size={18} className="text-slate-600" />
+            </button>
             {activeTab === 'partners' && (
               <>
                 <div className="relative">
@@ -546,6 +569,11 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             )}
           </div>
         </header>
+        <NotificationsPanel
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          userId={adminUserId}
+        />
 
         {/* Categories Tab Content */}
         {activeTab === 'categories' && (
@@ -638,7 +666,52 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         )}
 
         {activeTab === 'password-resets' && (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="space-y-4">
+            {lastResetToken && (
+              <div
+                className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-3"
+                data-testid="admin-reset-token-panel"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-emerald-900">رمز تأكيد إعادة التعيين</h3>
+                    <p className="text-xs text-emerald-800 mt-1">
+                      سلّم هذا الرمز للمستخدم ({lastResetToken.email}) — صالح 30 دقيقة. يظهر هنا عندما SMTP غير مفعّل.
+                    </p>
+                    <p className="text-[10px] text-emerald-700 mt-1">{lastResetToken.at}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs text-emerald-800 underline"
+                    onClick={() => setLastResetToken(null)}
+                  >
+                    إخفاء
+                  </button>
+                </div>
+                <code
+                  data-testid="admin-reset-token-value"
+                  className="block w-full break-all text-xs font-mono bg-white border border-emerald-100 rounded-xl p-3 text-slate-800"
+                >
+                  {lastResetToken.token}
+                </code>
+                <button
+                  type="button"
+                  data-testid="admin-reset-token-copy"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(lastResetToken.token);
+                      setTokenCopied(true);
+                    } catch {
+                      prompt('انسخ الرمز يدوياً:', lastResetToken.token);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold"
+                >
+                  {tokenCopied ? 'تم النسخ ✓' : 'نسخ الرمز'}
+                </button>
+              </div>
+            )}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <table className="w-full text-right">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
@@ -659,7 +732,19 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                     <td className="p-4">
                       {r.status === 'pending' ? (
                         <div className="flex gap-2">
-                          <button data-testid="admin-reset-approve" onClick={() => reviewPasswordReset(String(r.id), true)} className="px-3 py-1 bg-green-600 text-white rounded-lg text-xs font-bold">موافقة</button>
+                          <button
+                            data-testid="admin-reset-approve"
+                            onClick={() =>
+                              reviewPasswordReset(
+                                String(r.id),
+                                true,
+                                String(r.user_email || r.requested_email || '')
+                              )
+                            }
+                            className="px-3 py-1 bg-green-600 text-white rounded-lg text-xs font-bold"
+                          >
+                            موافقة
+                          </button>
                           <button data-testid="admin-reset-reject" onClick={() => reviewPasswordReset(String(r.id), false)} className="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold">رفض</button>
                         </div>
                       ) : (
@@ -670,6 +755,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 

@@ -115,11 +115,12 @@ export class AuthService {
     }
 
     if (verificationToken) {
-      const appUrl = process.env.APP_URL || 'http://127.0.0.1:5173';
+      const appUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://127.0.0.1:5173';
+      const verifyLink = `${appUrl.replace(/\/$/, '')}/?verify=${encodeURIComponent(verificationToken)}`;
       await mailService.send({
         to: data.email,
         subject: 'تأكيد البريد — إيجار',
-        text: `يرجى تأكيد بريدك عبر الرابط: ${appUrl}/api/auth/verify-email/${verificationToken}`,
+        text: `يرجى تأكيد بريدك عبر الرابط: ${verifyLink}`,
       });
     }
 

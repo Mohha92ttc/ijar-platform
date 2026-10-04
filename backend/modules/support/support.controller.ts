@@ -1,6 +1,54 @@
 import { Request, Response } from 'express';
+import { mailService } from '../../services/mail.service';
+import { publicError } from '../../utils/publicError';
 
 export const supportController = {
+  /** Public contact form from Help page (no auth). */
+  async submitContact(req: Request, res: Response) {
+    try {
+      const name = String(req.body?.name || '').trim();
+      const email = String(req.body?.email || '').trim();
+      const category = String(req.body?.category || 'general').trim();
+      const message = String(req.body?.message || '').trim();
+
+      if (!name || name.length < 2) {
+        return res.status(400).json({ error: 'الاسم مطلوب' });
+      }
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ error: 'بريد إلكتروني غير صالح' });
+      }
+      if (!message || message.length < 10) {
+        return res.status(400).json({ error: 'الرسالة قصيرة جداً (10 أحرف على الأقل)' });
+      }
+
+      const supportTo =
+        process.env.SUPPORT_EMAIL ||
+        process.env.EMAIL_FROM ||
+        process.env.SMTP_USER ||
+        'support@ijar.iq';
+
+      const subject = `[إيجار دعم] ${category} — ${name}`;
+      const text = `الاسم: ${name}\nالبريد: ${email}\nالنوع: ${category}\n\n${message}`;
+
+      await mailService.send({ to: supportTo, subject, text });
+      // Ack to sender when SMTP is live
+      if (mailService.isConfigured()) {
+        await mailService.send({
+          to: email,
+          subject: 'استلمنا رسالتك — إيجار',
+          text: `مرحباً ${name}،\n\nاستلمنا رسالتك وسنرد خلال 24 ساعة.\n\nنوع الطلب: ${category}`,
+        });
+      }
+
+      res.status(201).json({
+        message: 'تم إرسال رسالتك بنجاح',
+        id: `contact_${Date.now()}`,
+      });
+    } catch (error: unknown) {
+      res.status(500).json({ error: publicError(error, 'فشل إرسال الرسالة') });
+    }
+  },
+
   // Support tickets
   async createTicket(req: Request, res: Response) {
     try {

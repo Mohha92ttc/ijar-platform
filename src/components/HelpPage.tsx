@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Phone, Mail, MessageCircle, HelpCircle, Search, Book, Headphones, Send } from 'lucide-react';
 import { useState } from 'react';
+import { apiJson, ApiError } from '../lib/api';
 
 const faqData = [
   {
@@ -9,15 +10,15 @@ const faqData = [
   },
   {
     question: 'ما هي رسوم المنصة؟',
-    answer: 'نحصل على عمولة 10% فقط على كل عملية تأجير ناجحة. لا توجد رسوم اشتراك شهرية أو رسوم خفية أخرى.'
+    answer: 'نحصل على عمولة قابلة للضبط من الإدارة على كل عملية تأجير ناجحة. لا توجد رسوم خفية أخرى على الزبون.'
   },
   {
     question: 'كيف يتم الدفع والتسليم؟',
-    answer: 'يتم الدفع عبر البطاقة المصرفية الآمنة. يتم تحرير المبلغ للمؤجر بعد انتهاء فترة التأجير وتسليم المعدات بنجاح.'
+    answer: 'يمكنك الدفع عبر تحويل بنكي / زين كاش أو عند التسليم حسب إعدادات الشريك. التوصيل عبر مندوب عند طلبه مع تحديد موقعك على الخريطة.'
   },
   {
     question: 'ماذا لو تعطلت المعدات أثناء التأجير؟',
-    answer: 'المؤجر مسؤول عن صيانة المعدات. في حالة العطل، يمكن التواصل مباشرة مع المؤجر أو رفع شكوى عبر المنصة.'
+    answer: 'المؤجر مسؤول عن صيانة المعدات. في حالة العطل، يمكن التواصل مباشرة مع المؤجر أو رفع شكوى عبر نموذج المساعدة.'
   },
   {
     question: 'كيف يمكنني إلغاء الحجز؟',
@@ -29,21 +30,57 @@ const faqData = [
   }
 ];
 
+const CATEGORY_OPTIONS = [
+  { value: 'general', label: 'استفسار عام' },
+  { value: 'technical', label: 'مشكلة فنية' },
+  { value: 'suggestion', label: 'اقتراح' },
+  { value: 'complaint', label: 'شكوى' },
+  { value: 'billing', label: 'دفع / فوترة' },
+];
+
 export default function HelpPage({ onBack }: { onBack: () => void }) {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    category: 'general',
+    message: '',
+  });
+  const [sending, setSending] = useState(false);
+  const [formMsg, setFormMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
-  const filteredFaq = faqData.filter(item => 
+  const filteredFaq = faqData.filter(item =>
     item.question.includes(searchTerm) || item.answer.includes(searchTerm)
   );
 
+  const submitContact = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    setFormMsg(null);
+    try {
+      await apiJson('/api/support/contact', {
+        method: 'POST',
+        body: JSON.stringify(form),
+      });
+      setFormMsg({ type: 'ok', text: 'تم إرسال رسالتك بنجاح. سنرد خلال 24 ساعة.' });
+      setForm({ name: '', email: '', category: 'general', message: '' });
+    } catch (err) {
+      setFormMsg({
+        type: 'err',
+        text: err instanceof ApiError ? err.message : 'تعذر إرسال الرسالة',
+      });
+    } finally {
+      setSending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               type="button"
               data-testid="static-page-back"
               onClick={onBack}
@@ -57,8 +94,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
       </div>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* Search */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-2xl p-6 border border-slate-200 mb-8"
@@ -75,40 +111,47 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
           </div>
         </motion.div>
 
-        {/* Quick Actions */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
           className="grid md:grid-cols-3 gap-4 mb-8"
         >
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow cursor-pointer">
+          <a
+            href="#help-contact-form"
+            className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow"
+          >
             <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <MessageCircle className="text-blue-600" size={28} />
             </div>
-            <h3 className="font-bold mb-2">دردشة مباشرة</h3>
-            <p className="text-sm text-slate-600">تواصل مع فريق الدعم فوراً</p>
-          </div>
+            <h3 className="font-bold mb-2">أرسل رسالة</h3>
+            <p className="text-sm text-slate-600">نموذج الدعم أدناه</p>
+          </a>
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow cursor-pointer">
+          <a
+            href="tel:+9647700123456"
+            className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow"
+          >
             <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Phone className="text-green-600" size={28} />
             </div>
             <h3 className="font-bold mb-2">اتصل بنا</h3>
             <p className="text-sm text-slate-600">+964 7700 123 456</p>
-          </div>
+          </a>
 
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow cursor-pointer">
+          <a
+            href="mailto:support@ijar.iq"
+            className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow"
+          >
             <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Mail className="text-amber-600" size={28} />
             </div>
             <h3 className="font-bold mb-2">بريد إلكتروني</h3>
             <p className="text-sm text-slate-600">support@ijar.iq</p>
-          </div>
+          </a>
         </motion.div>
 
-        {/* FAQ */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -123,6 +166,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
             {filteredFaq.map((faq, index) => (
               <div key={index} className="border border-slate-200 rounded-xl overflow-hidden">
                 <button
+                  type="button"
                   onClick={() => setExpandedFaq(expandedFaq === index ? null : index)}
                   className="w-full px-6 py-4 text-right flex items-center justify-between hover:bg-slate-50 transition-colors"
                 >
@@ -132,7 +176,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
                   </div>
                 </button>
                 {expandedFaq === index && (
-                  <motion.div 
+                  <motion.div
                     initial={{ height: 0 }}
                     animate={{ height: 'auto' }}
                     className="px-6 pb-4 text-slate-600"
@@ -145,8 +189,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
           </div>
         </motion.div>
 
-        {/* Categories */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
@@ -203,45 +246,76 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
           </div>
         </motion.div>
 
-        {/* Contact Form */}
-        <motion.div 
+        <motion.div
+          id="help-contact-form"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           className="bg-white rounded-2xl p-6 border border-slate-200"
         >
           <h3 className="text-lg font-bold mb-6">أرسل لنا رسالة</h3>
-          <form className="space-y-4">
+          <form className="space-y-4" onSubmit={submitContact} data-testid="help-contact-form">
             <div className="grid md:grid-cols-2 gap-4">
               <input
                 type="text"
+                data-testid="help-contact-name"
                 placeholder="الاسم الكامل"
+                required
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <input
                 type="email"
+                data-testid="help-contact-email"
                 placeholder="البريد الإلكتروني"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
                 className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
-            <select className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-              <option>اختر نوع المشكلة</option>
-              <option>استفسار عام</option>
-              <option>مشكلة فنية</option>
-              <option>اقتراح</option>
-              <option>شكوى</option>
+            <select
+              data-testid="help-contact-category"
+              value={form.category}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {CATEGORY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
             <textarea
+              data-testid="help-contact-message"
               placeholder="اكتب رسالتك هنا..."
               rows={4}
+              required
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-            ></textarea>
+            />
+            {formMsg && (
+              <p
+                data-testid="help-contact-status"
+                className={`text-sm rounded-xl px-3 py-2 ${
+                  formMsg.type === 'ok'
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-100'
+                    : 'bg-red-50 text-red-700 border border-red-100'
+                }`}
+              >
+                {formMsg.text}
+              </p>
+            )}
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              data-testid="help-contact-submit"
+              disabled={sending}
+              className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <Send size={20} />
-              إرسال الرسالة
+              {sending ? 'جاري الإرسال…' : 'إرسال الرسالة'}
             </button>
           </form>
         </motion.div>

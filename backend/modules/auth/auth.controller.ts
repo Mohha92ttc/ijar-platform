@@ -93,7 +93,12 @@ export class AuthController {
     try {
       const { token } = req.params;
       await this.authService.verifyEmail(token);
-      res.status(200).json({ message: 'Email verified successfully' });
+      const appUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || '';
+      const accept = String(req.headers.accept || '');
+      if (appUrl && accept.includes('text/html')) {
+        return res.redirect(302, `${appUrl.replace(/\/$/, '')}/?verified=1`);
+      }
+      res.status(200).json({ message: 'تم تأكيد البريد بنجاح', ok: true });
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل التحقق') });
     }

@@ -32,7 +32,12 @@ export class BookingService {
     const start = new Date(data.start_date);
     const end = new Date(data.end_date);
 
-    if (start < new Date()) {
+    // Compare by calendar day (Iraq-local noon), not UTC midnight — fixes "اليوم" bookings
+    const startDay = new Date(start);
+    startDay.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (startDay < today) {
       throw new Error('تاريخ البداية لا يمكن أن يكون في الماضي');
     }
 
@@ -40,13 +45,22 @@ export class BookingService {
       throw new Error('تاريخ النهاية يجب أن يكون بعد تاريخ البداية');
     }
 
-    const available = await this.checkAvailability(data.equipment_id, start, end);
+    // Normalize to midday to avoid DST/UTC edge cases on day counts
+    const startNorm = new Date(start);
+    startNorm.setHours(12, 0, 0, 0);
+    const endNorm = new Date(end);
+    endNorm.setHours(12, 0, 0, 0);
+    if (endNorm <= startNorm) {
+      throw new Error('تاريخ النهاية يجب أن يكون بعد تاريخ البداية');
+    }
+
+    const available = await this.checkAvailability(data.equipment_id, startNorm, endNorm);
     if (!available) {
       throw new Error('المعدة محجوزة مسبقاً في هذه التواريخ. اختر تواريخ أخرى.');
     }
 
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffTime = Math.abs(endNorm.getTime() - startNorm.getTime());
+    const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
     const rentalPrice = diffDays * equipment.price_per_day;
     const deliveryRequested = Boolean(data.delivery_requested);
     const deliveryFee = deliveryRequested ? Math.max(0, Number(data.delivery_fee) || 0) : 0;
@@ -86,8 +100,8 @@ export class BookingService {
       [
         data.equipment_id,
         customerId,
-        start.toISOString(),
-        end.toISOString(),
+        startNorm.toISOString(),
+        endNorm.toISOString(),
         totalPrice,
         data.location ?? null,
         data.notes ?? null,

@@ -4,6 +4,9 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 
 const router = Router();
 
+// Public contact (Help page)
+router.post('/contact', supportController.submitContact);
+
 // Support tickets
 router.post('/tickets', authenticateToken, supportController.createTicket);
 router.get('/tickets', authenticateToken, supportController.getTickets);

@@ -106,6 +106,7 @@ export default function App() {
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [verifyBanner, setVerifyBanner] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
@@ -114,6 +115,28 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const verifyToken = params.get('verify');
+      const verifiedFlag = params.get('verified');
+      if (verifyToken) {
+        try {
+          await apiJson(`/api/auth/verify-email/${encodeURIComponent(verifyToken)}`);
+          if (!cancelled) setVerifyBanner('تم تأكيد بريدك بنجاح — يمكنك تسجيل الدخول الآن.');
+        } catch (e) {
+          if (!cancelled) {
+            setVerifyBanner(e instanceof ApiError ? e.message : 'فشل تأكيد البريد — الرابط منتهٍ أو غير صالح.');
+          }
+        }
+        params.delete('verify');
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, '', next);
+      } else if (verifiedFlag) {
+        if (!cancelled) setVerifyBanner('تم تأكيد بريدك بنجاح — يمكنك تسجيل الدخول الآن.');
+        params.delete('verified');
+        const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}${window.location.hash}`;
+        window.history.replaceState({}, '', next);
+      }
+
       const me = await validateSession();
       if (cancelled) return;
       if (me) {
@@ -441,10 +464,14 @@ export default function App() {
     try {
       for (const item of cart) {
         const method = formData.paymentMethod || item.paymentMethod || 'manual';
+        const toNoonIso = (ymd: string) => {
+          const d = new Date(`${ymd}T12:00:00`);
+          return d.toISOString();
+        };
         const bookingBody: Record<string, unknown> = {
           equipment_id: item.id,
-          start_date: new Date(item.startDate).toISOString(),
-          end_date: new Date(item.endDate).toISOString(),
+          start_date: toNoonIso(item.startDate),
+          end_date: toNoonIso(item.endDate),
           customerId: user.id,
           customer_phone: formData.phone,
           location: formData.location,
@@ -517,6 +544,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col pb-[env(safe-area-inset-bottom)]">
+      {verifyBanner && (
+        <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-900 text-sm px-4 py-3 text-center" data-testid="email-verify-banner">
+          {verifyBanner}{' '}
+          <button type="button" className="font-bold underline" onClick={() => setVerifyBanner(null)}>
+            إغلاق
+          </button>
+        </div>
+      )}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50 pt-[env(safe-area-inset-top)]">
         {/* صف علوي: شعار + تثبيت + سلة + دخول */}
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 sm:h-16 flex items-center justify-between gap-2">
