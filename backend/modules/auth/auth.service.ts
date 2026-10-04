@@ -247,7 +247,17 @@ export class AuthService {
     return res.rows[0];
   }
 
-  async updateMe(userId: string, data: { name?: string; email?: string; phone?: string; currentPassword?: string; newPassword?: string }): Promise<void> {
+  async updateMe(
+    userId: string,
+    data: {
+      name?: string;
+      email?: string;
+      phone?: string;
+      currentPassword?: string;
+      newPassword?: string;
+      email_notifications?: boolean;
+    }
+  ): Promise<void> {
     if (data.newPassword && data.currentPassword) {
       this.assertPassword(data.newPassword);
       const res = await query(`SELECT password FROM users WHERE id = $1`, [userId]);
@@ -281,6 +291,19 @@ export class AuthService {
         values.push(userId);
         await query(`UPDATE users SET ${updates.join(', ')} WHERE id = $${i}`, values);
       }
+    }
+
+    if (typeof data.email_notifications === 'boolean') {
+      await query(
+        `
+        INSERT INTO user_preferences (user_id, email_notifications)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id) DO UPDATE SET
+          email_notifications = EXCLUDED.email_notifications,
+          updated_at = CURRENT_TIMESTAMP
+        `,
+        [userId, data.email_notifications]
+      );
     }
   }
 

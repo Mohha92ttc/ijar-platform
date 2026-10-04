@@ -76,6 +76,13 @@ export class NotificationService {
 
   private async sendEmail(userId: string, title: string, message: string): Promise<void> {
     try {
+      const pref = await query(
+        `SELECT email_notifications FROM user_preferences WHERE user_id = $1 LIMIT 1`,
+        [userId]
+      );
+      if (pref.rows[0] && pref.rows[0].email_notifications === false) {
+        return;
+      }
       const u = await query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [userId]);
       const email = u.rows[0]?.email;
       if (!email) return;
@@ -85,7 +92,7 @@ export class NotificationService {
         text: message,
       });
     } catch (err) {
-      console.warn('[notification email]', err);
+      console.warn('[notif email]', err instanceof Error ? err.message : err);
     }
   }
 

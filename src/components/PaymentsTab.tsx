@@ -274,9 +274,10 @@ export default function PaymentsTab() {
                       >
                         <Eye size={16} />
                       </button>
-                      {payment.status === 'pending' && (
+                      {['pending', 'under_review', 'proof_uploaded'].includes(String(payment.status)) && (
                         <>
                           <button 
+                            type="button"
                             onClick={() => updatePaymentStatus(payment.id, true)}
                             className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" 
                             title="تأكيد الدفع"
@@ -284,9 +285,10 @@ export default function PaymentsTab() {
                             <CheckCircle size={16} />
                           </button>
                           <button 
+                            type="button"
                             onClick={() => updatePaymentStatus(payment.id, false)}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
-                            title="فشل الدفع"
+                            title="رفض الدفع"
                           >
                             <XCircle size={16} />
                           </button>
@@ -313,7 +315,7 @@ export default function PaymentsTab() {
           <motion.div
             initial={{ scale: 0.95 }}
             animate={{ scale: 1 }}
-            className="bg-white rounded-2xl p-6 max-w-md w-full"
+            className="bg-white rounded-2xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold mb-4">تفاصيل الدفعة</h3>
@@ -336,14 +338,56 @@ export default function PaymentsTab() {
                   {getStatusLabel(selectedPayment.status)}
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">الوصف:</span>
-                <span>{selectedPayment.description}</span>
+              <div className="flex justify-between gap-4">
+                <span className="text-slate-600 shrink-0">الوصف:</span>
+                <span className="text-left">{selectedPayment.description || selectedPayment.notes || '—'}</span>
               </div>
+              {selectedPayment.payment_proof && (
+                <div className="pt-2 border-t border-slate-100">
+                  <p className="text-sm font-bold text-slate-700 mb-2">إثبات التحويل</p>
+                  <a
+                    href={selectedPayment.payment_proof}
+                    target="_blank"
+                    rel="noreferrer"
+                    data-testid="admin-payment-proof"
+                  >
+                    <img
+                      src={selectedPayment.payment_proof}
+                      alt="إثبات الدفع"
+                      className="w-full max-h-64 object-contain rounded-xl border border-slate-200 bg-slate-50"
+                    />
+                  </a>
+                </div>
+              )}
             </div>
+            {['pending', 'under_review', 'proof_uploaded'].includes(String(selectedPayment.status)) && (
+              <div className="flex gap-2 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    updatePaymentStatus(selectedPayment.id, true);
+                    setSelectedPayment(null);
+                  }}
+                  className="flex-1 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
+                >
+                  موافقة
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    updatePaymentStatus(selectedPayment.id, false);
+                    setSelectedPayment(null);
+                  }}
+                  className="flex-1 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+                >
+                  رفض
+                </button>
+              </div>
+            )}
             <button
+              type="button"
               onClick={() => setSelectedPayment(null)}
-              className="w-full mt-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+              className="w-full mt-3 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200"
             >
               إغلاق
             </button>

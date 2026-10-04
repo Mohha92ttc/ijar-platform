@@ -10,6 +10,7 @@ export type CartLine = {
   location: string;
   image: string;
   owner_id?: string;
+  owner_name?: string;
   days: number;
   startDate: string;
   endDate: string;

@@ -275,7 +275,18 @@ export class EquipmentService {
   }
 
   async getCategories(): Promise<any[]> {
-    const res = await query(`SELECT * FROM categories WHERE is_active = TRUE ORDER BY sort_order ASC`);
+    const res = await query(
+      `
+      SELECT c.*,
+             COALESCE((
+               SELECT COUNT(*)::int FROM equipment e
+               WHERE e.category = c.name AND e.status NOT IN ('hidden')
+             ), 0) AS equipment_count
+      FROM categories c
+      WHERE c.is_active = TRUE
+      ORDER BY c.sort_order ASC
+      `
+    );
     return res.rows;
   }
 

@@ -350,7 +350,7 @@ export default function CourierDashboard({
                         بدء التوصيل
                       </button>
                     )}
-                    {b.delivery_status !== 'delivered' && (
+                    {b.delivery_status !== 'delivered' && b.delivery_status !== 'failed' && (
                       <button
                         type="button"
                         data-testid="courier-mark-delivered"
@@ -359,6 +359,23 @@ export default function CourierDashboard({
                       >
                         <CheckCircle size={14} /> تم التسليم
                       </button>
+                    )}
+                    {b.delivery_status !== 'delivered' && b.delivery_status !== 'failed' && (
+                      <button
+                        type="button"
+                        data-testid="courier-mark-failed"
+                        onClick={() => {
+                          if (confirm('تأكيد تعذّر التسليم؟')) setStatus(b.id, 'failed');
+                        }}
+                        className="px-3 py-2.5 rounded-xl text-sm font-bold border border-red-200 text-red-800 bg-red-50"
+                      >
+                        تعذّر التسليم
+                      </button>
+                    )}
+                    {b.delivery_status === 'failed' && (
+                      <span className="px-3 py-2.5 rounded-xl text-sm font-bold bg-red-50 text-red-700">
+                        تم تسجيل الفشل
+                      </span>
                     )}
                   </div>
                 </div>

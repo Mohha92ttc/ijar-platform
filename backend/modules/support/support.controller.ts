@@ -30,15 +30,24 @@ export const supportController = {
       const subject = `[إيجار دعم] ${category} — ${name}`;
       const text = `الاسم: ${name}\nالبريد: ${email}\nالنوع: ${category}\n\n${message}`;
 
-      await mailService.send({ to: supportTo, subject, text });
-      // Ack to sender when SMTP is live
-      if (mailService.isConfigured()) {
-        await mailService.send({
-          to: email,
-          subject: 'استلمنا رسالتك — إيجار',
-          text: `مرحباً ${name}،\n\nاستلمنا رسالتك وسنرد خلال 24 ساعة.\n\nنوع الطلب: ${category}`,
+      if (!mailService.isConfigured()) {
+        console.warn('[support contact]', subject, text.slice(0, 500));
+        return res.status(503).json({
+          error:
+            'خدمة البريد غير مفعّلة حالياً. تواصل مباشرة عبر الهاتف أو البريد الظاهر في صفحة المساعدة.',
         });
       }
+
+      const sent = await mailService.send({ to: supportTo, subject, text });
+      if (!sent) {
+        return res.status(502).json({ error: 'تعذر إرسال الرسالة. حاول لاحقاً أو تواصل هاتفياً.' });
+      }
+
+      await mailService.send({
+        to: email,
+        subject: 'استلمنا رسالتك — إيجار',
+        text: `مرحباً ${name}،\n\nاستلمنا رسالتك وسنرد خلال 24 ساعة.\n\nنوع الطلب: ${category}`,
+      });
 
       res.status(201).json({
         message: 'تم إرسال رسالتك بنجاح',

@@ -14,7 +14,7 @@ import {
   Briefcase,
   X,
 } from 'lucide-react';
-import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
 import AuthPage from './components/AuthPage';
 import AdminDashboard from './components/AdminDashboard';
 import PartnerDashboard from './components/PartnerDashboard';
@@ -25,6 +25,7 @@ import CourierDashboard from './components/CourierDashboard';
 import AboutPage from './components/AboutPage';
 import TermsPage from './components/TermsPage';
 import HelpPage from './components/HelpPage';
+import PrivacyPage from './components/PrivacyPage';
 import NotificationsPanel from './components/NotificationsPanel';
 import { apiJson, clearSession, ApiError, apiLogout, friendlyAuthMessage, validateSession, apiFetch } from './lib/api';
 import { loadCart, saveCart, clearCartStorage, switchCartUser, type CartLine, type CartPaymentMethod } from './lib/cartStorage';
@@ -84,7 +85,7 @@ function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [view, setView] = useState<'home' | 'auth' | 'admin' | 'partner' | 'customer' | 'courier' | 'checkout' | 'about' | 'terms' | 'help'>('home');
+  const [view, setView] = useState<'home' | 'auth' | 'admin' | 'partner' | 'customer' | 'courier' | 'checkout' | 'about' | 'terms' | 'help' | 'privacy'>('home');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentRow | null>(null);
   const [selectedDeliveryFee, setSelectedDeliveryFee] = useState(0);
@@ -92,6 +93,7 @@ export default function App() {
   const [activeCategory, setActiveCategory] = useState('الكل');
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [searchQ, setSearchQ] = useState('');
   const [showFilter, setShowFilter] = useState(false);
@@ -192,6 +194,28 @@ export default function App() {
       prevUserIdRef.current = nextId;
     }
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setUnreadNotifs(0);
+      return;
+    }
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const rows = await apiJson<{ is_read?: boolean }[]>(`/api/notifications/user/${user.id}`);
+        if (!cancelled) setUnreadNotifs(rows.filter((n) => !n.is_read).length);
+      } catch {
+        if (!cancelled) setUnreadNotifs(0);
+      }
+    };
+    pull();
+    const id = window.setInterval(pull, 45_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [user?.id, showNotifications]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -304,7 +328,7 @@ export default function App() {
     return GOVERNORATE_AREAS[filterGovernorate] || [];
   }, [filterGovernorate]);
 
-  const toggleFavorite = async (equipmentId: string, e: MouseEvent) => {
+  const toggleFavorite = async (equipmentId: string, e: ReactMouseEvent) => {
     e.stopPropagation();
     if (!user?.id || user.role !== 'customer') {
       alert('سجّل دخولك كزبون لإضافة المفضلة');
@@ -404,6 +428,7 @@ export default function App() {
       location: equipment.location,
       image: equipment.image,
       owner_id: equipment.owner_id,
+      owner_name: equipment.owner_name,
       days,
       startDate: bookingData.dates.start,
       endDate: bookingData.dates.end,
@@ -413,12 +438,29 @@ export default function App() {
       paymentMethod: bookingData.paymentMethod,
       wantsDelivery: bookingData.wantsDelivery,
     };
-    setCart((prev) => [...prev.filter((x) => !(x.id === line.id && x.startDate === line.startDate)), line]);
+    setCart((prev) => {
+      const otherOwners = prev.filter(
+        (x) => x.owner_id && equipment.owner_id && x.owner_id !== equipment.owner_id
+      );
+      if (otherOwners.length > 0) {
+        alert(
+          'السلة تقبل معدات من شريك واحد فقط في كل عملية دفع. أفرغ السلة أو أكمل الطلب الحالي أولاً.'
+        );
+        return prev;
+      }
+      return [...prev.filter((x) => !(x.id === line.id && x.startDate === line.startDate)), line];
+    });
     setSelectedEquipment(null);
   };
 
-  const removeFromCart = (id: string) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
+  const removeFromCart = (id: string, startDate?: string) => {
+    setCart((prev) =>
+      prev.filter((item) => {
+        if (item.id !== id) return true;
+        if (startDate) return item.startDate !== startDate;
+        return false;
+      })
+    );
   };
 
   const clearCart = () => {
@@ -461,8 +503,11 @@ export default function App() {
     }
     setCheckoutError(null);
     setCheckoutSubmitting(true);
+    const remaining = [...cart];
+    let done = 0;
     try {
-      for (const item of cart) {
+      for (let i = 0; i < remaining.length; i++) {
+        const item = remaining[i];
         const method = formData.paymentMethod || item.paymentMethod || 'manual';
         const toNoonIso = (ymd: string) => {
           const d = new Date(`${ymd}T12:00:00`);
@@ -504,6 +549,8 @@ export default function App() {
           method: 'POST',
           body: JSON.stringify(paymentBody),
         });
+        done += 1;
+        setCart((prev) => prev.filter((x) => !(x.id === item.id && x.startDate === item.startDate)));
       }
       clearCart();
       setView('home');
@@ -514,8 +561,12 @@ export default function App() {
       );
     } catch (err) {
       const msg = friendlyAuthMessage(err instanceof ApiError ? err.message : 'فشل إرسال الحجز');
-      setCheckoutError(msg);
-      alert(msg);
+      const partial =
+        done > 0
+          ? ` تم إرسال ${done} طلب بنجاح قبل الخطأ — الباقي ما زال في السلة.`
+          : '';
+      setCheckoutError(msg + partial);
+      alert(msg + partial);
       if (err instanceof ApiError && err.status === 401) {
         setUser(null);
         setView('auth');
@@ -554,6 +605,7 @@ export default function App() {
     );
   if (view === 'about') return <AboutPage onBack={() => setView('home')} />;
   if (view === 'terms') return <TermsPage onBack={() => setView('home')} />;
+  if (view === 'privacy') return <PrivacyPage onBack={() => setView('home')} />;
   if (view === 'help') return <HelpPage onBack={() => setView('home')} />;
 
   return (
@@ -597,6 +649,14 @@ export default function App() {
               <div className="flex items-center gap-1 sm:gap-2">
                 <button type="button" data-testid="header-notifications" onClick={() => setShowNotifications(true)} className="relative p-2 hover:bg-slate-100 rounded-lg transition-colors">
                   <Bell className="text-slate-600" size={20} />
+                  {unreadNotifs > 0 && (
+                    <span
+                      data-testid="header-notif-badge"
+                      className="absolute -top-0.5 -right-0.5 min-w-[1.15rem] h-5 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white"
+                    >
+                      {unreadNotifs > 99 ? '99+' : unreadNotifs}
+                    </span>
+                  )}
                 </button>
                 <div className="relative" ref={menuRef}>
                   <button type="button" data-testid="header-user-menu" onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-1.5 p-1.5 sm:p-2 hover:bg-slate-100 rounded-lg transition-colors">
@@ -984,6 +1044,9 @@ export default function App() {
             </button>
             <button type="button" data-testid="footer-terms" onClick={() => setView('terms')} className="hover:text-blue-600">
               الشروط
+            </button>
+            <button type="button" data-testid="footer-privacy" onClick={() => setView('privacy')} className="hover:text-blue-600">
+              الخصوصية
             </button>
             <button type="button" data-testid="footer-help" onClick={() => setView('help')} className="hover:text-blue-600">
               المساعدة

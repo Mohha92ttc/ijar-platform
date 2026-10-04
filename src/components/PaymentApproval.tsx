@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, XCircle, AlertCircle, Eye, Download, MessageCircle, Clock, DollarSign, CreditCard, Banknote, Smartphone, Save } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, Eye, Download, MessageCircle, Clock, DollarSign, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import { Payment } from '../types';
 import { apiJson, ApiError } from '../lib/api';
 
@@ -106,17 +106,12 @@ export default function PaymentApproval({ filterType }: Props) {
     document.body.removeChild(link);
   };
 
-  const handleSaveImage = (imageUrl: string, requestId: string) => {
-    // In a real app, this would save to server/database
-    // For now, we'll simulate saving and show success message
-    const savedImages = JSON.parse(localStorage.getItem('savedPaymentProofs') || '[]');
-    savedImages.push({
-      requestId,
-      imageUrl,
-      savedAt: new Date().toISOString()
-    });
-    localStorage.setItem('savedPaymentProofs', JSON.stringify(savedImages));
-    alert('تم حفظ صورة إثبات الدفع بنجاح!');
+  const [zoomProof, setZoomProof] = useState<string | null>(null);
+
+  const approveLabel = (type?: string) => {
+    if (type === 'featured_promotion') return 'موافقة وتفعيل الإعلان المميز';
+    if (type === 'subscription_renewal' || type === 'subscription') return 'موافقة وتجديد الاشتراك';
+    return 'موافقة على الدفعة';
   };
 
   const handleApprove = async (requestId: string) => {
@@ -362,22 +357,19 @@ export default function PaymentApproval({ filterType }: Props) {
                     </button>
                     )}
                     {selectedRequest.payment_proof && (
-                    <button 
-                      onClick={() => handleSaveImage(selectedRequest.payment_proof!, selectedRequest.id)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+                    <button
+                      type="button"
+                      onClick={() => setZoomProof(selectedRequest.payment_proof!)}
+                      className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-medium hover:bg-slate-700"
                     >
-                      <Save size={16} />
-                      حفظ في النظام
-                    </button>
-                    )}
-                    <button className="flex items-center gap-2 px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-medium hover:bg-slate-700">
                       <Eye size={16} />
                       تكبير
                     </button>
+                    )}
                   </div>
                   <div className="mt-3 text-xs text-slate-500">
-                    <p>• تحميل: حفظ الصورة على جهاز الكمبيوتر</p>
-                    <p>• حفظ: تخزين الصورة في قاعدة بيانات النظام</p>
+                    <p>• تحميل: حفظ الصورة على جهازك للمراجعة</p>
+                    <p>• تكبير: عرض الصورة بحجم أكبر</p>
                   </div>
                 </div>
               </div>
@@ -422,7 +414,7 @@ export default function PaymentApproval({ filterType }: Props) {
                   className="flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-700"
                 >
                   <CheckCircle size={16} />
-                  موافقة وتفعيل الحساب
+                  {approveLabel(selectedRequest.type)}
                 </button>
                 <button
                   onClick={() => setShowRejectModal(true)}
@@ -490,6 +482,21 @@ export default function PaymentApproval({ filterType }: Props) {
             </div>
           </motion.div>
         </motion.div>
+      )}
+
+      {zoomProof && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/80 flex items-center justify-center p-4"
+          data-testid="payment-proof-zoom"
+          onClick={() => setZoomProof(null)}
+        >
+          <img
+            src={zoomProof}
+            alt="إثبات الدفع"
+            className="max-w-full max-h-[90vh] object-contain rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

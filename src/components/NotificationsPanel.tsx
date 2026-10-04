@@ -23,9 +23,19 @@ export default function NotificationsPanel({
 }) {
   const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [loading, setLoading] = useState(false);
+  const prefsOff = (() => {
+    try {
+      const raw = localStorage.getItem(`ijar_customer_prefs_${userId || 'anon'}`);
+      if (!raw) return false;
+      const p = JSON.parse(raw);
+      return p.notifyOn === false;
+    } catch {
+      return false;
+    }
+  })();
 
   useEffect(() => {
-    if (!isOpen || !userId) return;
+    if (!isOpen || !userId || prefsOff) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -44,7 +54,7 @@ export default function NotificationsPanel({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, userId]);
+  }, [isOpen, userId, prefsOff]);
 
   const markAsRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
@@ -84,7 +94,9 @@ export default function NotificationsPanel({
                 <Bell className="text-blue-600" size={24} />
                 <div>
                   <h3 className="font-bold text-lg">الإشعارات</h3>
-                  <p className="text-xs text-slate-500">{unreadCount > 0 ? `${unreadCount} غير مقروء` : 'لا جديد'}</p>
+                  <p className="text-xs text-slate-500">
+                    {prefsOff ? 'معطّلة من الإعدادات' : unreadCount > 0 ? `${unreadCount} غير مقروء` : 'لا جديد'}
+                  </p>
                 </div>
               </div>
               <button type="button" data-testid="notifications-close" onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full">
@@ -93,12 +105,18 @@ export default function NotificationsPanel({
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {!userId && <p className="text-sm text-slate-500 text-center py-8">سجّل الدخول لعرض الإشعارات من الخادم.</p>}
-              {userId && loading && <p className="text-sm text-slate-500 text-center py-8">جاري التحميل…</p>}
-              {userId && !loading && notifications.length === 0 && (
+              {prefsOff && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-xl p-4 text-center" data-testid="notifications-prefs-off">
+                  عطّلت تذكير الإشعارات من الإعدادات. فعّله لعرض القائمة هنا.
+                </p>
+              )}
+              {!prefsOff && !userId && <p className="text-sm text-slate-500 text-center py-8">سجّل الدخول لعرض الإشعارات من الخادم.</p>}
+              {!prefsOff && userId && loading && <p className="text-sm text-slate-500 text-center py-8">جاري التحميل…</p>}
+              {!prefsOff && userId && !loading && notifications.length === 0 && (
                 <p className="text-sm text-slate-500 text-center py-8">لا توجد إشعارات بعد.</p>
               )}
-              {notifications.map((n) => (
+              {!prefsOff &&
+                notifications.map((n) => (
                 <button
                   key={n.id}
                   type="button"

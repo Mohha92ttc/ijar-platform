@@ -232,6 +232,9 @@ export class BookingService {
       `
       SELECT b.*, e.title as equipment_title, u.name as owner_name, e.location as equipment_location,
              c.name AS courier_name, c.phone AS courier_phone,
+             p.status::text AS payment_status,
+             p.notes AS payment_notes,
+             p.payment_proof AS payment_proof,
              EXISTS (
                SELECT 1 FROM reviews r
                WHERE r.booking_id = b.id OR (r.equipment_id = b.equipment_id AND r.reviewer_id = b.customer_id)
@@ -240,6 +243,13 @@ export class BookingService {
       JOIN equipment e ON b.equipment_id = e.id
       JOIN users u ON e.owner_id = u.id
       LEFT JOIN couriers c ON c.id = b.assigned_courier_id
+      LEFT JOIN LATERAL (
+        SELECT status, notes, payment_proof
+        FROM payments
+        WHERE booking_id = b.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) p ON TRUE
       WHERE b.customer_id = $1 
       ORDER BY b.start_date DESC
       `,

@@ -659,7 +659,9 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   </div>
                   <div className="p-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-slate-600">مع equipments</span>
+                      <span className="text-sm text-slate-600">
+                        {Number(category.equipment_count ?? 0).toLocaleString('ar-IQ')} معدة
+                      </span>
                       <button 
                         onClick={() => deleteCategory(category.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"

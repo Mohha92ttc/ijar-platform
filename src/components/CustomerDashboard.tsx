@@ -20,6 +20,8 @@ type Row = {
   courierName?: string | null;
   courierPhone?: string | null;
   reviewed?: boolean;
+  paymentStatus?: string | null;
+  paymentNotes?: string | null;
 };
 
 type Fav = {
@@ -47,6 +49,31 @@ function deliveryLabel(s?: string | null) {
     default:
       return s || '—';
   }
+}
+
+function paymentLabel(s?: string | null) {
+  switch (s) {
+    case 'approved':
+    case 'paid':
+    case 'completed':
+      return 'الدفع مقبول';
+    case 'under_review':
+    case 'proof_uploaded':
+    case 'pending':
+      return 'الدفع قيد المراجعة';
+    case 'rejected':
+    case 'failed':
+      return 'الدفع مرفوض';
+    default:
+      return s ? `دفع: ${s}` : null;
+  }
+}
+
+function paymentBadgeClass(s?: string | null) {
+  if (!s) return 'bg-slate-100 text-slate-600';
+  if (['approved', 'paid', 'completed'].includes(s)) return 'bg-green-50 text-green-700';
+  if (['rejected', 'failed'].includes(s)) return 'bg-red-50 text-red-700';
+  return 'bg-amber-50 text-amber-800';
 }
 
 const PREFS_KEY = (uid?: string) => `ijar_customer_prefs_${uid || 'anon'}`;
@@ -98,6 +125,12 @@ export default function CustomerDashboard({
     if (next.notifyOn != null) setNotifyOn(next.notifyOn);
     if (next.lang != null) setLang(next.lang);
     localStorage.setItem(PREFS_KEY(userId), JSON.stringify(merged));
+    if (next.notifyOn != null && userId) {
+      apiJson('/api/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({ email_notifications: next.notifyOn }),
+      }).catch(() => {});
+    }
   };
 
   const loadFavorites = useCallback(async () => {
@@ -141,6 +174,8 @@ export default function CustomerDashboard({
           courierName: b.courier_name ? String(b.courier_name) : null,
           courierPhone: b.courier_phone ? String(b.courier_phone) : null,
           reviewed: Boolean(b.has_review),
+          paymentStatus: b.payment_status ? String(b.payment_status) : null,
+          paymentNotes: b.payment_notes ? String(b.payment_notes) : null,
         }))
       );
     } catch {
@@ -444,6 +479,18 @@ export default function CustomerDashboard({
                     <MapPin size={12} /> {booking.location}
                   </p>
                   <p className="font-bold text-slate-800">{booking.total.toLocaleString()} د.ع</p>
+                  {paymentLabel(booking.paymentStatus) && (
+                    <p
+                      data-testid="customer-payment-status"
+                      className={`inline-flex px-2 py-1 rounded-full text-[10px] font-bold ${paymentBadgeClass(booking.paymentStatus)}`}
+                    >
+                      {paymentLabel(booking.paymentStatus)}
+                    </p>
+                  )}
+                  {booking.paymentNotes &&
+                    ['rejected', 'failed'].includes(String(booking.paymentStatus)) && (
+                      <p className="text-red-600 text-[11px]">ملاحظة: {booking.paymentNotes}</p>
+                    )}
                 </div>
                 {booking.deliveryRequested && (
                   <div className="text-xs space-y-2" data-testid="customer-delivery-status">
@@ -468,7 +515,7 @@ export default function CustomerDashboard({
                           data-testid="customer-open-delivery-map"
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-bold border border-blue-100"
                         >
-                          <Navigation size={12} /> تتبع موقع التوصيل على الخريطة
+                          <Navigation size={12} /> موقع التسليم على الخريطة
                         </a>
                       )}
                   </div>

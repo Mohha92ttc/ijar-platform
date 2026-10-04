@@ -34,7 +34,7 @@ export default function CheckoutPage({
   error,
 }: {
   cart: CartLine[];
-  onRemove: (id: string) => void;
+  onRemove: (id: string, startDate?: string) => void;
   onClear: () => void;
   onComplete: (data: CheckoutFormData) => void | Promise<void>;
   onClose: () => void;
@@ -178,7 +178,7 @@ export default function CheckoutPage({
                     <button
                       type="button"
                       data-testid="checkout-remove-item"
-                      onClick={() => onRemove(item.id)}
+                      onClick={() => onRemove(item.id, item.startDate)}
                       className="text-slate-300 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={18} />
@@ -311,12 +311,15 @@ export default function CheckoutPage({
                 <p className="text-[11px] text-slate-600 leading-relaxed">
                   1) انسخ حساب الشريك أدناه وحوّل المبلغ. 2) ارفع صورة إثبات التحويل. 3) الشريك يراجع الصورة ثم يوافق على الحجز.
                 </p>
-                {Object.entries(ownerHints).map(([oid, h]) => (
+                {Object.entries(ownerHints).map(([oid, h]) => {
+                  const partnerName =
+                    cart.find((c) => c.owner_id === oid)?.owner_name || 'الشريك';
+                  return (
                   <TransferAccountsPanel
                     key={oid}
                     testId={`checkout-owner-${oid.slice(0, 8)}`}
                     info={{
-                      title: 'حساب الشريك للتحويل',
+                      title: `حساب ${partnerName} للتحويل`,
                       subtitle: 'انسخ الرقم ثم حوّل',
                       mastercard: h.mastercard || h.card_number,
                       zain_cash: h.zain_cash || h.wallet_number,
@@ -325,7 +328,8 @@ export default function CheckoutPage({
                       account_holder: h.account_holder_name,
                     }}
                   />
-                ))}
+                  );
+                })}
                 {Object.keys(ownerHints).length === 0 && (
                   <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
                     الشريك لم يضف حسابات التحويل بعد — سيتم إشعاره لإضافتها من إعداداته.

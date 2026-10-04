@@ -55,6 +55,7 @@ export interface Payment {
   user_email?: string;
   user_phone?: string;
   booking_id?: string;
+  notes?: string;
   processed_by?: string;
   processed_at?: string;
   rejection_reason?: string;
