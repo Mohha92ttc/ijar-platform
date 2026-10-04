@@ -84,12 +84,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     description: '',
     governorate: 'بغداد',
     area: '',
-    imageFile: null as File | null
+    imageFile: null as File | null,
+    existingImage: '' as string,
   });
+  const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingEquipmentId, setEditingEquipmentId] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState({ name: '', phone: '' });
   const [profileSaving, setProfileSaving] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '' });
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
   const [bookings, setBookings] = useState<Bk[]>([]);
@@ -208,6 +212,19 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const cats = await apiJson<any[]>('/api/equipment/categories');
+        setCategoryOptions(
+          cats.map((c) => String(c.name || c)).filter(Boolean)
+        );
+      } catch {
+        setCategoryOptions([]);
+      }
+    })();
+  }, []);
 
   const loadCouriers = useCallback(async () => {
     if (!ownerId) return;
@@ -472,7 +489,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       return;
     }
 
-    let imageUrl = 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400';
+    let imageUrl =
+      editingEquipmentId && newEquipment.existingImage
+        ? newEquipment.existingImage
+        : 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400';
     if (newEquipment.imageFile) {
       imageUrl = await new Promise<string>((resolve) => {
         const reader = new FileReader();
@@ -487,19 +507,22 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
 
     try {
       if (editingEquipmentId) {
+        const body: Record<string, unknown> = {
+          title: newEquipment.title,
+          description: newEquipment.description || '—',
+          category: newEquipment.category,
+          price_per_day: price,
+          location,
+          governorate,
+          area,
+          ownerId,
+        };
+        if (newEquipment.imageFile || newEquipment.existingImage) {
+          body.images = [imageUrl];
+        }
         await apiJson(`/api/equipment/${editingEquipmentId}`, {
           method: 'PUT',
-          body: JSON.stringify({
-            title: newEquipment.title,
-            description: newEquipment.description || '—',
-            category: newEquipment.category,
-            price_per_day: price,
-            location,
-            governorate,
-            area,
-            images: [imageUrl],
-            ownerId,
-          }),
+          body: JSON.stringify(body),
         });
       } else {
         await apiJson('/api/equipment', {
@@ -517,7 +540,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           }),
         });
       }
-      setNewEquipment({ title: '', category: '', price: '', description: '', governorate: 'بغداد', area: '', imageFile: null });
+      setNewEquipment({
+        title: '',
+        category: '',
+        price: '',
+        description: '',
+        governorate: 'بغداد',
+        area: '',
+        imageFile: null,
+        existingImage: '',
+      });
       setShowAddForm(false);
       setEditingEquipmentId(null);
       await loadData();
@@ -536,9 +568,23 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       governorate: equipment.governorate || 'بغداد',
       area: equipment.area || '',
       imageFile: null,
+      existingImage: equipment.image || '',
     });
     setShowAddForm(true);
     setActiveTab('equipment');
+  };
+
+  const setEquipmentStatus = async (id: string, status: string) => {
+    if (!ownerId) return;
+    try {
+      await apiJson(`/api/equipment/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ownerId, status }),
+      });
+      await loadData();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر تحديث الحالة');
+    }
   };
 
   const savePartnerProfile = async () => {
@@ -562,6 +608,29 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const changePartnerPassword = async () => {
+    if (passwordForm.next.length < 8) {
+      alert('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await apiJson('/api/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.next,
+        }),
+      });
+      setPasswordForm({ current: '', next: '' });
+      alert('تم تحديث كلمة المرور');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر تحديث كلمة المرور');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -1190,14 +1259,22 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     onChange={(e) => setNewEquipment({...newEquipment, title: e.target.value})}
                     className="px-4 py-3 border border-slate-200 rounded-xl text-sm"
                   />
-                  <input
-                    type="text"
+                  <select
                     data-testid="partner-equipment-category"
-                    placeholder="التصنيف"
                     value={newEquipment.category}
-                    onChange={(e) => setNewEquipment({...newEquipment, category: e.target.value})}
-                    className="px-4 py-3 border border-slate-200 rounded-xl text-sm"
-                  />
+                    onChange={(e) => setNewEquipment({ ...newEquipment, category: e.target.value })}
+                    className="px-4 py-3 border border-slate-200 rounded-xl text-sm bg-white"
+                  >
+                    <option value="">اختر التصنيف</option>
+                    {categoryOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                    {newEquipment.category && !categoryOptions.includes(newEquipment.category) && (
+                      <option value={newEquipment.category}>{newEquipment.category}</option>
+                    )}
+                  </select>
                   <input
                     type="number"
                     data-testid="partner-equipment-price"
@@ -1243,7 +1320,15 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 <div className="space-y-2 mb-4">
                   <label className="text-sm font-medium text-slate-700">صورة المعدة</label>
                   <ImageUpload
-                    onImageSelect={(file) => setNewEquipment({...newEquipment, imageFile: file})}
+                    key={editingEquipmentId || 'new'}
+                    currentImage={newEquipment.existingImage || undefined}
+                    onImageSelect={(file) =>
+                      setNewEquipment({
+                        ...newEquipment,
+                        imageFile: file,
+                        existingImage: file ? newEquipment.existingImage : '',
+                      })
+                    }
                     className="h-48"
                   />
                 </div>
@@ -1269,7 +1354,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     onClick={() => {
                       setShowAddForm(false);
                       setEditingEquipmentId(null);
-                      setNewEquipment({ title: '', category: '', price: '', description: '', governorate: 'بغداد', area: '', imageFile: null });
+                      setNewEquipment({
+                        title: '',
+                        category: '',
+                        price: '',
+                        description: '',
+                        governorate: 'بغداد',
+                        area: '',
+                        imageFile: null,
+                        existingImage: '',
+                      });
                     }}
                     className="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-700"
                   >
@@ -1294,12 +1388,33 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     </div>
                   </div>
                   <div className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                        equipment.status === 'available' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {equipment.status === 'available' ? 'متاحة' : 'مؤجرة'}
-                      </span>
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                      <select
+                        data-testid="partner-equipment-status"
+                        value={equipment.status === 'rented' ? 'available' : equipment.status}
+                        onChange={(e) => setEquipmentStatus(equipment.id, e.target.value)}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold border-0 ${
+                          equipment.status === 'available'
+                            ? 'bg-green-100 text-green-700'
+                            : equipment.status === 'maintenance'
+                              ? 'bg-amber-100 text-amber-700'
+                              : equipment.status === 'hidden'
+                                ? 'bg-slate-200 text-slate-600'
+                                : 'bg-red-100 text-red-700'
+                        }`}
+                        disabled={equipment.status === 'rented'}
+                        title={equipment.status === 'rented' ? 'مؤجرة حالياً' : 'تغيير الحالة'}
+                      >
+                        {equipment.status === 'rented' ? (
+                          <option value="available">مؤجرة</option>
+                        ) : (
+                          <>
+                            <option value="available">متاحة</option>
+                            <option value="maintenance">صيانة</option>
+                            <option value="hidden">مخفية</option>
+                          </>
+                        )}
+                      </select>
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -1553,6 +1668,36 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
                 >
                   <Save size={16} /> {profileSaving ? 'جاري الحفظ…' : 'حفظ الملف الشخصي'}
+                </button>
+              </div>
+              <div className="md:col-span-2 border-t border-slate-100 pt-4 space-y-3" data-testid="partner-change-password">
+                <h4 className="font-bold text-slate-800">تغيير كلمة المرور</h4>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <input
+                    type="password"
+                    data-testid="partner-password-current"
+                    placeholder="كلمة المرور الحالية"
+                    value={passwordForm.current}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg text-right"
+                  />
+                  <input
+                    type="password"
+                    data-testid="partner-password-new"
+                    placeholder="كلمة المرور الجديدة"
+                    value={passwordForm.next}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, next: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-lg text-right"
+                  />
+                </div>
+                <button
+                  type="button"
+                  data-testid="partner-password-save"
+                  disabled={passwordSaving}
+                  onClick={changePartnerPassword}
+                  className="inline-flex items-center gap-2 bg-slate-800 text-white px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+                >
+                  {passwordSaving ? 'جاري الحفظ…' : 'تحديث كلمة المرور'}
                 </button>
               </div>
             </div>

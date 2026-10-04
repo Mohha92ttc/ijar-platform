@@ -92,6 +92,26 @@ export class BookingController {
     }
   };
 
+  checkAvailability = async (req: Request, res: Response) => {
+    try {
+      const equipmentId = String(req.query.equipment_id || '');
+      const start = String(req.query.start || '');
+      const end = String(req.query.end || '');
+      if (!equipmentId || !start || !end) {
+        return res.status(400).json({ message: 'equipment_id و start و end مطلوبة' });
+      }
+      const startDate = new Date(`${start}T12:00:00`);
+      const endDate = new Date(`${end}T12:00:00`);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        return res.status(400).json({ message: 'تواريخ غير صالحة' });
+      }
+      const available = await this.bookingService.checkAvailability(equipmentId, startDate, endDate);
+      res.status(200).json({ available });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  };
+
   getById = async (req: Request, res: Response) => {
     try {
       const actor = (req as any).user as { userId?: string; role?: string } | undefined;

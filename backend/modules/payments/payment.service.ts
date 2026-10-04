@@ -290,6 +290,27 @@ export class PaymentService {
     }
   }
 
+  /**
+   * Partner reviews transfer proof for a booking payment when confirming/rejecting the booking.
+   * No-op if there is no payment row, or COD still pending without proof.
+   */
+  async ownerReviewByBooking(bookingId: string, ownerId: string, approve: boolean, notes?: string): Promise<void> {
+    const payment = await this.repository.findByBookingId(bookingId);
+    if (!payment) return;
+    const raw = payment as Payment & Record<string, unknown>;
+    if (String(raw.owner_id || payment.owner_id) !== ownerId) {
+      throw new Error('غير مصرح بمراجعة هذه الدفعة');
+    }
+    const status = String(raw.status ?? payment.payment_status);
+    if (!['under_review', 'pending', 'proof_uploaded'].includes(status)) {
+      return;
+    }
+    if (status === 'pending' && approve) {
+      return;
+    }
+    await this.adminReview(String(raw.id || payment.id), approve, notes || (approve ? 'موافقة الشريك' : 'رفض الشريك'));
+  }
+
   async setOwnerPaymentSettings(settings: OwnerPaymentSettings): Promise<void> {
     await this.repository.saveOwnerSettings(settings);
   }

@@ -179,6 +179,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
     }
   };
 
+  const handleUnban = async (id: string) => {
+    if (!confirm('إلغاء حظر هذا المستخدم؟')) return;
+    try {
+      await apiJson(`/api/admin/users/${id}/unban`, { method: 'PATCH' });
+      fetchData();
+    } catch (err) {
+      alert('فشل إلغاء الحظر');
+    }
+  };
+
   const handleRenewSubscription = async (id: string) => {
     const months = prompt('عدد أشهر التجديد:', '1');
     if (months && !isNaN(parseInt(months))) {
@@ -953,9 +963,11 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                             <CreditCard size={18} />
                           </button>
                           <button 
-                            onClick={() => handleBan(p.id)}
+                            onClick={() =>
+                              p.subStatus === 'banned' ? handleUnban(p.id) : handleBan(p.id)
+                            }
                             className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                            title="حظر"
+                            title={p.subStatus === 'banned' ? 'إلغاء الحظر' : 'حظر'}
                           >
                             <Bell size={18} />
                           </button>
@@ -1002,7 +1014,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                     </td>
                     <td className="p-4 text-sm text-slate-500">{c.joined}</td>
                     <td className="p-4">
-                      {c.subscription_status !== 'banned' && (
+                      {c.subscription_status === 'banned' ? (
+                        <button
+                          type="button"
+                          data-testid={`admin-customer-unban-${c.id}`}
+                          onClick={() => handleUnban(c.id)}
+                          className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-lg font-bold hover:bg-green-100"
+                        >
+                          إلغاء الحظر
+                        </button>
+                      ) : (
                         <button
                           type="button"
                           data-testid={`admin-customer-ban-${c.id}`}

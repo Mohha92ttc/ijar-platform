@@ -134,6 +134,17 @@ export class AdminService {
     await query("UPDATE users SET subscription_status = 'banned' WHERE id = $1", [userId]);
   }
 
+  async unbanUser(userId: string): Promise<void> {
+    const res = await query(`SELECT role FROM users WHERE id = $1`, [userId]);
+    if (res.rows.length === 0) throw new Error('User not found');
+    const role = String(res.rows[0].role);
+    const next = role === 'owner' ? 'active' : 'none';
+    await query(`UPDATE users SET subscription_status = $1 WHERE id = $2 AND subscription_status = 'banned'`, [
+      next,
+      userId,
+    ]);
+  }
+
   async approveUser(userId: string): Promise<void> {
     await query("UPDATE users SET is_approved = TRUE, subscription_status = 'active' WHERE id = $1", [userId]);
     await this.notificationService.create({

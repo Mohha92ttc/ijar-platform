@@ -17,6 +17,7 @@ router.get('/stats', adminController.getDashboard);
 router.get('/users', adminController.getAllUsers);
 router.post('/users', adminController.createUser);
 router.patch('/users/:id/ban', adminController.banUser);
+router.patch('/users/:id/unban', adminController.unbanUser);
 router.patch('/users/:id/approve', adminController.approveUser);
 router.post('/users/:id/renew', adminController.renewSubscription);
 router.delete('/users/:id', adminController.deleteUser);

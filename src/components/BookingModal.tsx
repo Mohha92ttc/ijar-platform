@@ -66,6 +66,8 @@ export default function BookingModal({
   const [reviews, setReviews] = useState<
     { id: string; rating: number; comment?: string; reviewer_name?: string; created_at: string }[]
   >([]);
+  const [availChecking, setAvailChecking] = useState(false);
+  const [availError, setAvailError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,14 +272,40 @@ export default function BookingModal({
                 </div>
               )}
 
+              {availError && (
+                <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2" data-testid="booking-avail-error">
+                  {availError}
+                </p>
+              )}
+
               <button
                 type="button"
                 data-testid="booking-confirm-step1"
-                disabled={days <= 0 || !effectiveStart || !endDate}
-                onClick={() => setStep(2)}
+                disabled={days <= 0 || !effectiveStart || !endDate || availChecking}
+                onClick={async () => {
+                  setAvailError(null);
+                  setAvailChecking(true);
+                  try {
+                    const q = new URLSearchParams({
+                      equipment_id: String(equipment.id),
+                      start: effectiveStart,
+                      end: endDate,
+                    });
+                    const res = await apiJson<{ available: boolean }>(`/api/bookings/availability?${q}`);
+                    if (!res.available) {
+                      setAvailError('المعدة محجوزة في هذه التواريخ. غيّر الموعد أو عدد الأيام.');
+                      return;
+                    }
+                    setStep(2);
+                  } catch (e) {
+                    setAvailError(e instanceof Error ? e.message : 'تعذر التحقق من التوفر');
+                  } finally {
+                    setAvailChecking(false);
+                  }
+                }}
                 className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                تأكيد الموعد والمتابعة
+                {availChecking ? 'جاري التحقق من التوفر…' : 'تأكيد الموعد والمتابعة'}
               </button>
             </div>
           ) : (

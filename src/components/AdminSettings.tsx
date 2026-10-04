@@ -168,22 +168,6 @@ export default function AdminSettings() {
     }
   };
 
-  const handlePartnerCredentialsUpdate = (partnerId: number) => {
-    const newEmail = prompt('البريد الإلكتروني الجديد:');
-    const newPhone = prompt('رقم الهاتف الجديد:');
-    const resetPassword = confirm('هل تريد إعادة تعيين كلمة المرور؟');
-
-    if (newEmail || newPhone || resetPassword) {
-      // In a real app, this would update partner credentials
-      let message = 'تم تحديث بيانات الشريك بنجاح!\n';
-      if (newEmail) message += `البريد: ${newEmail}\n`;
-      if (newPhone) message += `الهاتف: ${newPhone}\n`;
-      if (resetPassword) message += 'تم إعادة تعيين كلمة المرور إلى: 123456';
-      
-      alert(message);
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Admin Profile Section */}
@@ -372,60 +356,6 @@ export default function AdminSettings() {
             >
               {loading ? 'جاري الحفظ…' : 'حفظ حسابات التحويل والأسعار'}
             </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Partner Management Section */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-        <div className="p-6 border-b border-slate-200">
-          <div className="flex items-center gap-3">
-            <User className="text-blue-600" size={24} />
-            <h3 className="text-lg font-bold">إدارة بيانات الشركاء</h3>
-          </div>
-          <p className="text-sm text-slate-500 mt-2">يمكنك تعديل بيانات دخول الشركاء وإعادة تعيين كلمات المرور</p>
-        </div>
-        
-        <div className="p-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <div className="font-bold">شركة الرافدين للمعدات</div>
-                <div className="text-sm text-slate-500">rafidain@example.com | +964 7700 123 456</div>
-              </div>
-              <button 
-                onClick={() => handlePartnerCredentialsUpdate(1)}
-                className="px-3 py-1 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700"
-              >
-                تعديل البيانات
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <div className="font-bold">أحمد علي (معدات تصوير)</div>
-                <div className="text-sm text-slate-500">ahmed@example.com | +964 7500 789 012</div>
-              </div>
-              <button 
-                onClick={() => handlePartnerCredentialsUpdate(2)}
-                className="px-3 py-1 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700"
-              >
-                تعديل البيانات
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
-              <div>
-                <div className="font-bold">مكتب بابل للمولدات</div>
-                <div className="text-sm text-slate-500">babel@example.com | +964 7800 456 789</div>
-              </div>
-              <button 
-                onClick={() => handlePartnerCredentialsUpdate(3)}
-                className="px-3 py-1 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700"
-              >
-                تعديل البيانات
-              </button>
-            </div>
           </div>
         </div>
       </div>

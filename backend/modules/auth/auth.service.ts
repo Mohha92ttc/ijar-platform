@@ -206,6 +206,36 @@ export class AuthService {
     }
   }
 
+  async resendVerificationEmail(email: string): Promise<void> {
+    const res = await query(
+      `SELECT id, is_email_verified, verification_token, role FROM users WHERE email = $1 LIMIT 1`,
+      [email]
+    );
+    if (res.rows.length === 0) {
+      // Don't leak whether email exists
+      return;
+    }
+    const row = res.rows[0];
+    if (row.role !== 'customer') {
+      throw new Error('التحقق بالبريد مخصص لحسابات الزبائن');
+    }
+    if (row.is_email_verified) {
+      throw new Error('البريد مؤكد مسبقاً');
+    }
+    let token = row.verification_token ? String(row.verification_token) : '';
+    if (!token || token.length < 20) {
+      token = this.generateSecureToken();
+      await query(`UPDATE users SET verification_token = $1 WHERE id = $2`, [token, row.id]);
+    }
+    const appUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://127.0.0.1:5173';
+    const verifyLink = `${appUrl.replace(/\/$/, '')}/?verify=${encodeURIComponent(token)}`;
+    await mailService.send({
+      to: email,
+      subject: 'تأكيد البريد — إيجار',
+      text: `يرجى تأكيد بريدك عبر الرابط: ${verifyLink}`,
+    });
+  }
+
   async getMe(userId: string): Promise<MeResponse> {
     const res = await query(
       `SELECT id, name, email, phone, role, created_at, subscription_status, subscription_end_date FROM users WHERE id = $1`,

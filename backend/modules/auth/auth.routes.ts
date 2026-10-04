@@ -18,6 +18,7 @@ router.patch('/me', authenticateToken, authController.updateMe);
 
 // Email Verification
 router.get('/verify-email/:token', authController.verifyEmail);
+router.post('/resend-verification', authController.resendVerification);
 
 // Password Reset
 router.post('/forgot-password', authController.forgotPassword);

@@ -2,6 +2,7 @@ import { query } from '../../database/connection';
 import { Booking, CreateBookingDTO, BookingStatus } from './bookings.types';
 import { EquipmentService } from '../equipment/equipment.service';
 import { NotificationService } from '../notifications/notification.service';
+import { PaymentService } from '../payments/payment.service';
 
 function rowToBooking(row: Record<string, unknown>): Booking {
   return {
@@ -20,10 +21,12 @@ function rowToBooking(row: Record<string, unknown>): Booking {
 export class BookingService {
   private equipmentService: EquipmentService;
   private notificationService: NotificationService;
+  private paymentService: PaymentService;
 
   constructor() {
     this.equipmentService = new EquipmentService();
     this.notificationService = new NotificationService();
+    this.paymentService = new PaymentService();
   }
 
   async create(customerId: string, data: CreateBookingDTO): Promise<Booking> {
@@ -135,7 +138,7 @@ export class BookingService {
       `
       SELECT 1 FROM bookings
       WHERE equipment_id = $1
-        AND status = 'confirmed'
+        AND status IN ('pending', 'confirmed')
         AND start_date < $3 AND end_date > $2
       LIMIT 1
     `,
@@ -205,6 +208,20 @@ export class BookingService {
         message: `The booking for ${equipment.title} has been cancelled.`,
         related_id: booking.id,
       });
+    }
+
+    // Partner confirm/reject also settles the booking payment review when applicable
+    if (actor.role === 'owner' && (status === 'confirmed' || status === 'cancelled')) {
+      try {
+        await this.paymentService.ownerReviewByBooking(
+          booking.id,
+          actor.userId,
+          status === 'confirmed',
+          status === 'confirmed' ? 'موافقة الشريك على الحجز والدفع' : 'رفض الشريك للحجز'
+        );
+      } catch (e) {
+        console.warn('[booking] owner payment review failed', e instanceof Error ? e.message : e);
+      }
     }
 
     return booking;

@@ -215,7 +215,34 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
           )}
 
           {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 text-right">{error}</div>
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 text-right space-y-2">
+              <div>{error}</div>
+              {(error.includes('Email verification') || error.includes('التحقق') || error.includes('verification')) && (
+                <button
+                  type="button"
+                  data-testid="auth-resend-verification"
+                  className="text-xs font-bold underline text-blue-700"
+                  onClick={async () => {
+                    if (!formData.email) {
+                      setError('أدخل البريد أولاً');
+                      return;
+                    }
+                    try {
+                      await apiJson('/api/auth/resend-verification', {
+                        method: 'POST',
+                        body: JSON.stringify({ email: formData.email }),
+                      });
+                      setInfoMessage('إن وُجد الحساب غير المؤكد، أُرسل رابط التحقق إلى بريدك.');
+                      setError(null);
+                    } catch (e) {
+                      setError(e instanceof ApiError ? e.message : 'تعذر إعادة الإرسال');
+                    }
+                  }}
+                >
+                  إعادة إرسال رابط التحقق
+                </button>
+              )}
+            </div>
           )}
 
           {!forgotMode ? (

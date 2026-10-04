@@ -104,6 +104,17 @@ export class AuthController {
     }
   };
 
+  resendVerification = async (req: Request, res: Response) => {
+    try {
+      const email = String(req.body?.email || '').trim();
+      if (!email) return res.status(400).json({ error: 'البريد مطلوب' });
+      await this.authService.resendVerificationEmail(email);
+      res.status(200).json({ message: 'إن وُجد الحساب غير المؤكد، أُرسل رابط التحقق' });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل إعادة الإرسال') });
+    }
+  };
+
   forgotPassword = async (req: Request, res: Response) => {
     try {
       const { email } = req.body;

@@ -46,6 +46,16 @@ export class AdminController {
     }
   };
 
+  unbanUser = async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await this.adminService.unbanUser(id);
+      res.status(200).json({ message: 'User unbanned' });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل إلغاء الحظر') });
+    }
+  };
+
   approveUser = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

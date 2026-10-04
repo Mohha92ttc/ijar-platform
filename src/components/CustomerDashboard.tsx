@@ -73,6 +73,8 @@ export default function CustomerDashboard({
   const [savingProfile, setSavingProfile] = useState(false);
   const [notifyOn, setNotifyOn] = useState(true);
   const [lang, setLang] = useState('ar');
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '' });
+  const [passwordSaving, setPasswordSaving] = useState(false);
   const [reviewDraft, setReviewDraft] = useState<Record<string, { rating: number; comment: string }>>({});
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -191,6 +193,29 @@ export default function CustomerDashboard({
       alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const changePassword = async () => {
+    if (passwordForm.next.length < 8) {
+      alert('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+      return;
+    }
+    setPasswordSaving(true);
+    try {
+      await apiJson('/api/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          currentPassword: passwordForm.current,
+          newPassword: passwordForm.next,
+        }),
+      });
+      setPasswordForm({ current: '', next: '' });
+      alert('تم تحديث كلمة المرور');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر تحديث كلمة المرور');
+    } finally {
+      setPasswordSaving(false);
     }
   };
 
@@ -660,6 +685,34 @@ export default function CustomerDashboard({
                 >
                   <option value="ar">العربية</option>
                 </select>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-lg space-y-3" data-testid="customer-change-password">
+                <div className="font-bold">تغيير كلمة المرور</div>
+                <input
+                  type="password"
+                  data-testid="customer-password-current"
+                  placeholder="كلمة المرور الحالية"
+                  value={passwordForm.current}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                />
+                <input
+                  type="password"
+                  data-testid="customer-password-new"
+                  placeholder="كلمة المرور الجديدة"
+                  value={passwordForm.next}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, next: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                />
+                <button
+                  type="button"
+                  data-testid="customer-password-save"
+                  disabled={passwordSaving}
+                  onClick={changePassword}
+                  className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-60"
+                >
+                  {passwordSaving ? 'جاري الحفظ…' : 'تحديث كلمة المرور'}
+                </button>
               </div>
             </div>
           </div>
