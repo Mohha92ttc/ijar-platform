@@ -1339,21 +1339,25 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="text-sm text-slate-500 mb-1">إجمالي الإيرادات</div>
+                <div className="text-sm text-slate-500 mb-1">إيرادات المؤكدة + المكتملة</div>
                 <div className="text-2xl font-bold text-blue-600">
-                  {bookings.filter(b => b.status === 'confirmed').reduce((sum, b) => sum + b.total, 0).toLocaleString()} د.ع
+                  {bookings
+                    .filter((b) => b.status === 'confirmed' || b.status === 'completed')
+                    .reduce((sum, b) => sum + b.total, 0)
+                    .toLocaleString()}{' '}
+                  د.ع
                 </div>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="text-sm text-slate-500 mb-1">الطلبات المكتملة</div>
                 <div className="text-2xl font-bold text-slate-800">
-                  {bookings.filter(b => b.status === 'confirmed').length}
+                  {bookings.filter((b) => b.status === 'completed').length}
                 </div>
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="text-sm text-slate-500 mb-1">الطلبات المعلقة</div>
                 <div className="text-2xl font-bold text-amber-600">
-                  {bookings.filter(b => b.status === 'pending').length}
+                  {bookings.filter((b) => b.status === 'pending').length}
                 </div>
               </div>
             </div>

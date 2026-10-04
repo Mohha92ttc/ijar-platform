@@ -148,8 +148,17 @@ export class BookingService {
     const existing = await this.getById(id);
     const oldStatus = existing.status;
 
-    // Authorization: only owners/admin can update status, and owners can only update their own equipment.
-    if (actor.role === 'owner') {
+    if (actor.role === 'customer') {
+      if (existing.customer_id !== actor.userId) {
+        throw new Error('Not authorized to update this booking');
+      }
+      if (status !== 'cancelled') {
+        throw new Error('الزبون يمكنه إلغاء الحجز فقط');
+      }
+      if (!['pending', 'confirmed'].includes(oldStatus)) {
+        throw new Error('لا يمكن إلغاء هذا الحجز في حالته الحالية');
+      }
+    } else if (actor.role === 'owner') {
       const equipment = await this.equipmentService.getById(existing.equipment_id);
       if (equipment.owner_id !== actor.userId) {
         throw new Error('Not authorized to update this booking');
@@ -205,7 +214,11 @@ export class BookingService {
     const res = await query(
       `
       SELECT b.*, e.title as equipment_title, u.name as owner_name, e.location as equipment_location,
-             c.name AS courier_name, c.phone AS courier_phone
+             c.name AS courier_name, c.phone AS courier_phone,
+             EXISTS (
+               SELECT 1 FROM reviews r
+               WHERE r.booking_id = b.id OR (r.equipment_id = b.equipment_id AND r.reviewer_id = b.customer_id)
+             ) AS has_review
       FROM bookings b
       JOIN equipment e ON b.equipment_id = e.id
       JOIN users u ON e.owner_id = u.id

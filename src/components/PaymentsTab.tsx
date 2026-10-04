@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { CreditCard, DollarSign, Calendar, CheckCircle, XCircle, Clock, Search, Filter, Download, Eye } from 'lucide-react';
+import { CreditCard, DollarSign, Calendar, CheckCircle, XCircle, Clock, Search, Download, Eye } from 'lucide-react';
 import { Payment } from '../types';
 import { apiJson, ApiError } from '../lib/api';
 
 export default function PaymentsTab() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQ, setSearchQ] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   const fetchData = async () => {
     setLoading(true);
@@ -44,10 +46,43 @@ export default function PaymentsTab() {
     }
   };
 
-  const addManualPayment = () => {
-    alert(
-      'لإضافة دفعة شريك (إعلان مميز / تجديد): من حساب الشريك → الإعلان المميز أو الاشتراك. للمراجعة: تبويب موافقات الدفع وكشوف الحسابات.'
+  const filteredPayments = payments.filter((p) => {
+    const q = searchQ.trim().toLowerCase();
+    const statusOk = statusFilter === 'all' || String(p.status) === statusFilter;
+    if (!statusOk) return false;
+    if (!q) return true;
+    return (
+      String(p.user_name || '').toLowerCase().includes(q) ||
+      String(p.user_id || '').toLowerCase().includes(q) ||
+      String(p.type || '').toLowerCase().includes(q) ||
+      String(p.method || '').toLowerCase().includes(q)
     );
+  });
+
+  const exportCsv = () => {
+    const header = ['id', 'user', 'type', 'amount', 'status', 'method', 'created_at'];
+    const rows = filteredPayments.map((p) =>
+      [
+        p.id,
+        p.user_name || '',
+        p.type || '',
+        p.amount,
+        p.status,
+        p.method,
+        p.created_at,
+      ]
+        .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+        .join(',')
+    );
+    const blob = new Blob([[header.join(','), ...rows].join('\n')], {
+      type: 'text/csv;charset=utf-8;',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `payments-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const getPaymentTypeLabel = (type: string) => {
@@ -149,32 +184,40 @@ export default function PaymentsTab() {
       </div>
 
       {/* Actions Bar */}
-      <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm gap-3 flex-wrap">
+        <div className="flex items-center gap-4 flex-wrap">
           <div className="relative">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
-              type="text" 
-              placeholder="بحث عن دفعة..." 
+              type="text"
+              data-testid="admin-payments-search"
+              placeholder="بحث عن دفعة..."
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
               className="bg-slate-50 border border-slate-200 rounded-lg py-2 pr-10 pl-4 text-sm outline-none w-64"
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-200">
-            <Filter size={16} />
-            تصفية
-          </button>
+          <select
+            data-testid="admin-payments-status-filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium text-slate-600 border-0"
+          >
+            <option value="all">كل الحالات</option>
+            <option value="pending">pending</option>
+            <option value="under_review">under_review</option>
+            <option value="approved">approved</option>
+            <option value="rejected">rejected</option>
+          </select>
         </div>
         <div className="flex items-center gap-3">
           <button 
-            onClick={addManualPayment}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700"
+            type="button"
+            onClick={exportCsv}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-200"
           >
-            <CreditCard size={16} />
-            إضافة دفعة يدوية
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-200">
             <Download size={16} />
-            تصدير
+            تصدير CSV
           </button>
         </div>
       </div>
@@ -196,7 +239,7 @@ export default function PaymentsTab() {
               </tr>
             </thead>
             <tbody>
-              {payments.map((payment) => (
+              {filteredPayments.map((payment) => (
                 <tr key={payment.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                   <td className="p-4">
                     <div className="font-bold text-slate-800">{payment.user_name || 'غير معروف'}</div>

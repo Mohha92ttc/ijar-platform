@@ -46,4 +46,43 @@ export class PlatformController {
       res.status(500).json({ message: msg });
     }
   };
+
+  /** محتوى عام لصفحات عن المنصة / المساعدة */
+  getPublicInfo = async (_req: Request, res: Response) => {
+    try {
+      const r = await query(
+        `SELECT name, description, phones, emails, addresses, mission, vision
+         FROM platform_settings WHERE id = 1`
+      );
+      const row = r.rows[0];
+      const asArr = (v: unknown): string[] => {
+        if (Array.isArray(v)) return v.map(String).filter(Boolean);
+        if (typeof v === 'string' && v.trim()) return [v.trim()];
+        return [];
+      };
+      if (!row) {
+        return res.status(200).json({
+          name: 'إيجار',
+          description: 'المنصة الأولى لتأجير المعدات في العراق',
+          phones: ['+964 7700 123 456'],
+          emails: ['support@ijar.iq'],
+          addresses: ['بغداد'],
+          mission: 'تسهيل تأجير المعدات في العراق.',
+          vision: 'أن نكون المنصة الأكثر ثقة لتأجير المعدات.',
+        });
+      }
+      res.status(200).json({
+        name: String(row.name || 'إيجار'),
+        description: String(row.description || ''),
+        phones: asArr(row.phones),
+        emails: asArr(row.emails),
+        addresses: asArr(row.addresses),
+        mission: String(row.mission || ''),
+        vision: String(row.vision || ''),
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error';
+      res.status(500).json({ message: msg });
+    }
+  };
 }

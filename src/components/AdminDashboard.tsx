@@ -28,6 +28,9 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
     monthlyRevenue: 0,
     totalCommission: 0
   });
+  const [mostRented, setMostRented] = useState<
+    { equipmentId: string; title: string; bookingCount: number; totalRevenue: number }[]
+  >([]);
 
   const [newPartner, setNewPartner] = useState({ 
     name: '', 
@@ -116,6 +119,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       const statsData = await apiJson<any>('/api/admin/stats');
       if (statsData.stats) {
         setStats(statsData.stats);
+      }
+      if (Array.isArray(statsData.mostRented)) {
+        setMostRented(
+          statsData.mostRented.map((r: any) => ({
+            equipmentId: String(r.equipmentId),
+            title: String(r.title),
+            bookingCount: Number(r.bookingCount || 0),
+            totalRevenue: Number(r.totalRevenue || 0),
+          }))
+        );
       }
 
       const settingsData = await apiJson<any>('/api/admin/settings');
@@ -855,7 +868,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="flex items-center gap-4 mb-2">
                   <div className="w-10 h-10 bg-green-100 text-green-600 rounded-lg flex items-center justify-center"><CreditCard size={20} /></div>
-                  <span className="text-slate-500 text-sm font-medium">إيرادات المنصة</span>
+                  <span className="text-slate-500 text-sm font-medium">إيرادات معتمدة (إجمالي)</span>
                 </div>
                 <div className="text-3xl font-bold">{stats.monthlyRevenue.toLocaleString()} د.ع</div>
               </div>
@@ -1328,7 +1341,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-bold text-slate-500 mb-1">أرباح العمولات</div>
+                  <div className="text-sm font-bold text-slate-500 mb-1">أرباح العمولات (حسب نسبة الإعدادات)</div>
                   <div className="text-3xl font-black text-green-600">{stats.totalCommission.toLocaleString()} د.ع</div>
                 </div>
                 <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
@@ -1336,9 +1349,35 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                 </div>
               </div>
             </div>
-            <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm text-center mt-6">
-              <h4 className="text-lg font-bold text-slate-700 mb-2">النظام مرتبط بقاعدة البيانات (Live)</h4>
-              <p className="text-slate-500">هذه الأرقام حقيقية وتُحدّث مباشرة من قاعدة بيانات PostgreSQL.</p>
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-slate-100">
+                <h4 className="font-bold text-slate-800">الأكثر تأجيراً</h4>
+              </div>
+              <table className="w-full text-right">
+                <thead className="bg-slate-50 border-b border-slate-100">
+                  <tr>
+                    <th className="p-3 text-xs font-bold text-slate-500">المعدة</th>
+                    <th className="p-3 text-xs font-bold text-slate-500">عدد الحجوزات</th>
+                    <th className="p-3 text-xs font-bold text-slate-500">الإيرادات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mostRented.map((r) => (
+                    <tr key={r.equipmentId} className="border-b border-slate-50">
+                      <td className="p-3 text-sm font-bold text-slate-800">{r.title}</td>
+                      <td className="p-3 text-sm">{r.bookingCount}</td>
+                      <td className="p-3 text-sm font-bold">{r.totalRevenue.toLocaleString()} د.ع</td>
+                    </tr>
+                  ))}
+                  {mostRented.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="p-6 text-center text-sm text-slate-500">
+                        لا توجد بيانات بعد
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

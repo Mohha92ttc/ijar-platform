@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Calendar, MapPin, ShieldCheck, CreditCard, Info, X, Truck, Banknote } from 'lucide-react';
+import { Calendar, MapPin, ShieldCheck, CreditCard, Info, X, Truck, Banknote, Star } from 'lucide-react';
 import type { CartPaymentMethod } from '../lib/cartStorage';
 import { paymentMethodLabel } from '../lib/cartStorage';
+import { apiJson } from '../lib/api';
 
 type ConfirmPayload = {
   dates: { start: string; end: string };
@@ -62,6 +63,35 @@ export default function BookingModal({
   const [step, setStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod | null>(null);
   const [wantsDelivery, setWantsDelivery] = useState(false);
+  const [reviews, setReviews] = useState<
+    { id: string; rating: number; comment?: string; reviewer_name?: string; created_at: string }[]
+  >([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!equipment?.id) return;
+      try {
+        const rows = await apiJson<any[]>(`/api/reviews/equipment/${equipment.id}`);
+        if (!cancelled && Array.isArray(rows)) {
+          setReviews(
+            rows.slice(0, 5).map((r) => ({
+              id: String(r.id),
+              rating: Number(r.rating) || 0,
+              comment: r.comment ? String(r.comment) : undefined,
+              reviewer_name: r.reviewer_name ? String(r.reviewer_name) : undefined,
+              created_at: String(r.created_at || ''),
+            }))
+          );
+        }
+      } catch {
+        if (!cancelled) setReviews([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [equipment?.id]);
 
   const effectiveStart = startToday ? todayIso() : startDate;
   const endDate = useMemo(() => {
@@ -124,8 +154,31 @@ export default function BookingModal({
                     <MapPin size={12} /> {equipment.location}
                   </p>
                   <p className="text-blue-600 font-bold mt-1">{equipment.price.toLocaleString()} د.ع / يوم</p>
+                  {(Number(equipment.rating) > 0 || Number(equipment.reviews) > 0) && (
+                    <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
+                      <Star size={12} className="fill-amber-400 text-amber-400" />
+                      {Number(equipment.rating || 0).toFixed(1)} ({Number(equipment.reviews || 0)} تقييم)
+                    </p>
+                  )}
                 </div>
               </div>
+
+              {reviews.length > 0 && (
+                <div className="space-y-2" data-testid="booking-reviews-list">
+                  <h5 className="text-sm font-bold text-slate-700">آراء المستأجرين</h5>
+                  {reviews.map((r) => (
+                    <div key={r.id} className="border border-slate-100 rounded-xl p-3 bg-white">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-xs font-bold text-slate-700">{r.reviewer_name || 'مستأجر'}</span>
+                        <span className="text-[10px] text-amber-600 flex items-center gap-0.5">
+                          <Star size={10} className="fill-amber-400 text-amber-400" /> {r.rating}
+                        </span>
+                      </div>
+                      {r.comment && <p className="text-xs text-slate-600 leading-relaxed">{r.comment}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="space-y-4">
                 <label className="flex items-center gap-3 p-3 rounded-2xl border border-slate-200 cursor-pointer hover:border-blue-300 transition-colors">

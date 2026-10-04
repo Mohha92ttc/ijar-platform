@@ -56,11 +56,13 @@ export default function CustomerDashboard({
   userEmail,
   onBack,
   onLogout,
+  onOpenEquipment,
 }: {
   userId?: string;
   userEmail?: string;
   onBack: () => void;
   onLogout?: () => void;
+  onOpenEquipment?: (equipmentId: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState('rentals');
   const [bookings, setBookings] = useState<Row[]>([]);
@@ -136,6 +138,7 @@ export default function CustomerDashboard({
           deliveryLng: b.delivery_lng != null ? Number(b.delivery_lng) : null,
           courierName: b.courier_name ? String(b.courier_name) : null,
           courierPhone: b.courier_phone ? String(b.courier_phone) : null,
+          reviewed: Boolean(b.has_review),
         }))
       );
     } catch {
@@ -215,6 +218,19 @@ export default function CustomerDashboard({
       setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, reviewed: true } : b)));
     } catch (e) {
       alert(e instanceof ApiError ? e.message : 'تعذر إرسال التقييم');
+    }
+  };
+
+  const cancelBooking = async (bookingId: string) => {
+    if (!confirm('هل تريد إلغاء هذا الحجز؟')) return;
+    try {
+      await apiJson(`/api/bookings/${bookingId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'cancelled' }),
+      });
+      await loadBookings();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إلغاء الحجز');
     }
   };
 
@@ -432,6 +448,16 @@ export default function CustomerDashboard({
                       )}
                   </div>
                 )}
+                {(booking.status === 'pending' || booking.status === 'confirmed') && (
+                  <button
+                    type="button"
+                    data-testid="customer-cancel-booking"
+                    onClick={() => cancelBooking(booking.id)}
+                    className="text-xs font-bold text-red-600 border border-red-200 px-3 py-1.5 rounded-xl hover:bg-red-50"
+                  >
+                    إلغاء الحجز
+                  </button>
+                )}
                 {booking.status === 'completed' && !booking.reviewed && (
                   <div className="border-t border-slate-100 pt-3 space-y-2" data-testid="customer-review-box">
                     <p className="text-xs font-bold text-slate-700">قيّم تجربتك</p>
@@ -511,17 +537,30 @@ export default function CustomerDashboard({
                       <p className="text-xs text-slate-500 mb-2">
                         {item.category} · {item.partner}
                       </p>
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <span className="font-bold text-blue-600">{item.price.toLocaleString()} د.ع/يوم</span>
-                        <button
-                          type="button"
-                          data-testid="customer-favorite-remove"
-                          onClick={() => removeFavorite(item.id)}
-                          className="text-red-500 hover:text-red-600"
-                          title="إزالة من المفضلة"
-                        >
-                          <Star size={20} fill="currentColor" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            data-testid="customer-favorite-book"
+                            onClick={() => {
+                              if (onOpenEquipment) onOpenEquipment(item.id);
+                              else onBack();
+                            }}
+                            className="text-xs font-bold bg-blue-600 text-white px-3 py-1.5 rounded-lg"
+                          >
+                            احجز
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="customer-favorite-remove"
+                            onClick={() => removeFavorite(item.id)}
+                            className="text-red-500 hover:text-red-600"
+                            title="إزالة من المفضلة"
+                          >
+                            <Star size={20} fill="currentColor" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -592,8 +631,10 @@ export default function CustomerDashboard({
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
                 <div>
-                  <div className="font-bold">الإشعارات</div>
-                  <div className="text-sm text-slate-500">تلقي إشعارات حول الحجوزات والعروض</div>
+                  <div className="font-bold">تذكير الإشعارات</div>
+                  <div className="text-sm text-slate-500">
+                    تفضيل محلي على هذا الجهاز فقط — الإشعارات داخل المنصة تبقى متاحة من الجرس
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -609,16 +650,15 @@ export default function CustomerDashboard({
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
                 <div>
                   <div className="font-bold">اللغة</div>
-                  <div className="text-sm text-slate-500">تفضيل العرض المحلي</div>
+                  <div className="text-sm text-slate-500">العربية هي اللغة المعتمدة حالياً</div>
                 </div>
                 <select
                   data-testid="customer-settings-lang"
-                  value={lang}
-                  onChange={(e) => savePrefs({ lang: e.target.value })}
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+                  value="ar"
+                  disabled
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-100 text-slate-500"
                 >
                   <option value="ar">العربية</option>
-                  <option value="en">English</option>
                 </select>
               </div>
             </div>

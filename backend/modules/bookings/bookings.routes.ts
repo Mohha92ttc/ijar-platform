@@ -13,6 +13,6 @@ router.get('/owner/:ownerId', authenticateToken, requireRole(['owner', 'admin'])
 
 // Single booking (after static path segments)
 router.get('/:id', authenticateToken, requireRole(['customer', 'owner', 'admin']), bookingController.getById);
-router.patch('/:id/status', authenticateToken, requireRole(['owner', 'admin']), bookingController.updateStatus);
+router.patch('/:id/status', authenticateToken, requireRole(['owner', 'admin', 'customer']), bookingController.updateStatus);
 
 export default router;

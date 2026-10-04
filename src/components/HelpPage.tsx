@@ -1,32 +1,32 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Phone, Mail, MessageCircle, HelpCircle, Search, Book, Headphones, Send } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiJson, ApiError } from '../lib/api';
 
 const faqData = [
   {
     question: 'كيف يمكنني تأجير معداتي على المنصة؟',
-    answer: 'قم بإنشاء حساب، ثم اضغط على "أضف معداتك"، املأ المعلومات المطلوبة، وصور المعدات، وحدد السعر والمدة المتاحة للتأجير.'
+    answer: 'أنشئ حساب شريك، وبعد موافقة الإدارة أضف معداتك من لوحة الشريك مع الصور والسعر والموقع.'
   },
   {
     question: 'ما هي رسوم المنصة؟',
-    answer: 'نحصل على عمولة قابلة للضبط من الإدارة على كل عملية تأجير ناجحة. لا توجد رسوم خفية أخرى على الزبون.'
+    answer: 'عمولة المنصة قابلة للضبط من إعدادات الإدارة وتُحتسب على عمليات الإيجار المعتمدة. لا توجد رسوم خفية على الزبون.'
   },
   {
     question: 'كيف يتم الدفع والتسليم؟',
-    answer: 'يمكنك الدفع عبر تحويل بنكي / زين كاش أو عند التسليم حسب إعدادات الشريك. التوصيل عبر مندوب عند طلبه مع تحديد موقعك على الخريطة.'
+    answer: 'الدفع عبر تحويل بنكي / زين كاش / آسيا حوالة أو عند التسليم حسب خيارات الشريك. يمكنك طلب توصيل وتحديد موقعك على الخريطة.'
   },
   {
     question: 'ماذا لو تعطلت المعدات أثناء التأجير؟',
-    answer: 'المؤجر مسؤول عن صيانة المعدات. في حالة العطل، يمكن التواصل مباشرة مع المؤجر أو رفع شكوى عبر نموذج المساعدة.'
+    answer: 'تواصل مع الشريك أولاً، أو أرسل شكوى عبر نموذج المساعدة أدناه ليراجعها فريق الدعم.'
   },
   {
     question: 'كيف يمكنني إلغاء الحجز؟',
-    answer: 'يمكن إلغاء الحجز قبل 24 ساعة من موعد الاستلام مع استرجاع كامل المبلغ. الإلغاء بعد ذلك يخضع لسياسة الإلغاء.'
+    answer: 'من لوحة «حجوزاتي» يمكنك إلغاء الحجوزات بحالة «في الانتظار» أو «مؤكد». بعد اكتمال الإيجار لا يمكن الإلغاء — تواصل مع الدعم إن لزم.'
   },
   {
-    question: 'هل هناك تأمين على المعدات؟',
-    answer: 'نعم، نقدم تأميناً اختيارياً على المعدات بنسبة 5% من قيمة التأجير للحماية من الأضرار.'
+    question: 'هل التقييمات تظهر للعامة؟',
+    answer: 'نعم. بعد إكمال الإيجار يمكنك تقييم التجربة، وتظهر التقييمات داخل نافذة حجز المعدة للزبائن الآخرين.'
   }
 ];
 
@@ -49,6 +49,25 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
   });
   const [sending, setSending] = useState(false);
   const [formMsg, setFormMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [contactPhone, setContactPhone] = useState('+964 7700 123 456');
+  const [contactEmail, setContactEmail] = useState('support@ijar.iq');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await apiJson<{ phones?: string[]; emails?: string[] }>('/api/platform/info');
+        if (cancelled) return;
+        if (Array.isArray(d.phones) && d.phones[0]) setContactPhone(String(d.phones[0]));
+        if (Array.isArray(d.emails) && d.emails[0]) setContactEmail(String(d.emails[0]));
+      } catch {
+        // keep defaults
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredFaq = faqData.filter(item =>
     item.question.includes(searchTerm) || item.answer.includes(searchTerm)
@@ -129,25 +148,25 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
           </a>
 
           <a
-            href="tel:+9647700123456"
+            href={`tel:${contactPhone.replace(/\s/g, '')}`}
             className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow"
           >
             <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Phone className="text-green-600" size={28} />
             </div>
             <h3 className="font-bold mb-2">اتصل بنا</h3>
-            <p className="text-sm text-slate-600">+964 7700 123 456</p>
+            <p className="text-sm text-slate-600">{contactPhone}</p>
           </a>
 
           <a
-            href="mailto:support@ijar.iq"
+            href={`mailto:${contactEmail}`}
             className="bg-white rounded-2xl p-6 border border-slate-200 text-center hover:shadow-lg transition-shadow"
           >
             <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Mail className="text-amber-600" size={28} />
             </div>
             <h3 className="font-bold mb-2">بريد إلكتروني</h3>
-            <p className="text-sm text-slate-600">support@ijar.iq</p>
+            <p className="text-sm text-slate-600">{contactEmail}</p>
           </a>
         </motion.div>
 
@@ -198,24 +217,28 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
           <div className="bg-white rounded-2xl p-6 border border-slate-200">
             <div className="flex items-center gap-3 mb-4">
               <Book className="text-blue-600" size={24} />
-              <h3 className="text-lg font-bold">دليل المستخدم</h3>
+              <h3 className="text-lg font-bold">دليل سريع</h3>
             </div>
             <ul className="space-y-3 text-slate-600">
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                <span>كيفية إنشاء حساب</span>
+              <li>
+                <button type="button" className="text-blue-600 hover:underline text-right w-full" onClick={() => setExpandedFaq(0)}>
+                  كيفية إنشاء حساب شريك
+                </button>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                <span>إضافة المعدات للتأجير</span>
+              <li>
+                <button type="button" className="text-blue-600 hover:underline text-right w-full" onClick={() => setExpandedFaq(2)}>
+                  الدفع والتسليم
+                </button>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                <span>عملية الحجز والدفع</span>
+              <li>
+                <button type="button" className="text-blue-600 hover:underline text-right w-full" onClick={() => setExpandedFaq(4)}>
+                  إلغاء الحجز
+                </button>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                <span>تقييم المستخدمين</span>
+              <li>
+                <button type="button" className="text-blue-600 hover:underline text-right w-full" onClick={() => setExpandedFaq(5)}>
+                  التقييمات
+                </button>
               </li>
             </ul>
           </div>
@@ -226,21 +249,17 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
               <h3 className="text-lg font-bold">الدعم الفني</h3>
             </div>
             <ul className="space-y-3 text-slate-600">
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
-                <span>مشاكل تسجيل الدخول</span>
+              <li>
+                <a href="#help-contact-form" className="text-blue-600 hover:underline">مشكلة تسجيل الدخول</a>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
-                <span>مشاكل الدفع</span>
+              <li>
+                <a href="#help-contact-form" className="text-blue-600 hover:underline">مشكلة دفع / إثبات تحويل</a>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
-                <span>إبلاغ عن عطل فني</span>
+              <li>
+                <a href="#help-contact-form" className="text-blue-600 hover:underline">عطل فني في التطبيق</a>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-green-600 rounded-full"></div>
-                <span>اقتراحات وتحسينات</span>
+              <li>
+                <a href="#help-contact-form" className="text-blue-600 hover:underline">اقتراح تحسين</a>
               </li>
             </ul>
           </div>

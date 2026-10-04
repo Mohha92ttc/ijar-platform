@@ -536,6 +536,20 @@ export default function App() {
         userEmail={user?.email}
         onBack={() => setView('home')}
         onLogout={handleLogout}
+        onOpenEquipment={async (equipmentId) => {
+          setView('home');
+          const found = list.find((e) => e.id === equipmentId);
+          if (found) {
+            await openBooking(found);
+            return;
+          }
+          try {
+            const e = await apiJson<Record<string, unknown>>(`/api/equipment/${equipmentId}`);
+            await openBooking(mapApiEquipment(e));
+          } catch {
+            // stay on home
+          }
+        }}
       />
     );
   if (view === 'about') return <AboutPage onBack={() => setView('home')} />;

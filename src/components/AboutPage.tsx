@@ -1,7 +1,10 @@
 import { motion } from 'motion/react';
 import { Phone, Mail, MapPin, Building, Users, Shield, Clock, ArrowRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { apiJson } from '../lib/api';
 
 interface PlatformInfo {
+  name: string;
   phones: string[];
   emails: string[];
   addresses: string[];
@@ -11,22 +14,49 @@ interface PlatformInfo {
 }
 
 const defaultInfo: PlatformInfo = {
-  phones: ['+964 7700 123 456', '+964 7500 789 012'],
-  emails: ['info@ijar.iq', 'support@ijar.iq'],
-  addresses: ['بغداد - الكرادة، شارع فلسطين', 'أربيل - عينكاوة، بالقرب من الجامعة'],
-  description: 'منصة إيجار هي المنصة الرائدة في العراق لتأجير المعدات والأدوات بين الأفراد والشركات. نحن نربط بين أصحاب المعدات والشركات المحتاجة للتأجير بطريقة آمنة وموثوقة.',
-  mission: 'مهمتنا هي تسهيل عملية تأجير المعدات في العراق وتوفير مصدر دخل إضافي لأصحاب المعدات مع توفير حلول اقتصادية للشركات.',
-  vision: 'أن نكون المنصة الأولى والأكثر ثقة في تأجير المعدات في الشرق الأوسط.'
+  name: 'إيجار',
+  phones: ['+964 7700 123 456'],
+  emails: ['support@ijar.iq'],
+  addresses: ['بغداد'],
+  description: 'منصة إيجار هي المنصة الرائدة في العراق لتأجير المعدات والأدوات بين الأفراد والشركات.',
+  mission: 'مهمتنا هي تسهيل عملية تأجير المعدات في العراق وتوفير مصدر دخل إضافي لأصحاب المعدات.',
+  vision: 'أن نكون المنصة الأولى والأكثر ثقة في تأجير المعدات في الشرق الأوسط.',
 };
 
 export default function AboutPage({ onBack }: { onBack: () => void }) {
+  const [info, setInfo] = useState<PlatformInfo>(defaultInfo);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await apiJson<Partial<PlatformInfo>>('/api/platform/info');
+        if (cancelled) return;
+        setInfo({
+          name: String(d.name || defaultInfo.name),
+          description: String(d.description || defaultInfo.description),
+          mission: String(d.mission || defaultInfo.mission),
+          vision: String(d.vision || defaultInfo.vision),
+          phones: Array.isArray(d.phones) && d.phones.length ? d.phones.map(String) : defaultInfo.phones,
+          emails: Array.isArray(d.emails) && d.emails.length ? d.emails.map(String) : defaultInfo.emails,
+          addresses:
+            Array.isArray(d.addresses) && d.addresses.length ? d.addresses.map(String) : defaultInfo.addresses,
+        });
+      } catch {
+        // keep defaults
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               type="button"
               data-testid="static-page-back"
               onClick={onBack}
@@ -40,8 +70,7 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
       </div>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        {/* Hero Section */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl p-8 text-white mb-8"
@@ -51,18 +80,15 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
               <Building size={32} />
             </div>
             <div>
-              <h2 className="text-3xl font-bold mb-2">منصة إيجار</h2>
+              <h2 className="text-3xl font-bold mb-2">{info.name}</h2>
               <p className="text-blue-100">المنصة الرائدة لتأجير المعدات في العراق</p>
             </div>
           </div>
-          <p className="text-lg leading-relaxed text-blue-50">
-            {defaultInfo.description}
-          </p>
+          <p className="text-lg leading-relaxed text-blue-50">{info.description}</p>
         </motion.div>
 
-        {/* Mission & Vision */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.1 }}
@@ -74,10 +100,10 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
               </div>
               <h3 className="text-xl font-bold">مهمتنا</h3>
             </div>
-            <p className="text-slate-600 leading-relaxed">{defaultInfo.mission}</p>
+            <p className="text-slate-600 leading-relaxed">{info.mission}</p>
           </motion.div>
 
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
@@ -89,18 +115,17 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
               </div>
               <h3 className="text-xl font-bold">رؤيتنا</h3>
             </div>
-            <p className="text-slate-600 leading-relaxed">{defaultInfo.vision}</p>
+            <p className="text-slate-600 leading-relaxed">{info.vision}</p>
           </motion.div>
         </div>
 
-        {/* Features */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
           className="bg-white rounded-2xl p-6 border border-slate-200 mb-8"
         >
-          <h3 className="text-xl font-bold mb-6">لماذا تختار منصة إيجار؟</h3>
+          <h3 className="text-xl font-bold mb-6">لماذا تختار {info.name}؟</h3>
           <div className="grid md:grid-cols-3 gap-4">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -108,7 +133,7 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
               </div>
               <div>
                 <h4 className="font-bold mb-1">آمن وموثوق</h4>
-                <p className="text-sm text-slate-600">نظام حماية متقدم للمعاملات والبيانات</p>
+                <p className="text-sm text-slate-600">حماية للحسابات والمدفوعات اليدوية عبر إثبات التحويل</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -117,7 +142,7 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
               </div>
               <div>
                 <h4 className="font-bold mb-1">سريع ومباشر</h4>
-                <p className="text-sm text-slate-600">تواصل مباشر بين المؤجر والمستأجر</p>
+                <p className="text-sm text-slate-600">حجز وتوصيل وتتبع حالة الطلب من لوحة الزبون</p>
               </div>
             </div>
             <div className="flex items-start gap-3">
@@ -125,19 +150,19 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
                 <Users className="text-amber-600" size={20} />
               </div>
               <div>
-                <h4 className="font-bold mb-1">مجتمع واسع</h4>
-                <p className="text-sm text-slate-600">آلاف المستخدمين في جميع أنحاء العراق</p>
+                <h4 className="font-bold mb-1">شركاء محليون</h4>
+                <p className="text-sm text-slate-600">معدات من شركاء معتمدين في محافظات العراق</p>
               </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Contact Information */}
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           className="bg-white rounded-2xl p-6 border border-slate-200"
+          data-testid="about-contact"
         >
           <h3 className="text-xl font-bold mb-6">تواصل معنا</h3>
           <div className="grid md:grid-cols-3 gap-6">
@@ -147,8 +172,8 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
               </div>
               <h4 className="font-bold mb-3">أرقام الهاتف</h4>
               <div className="space-y-2">
-                {defaultInfo.phones.map((phone, index) => (
-                  <a 
+                {info.phones.map((phone, index) => (
+                  <a
                     key={index}
                     href={`tel:${phone.replace(/\s/g, '')}`}
                     className="block text-blue-600 hover:text-blue-700 font-medium"
@@ -165,8 +190,8 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
               </div>
               <h4 className="font-bold mb-3">البريد الإلكتروني</h4>
               <div className="space-y-2">
-                {defaultInfo.emails.map((email, index) => (
-                  <a 
+                {info.emails.map((email, index) => (
+                  <a
                     key={index}
                     href={`mailto:${email}`}
                     className="block text-blue-600 hover:text-blue-700 font-medium"
@@ -182,9 +207,11 @@ export default function AboutPage({ onBack }: { onBack: () => void }) {
                 <MapPin className="text-amber-600" size={28} />
               </div>
               <h4 className="font-bold mb-3">العناوين</h4>
-              <div className="space-y-2 text-slate-600">
-                {defaultInfo.addresses.map((address, index) => (
-                  <p key={index} className="text-sm">{address}</p>
+              <div className="space-y-2">
+                {info.addresses.map((address, index) => (
+                  <p key={index} className="text-slate-600 text-sm">
+                    {address}
+                  </p>
                 ))}
               </div>
             </div>

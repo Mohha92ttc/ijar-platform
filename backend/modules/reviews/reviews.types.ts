@@ -7,6 +7,7 @@ export interface Review {
   rating: number;
   comment?: string;
   created_at: Date;
+  reviewer_name?: string;
 }
 
 export interface CreateReviewDTO {
