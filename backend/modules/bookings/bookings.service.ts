@@ -48,16 +48,39 @@ export class BookingService {
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const rentalPrice = diffDays * equipment.price_per_day;
-    const deliveryFee = data.delivery_requested ? Math.max(0, Number(data.delivery_fee) || 0) : 0;
+    const deliveryRequested = Boolean(data.delivery_requested);
+    const deliveryFee = deliveryRequested ? Math.max(0, Number(data.delivery_fee) || 0) : 0;
     const totalPrice = rentalPrice + deliveryFee;
+
+    let deliveryLat: number | null = null;
+    let deliveryLng: number | null = null;
+    if (deliveryRequested) {
+      const lat = data.delivery_lat != null ? Number(data.delivery_lat) : NaN;
+      const lng = data.delivery_lng != null ? Number(data.delivery_lng) : NaN;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        throw new Error('حدد موقع التوصيل على الخريطة');
+      }
+      if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        throw new Error('إحداثيات التوصيل غير صالحة');
+      }
+      deliveryLat = lat;
+      deliveryLng = lng;
+    }
+
+    const deliveryAddress =
+      deliveryRequested && data.delivery_address
+        ? String(data.delivery_address).trim() || null
+        : null;
+    const deliveryStatus = deliveryRequested ? 'pending_assign' : null;
 
     const ins = await query(
       `
       INSERT INTO bookings (
         equipment_id, customer_id, start_date, end_date, total_amount, status,
-        location, notes, customer_phone, delivery_requested, delivery_fee, payment_preference
+        location, notes, customer_phone, delivery_requested, delivery_fee, payment_preference,
+        delivery_lat, delivery_lng, delivery_address, delivery_status
       )
-      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       RETURNING *
     `,
       [
@@ -69,9 +92,13 @@ export class BookingService {
         data.location ?? null,
         data.notes ?? null,
         data.customer_phone ?? null,
-        Boolean(data.delivery_requested),
+        deliveryRequested,
         deliveryFee,
         data.payment_preference ?? null,
+        deliveryLat,
+        deliveryLng,
+        deliveryAddress,
+        deliveryStatus,
       ]
     );
 
@@ -198,10 +225,13 @@ export class BookingService {
              p.payment_proof AS payment_proof,
              p.method::text AS payment_db_method,
              p.status::text AS payment_status,
-             p.notes AS payment_notes
+             p.notes AS payment_notes,
+             c.name AS courier_name,
+             c.phone AS courier_phone
       FROM bookings b
       JOIN equipment e ON b.equipment_id = e.id
       JOIN users u ON b.customer_id = u.id
+      LEFT JOIN couriers c ON c.id = b.assigned_courier_id
       LEFT JOIN LATERAL (
         SELECT payment_proof, method, status, notes
         FROM payments

@@ -6,6 +6,7 @@ import { paymentMethodLabel } from '../lib/cartStorage';
 import { apiJson } from '../lib/api';
 import TransferAccountsPanel from './TransferAccountsPanel';
 import ImageUpload from './ImageUpload';
+import MapPicker, { type MapPin as DeliveryPin } from './MapPicker';
 
 export type CheckoutFormData = {
   phone: string;
@@ -14,6 +15,9 @@ export type CheckoutFormData = {
   paymentMethod: CartPaymentMethod;
   /** data URL لإثبات التحويل — إلزامي لغير الدفع عند التسليم */
   proofImage?: string | null;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
+  deliveryAddress?: string | null;
 };
 
 function needsPaymentProof(m: CartPaymentMethod): boolean {
@@ -45,6 +49,8 @@ export default function CheckoutPage({
   });
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>(defaultPay);
   const [proofDataUrl, setProofDataUrl] = useState<string | null>(null);
+  const [deliveryPin, setDeliveryPin] = useState<DeliveryPin | null>(null);
+  const needsDeliveryMap = cart.some((c) => c.wantsDelivery);
   const [ownerHints, setOwnerHints] = useState<
     Record<
       string,
@@ -88,7 +94,10 @@ export default function CheckoutPage({
   const deliverySum = useMemo(() => cart.reduce((s, i) => s + Number(i.deliveryFee || 0), 0), [cart]);
   const total = rentalSum + deliverySum;
   const requireProof = needsPaymentProof(paymentMethod);
-  const canSubmit = cart.length > 0 && (!requireProof || Boolean(proofDataUrl));
+  const canSubmit =
+    cart.length > 0 &&
+    (!requireProof || Boolean(proofDataUrl)) &&
+    (!needsDeliveryMap || Boolean(deliveryPin));
 
   const handleProofFile = (file: File | null) => {
     if (!file) {
@@ -107,10 +116,17 @@ export default function CheckoutPage({
       alert('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
       return;
     }
+    if (needsDeliveryMap && !deliveryPin) {
+      alert('حدد موقع التوصيل على الخريطة');
+      return;
+    }
     await onComplete({
       ...formData,
       paymentMethod,
       proofImage: requireProof ? proofDataUrl : null,
+      deliveryLat: needsDeliveryMap && deliveryPin ? deliveryPin.lat : null,
+      deliveryLng: needsDeliveryMap && deliveryPin ? deliveryPin.lng : null,
+      deliveryAddress: formData.location || null,
     });
   };
 
@@ -235,19 +251,31 @@ export default function CheckoutPage({
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 mr-2">موقع التوصيل / العمل</label>
+              <label className="text-xs font-bold text-slate-500 mr-2">
+                {needsDeliveryMap ? 'عنوان التوصيل (اختياري نصي)' : 'موقع العمل / الاستلام'}
+              </label>
               <div className="relative">
                 <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
                   type="text"
                   data-testid="checkout-location"
-                  required
+                  required={!needsDeliveryMap}
                   placeholder="المحافظة، المنطقة، المعلم"
                   className="w-full bg-white border border-slate-200 rounded-xl py-3 pr-10 pl-4 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                 />
               </div>
             </div>
+
+            {needsDeliveryMap && (
+              <div className="space-y-2" data-testid="checkout-delivery-map">
+                <label className="text-xs font-bold text-slate-500">موقع التوصيل على الخريطة (إلزامي)</label>
+                <MapPicker value={deliveryPin} onChange={setDeliveryPin} height={200} />
+                {!deliveryPin && (
+                  <p className="text-[11px] text-red-600 font-medium">حدد الدبوس قبل إرسال الطلب.</p>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 mr-2">ملاحظات إضافية</label>

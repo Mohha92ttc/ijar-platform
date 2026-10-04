@@ -41,7 +41,7 @@ export class AuthController {
         return;
       }
       // Strip token so admin UI never adopts the new user's session
-      const { token: _omit, ...safe } = result as { token?: string } & Record<string, unknown>;
+      const { token: _omit, ...safe } = result as unknown as { token?: string } & Record<string, unknown>;
       res.status(201).json(safe);
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل التسجيل') });

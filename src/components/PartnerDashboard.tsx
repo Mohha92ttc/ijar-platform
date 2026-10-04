@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Package, Clock, CheckCircle, XCircle, Settings, Plus, BarChart2, Home, Edit2, Trash2, Save, X, Sparkles, CreditCard, Image as ImageIcon, Eye } from 'lucide-react';
+import { Package, Clock, CheckCircle, XCircle, Settings, Plus, BarChart2, Home, Edit2, Trash2, Save, X, Sparkles, CreditCard, Image as ImageIcon, Eye, Truck, Navigation } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 import TransferAccountsPanel from './TransferAccountsPanel';
 import { apiJson, ApiError } from '../lib/api';
 import { paymentMethodLabel, type CartPaymentMethod } from '../lib/cartStorage';
 import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation } from '../lib/iraqLocations';
+import { googleMapsDirectionsUrl } from './MapPicker';
 
 type Eq = {
   id: string;
@@ -30,6 +31,22 @@ type Bk = {
   paymentProof?: string | null;
   paymentStatus?: string | null;
   isCod: boolean;
+  deliveryRequested?: boolean;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
+  deliveryAddress?: string | null;
+  assignedCourierId?: string | null;
+  courierName?: string | null;
+  deliveryStatus?: string | null;
+};
+
+type CourierRow = {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string | null;
+  is_active: boolean;
+  temp_password?: string;
 };
 
 function mapPayLabel(pref?: string | null): string {
@@ -70,6 +87,13 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const [bookings, setBookings] = useState<Bk[]>([]);
   const [loading, setLoading] = useState(true);
   const [proofPreview, setProofPreview] = useState<{ url: string; bookingId: string; title: string } | null>(null);
+  const [couriers, setCouriers] = useState<CourierRow[]>([]);
+  const [newCourier, setNewCourier] = useState({ name: '', phone: '', email: '', password: '' });
+  const [courierCreating, setCourierCreating] = useState(false);
+  const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string; name: string } | null>(null);
+  const [courierReportId, setCourierReportId] = useState('');
+  const [courierReportMonth, setCourierReportMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [courierReport, setCourierReport] = useState<any>(null);
 
   const [transferInfo, setTransferInfo] = useState<{
     bank_name?: string | null;
@@ -129,7 +153,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           equipment: String(b.equipment_title || '—'),
           customer: String(b.customer_name || b.customer_id),
           phone: String(b.customer_phone ?? '—'),
-          location: String(b.location ?? '—'),
+          location: String(b.delivery_address || b.location || '—'),
           dates: `${new Date(String(b.start_date)).toLocaleDateString('ar-IQ')} – ${new Date(String(b.end_date)).toLocaleDateString('ar-IQ')}`,
           total: Number(b.total_amount),
           status: String(b.status),
@@ -137,6 +161,13 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           paymentProof: resolveProofUrl(b.payment_proof ? String(b.payment_proof) : null),
           paymentStatus: b.payment_status ? String(b.payment_status) : null,
           isCod,
+          deliveryRequested: Boolean(b.delivery_requested),
+          deliveryLat: b.delivery_lat != null ? Number(b.delivery_lat) : null,
+          deliveryLng: b.delivery_lng != null ? Number(b.delivery_lng) : null,
+          deliveryAddress: b.delivery_address ? String(b.delivery_address) : null,
+          assignedCourierId: b.assigned_courier_id ? String(b.assigned_courier_id) : null,
+          courierName: b.courier_name ? String(b.courier_name) : null,
+          deliveryStatus: b.delivery_status ? String(b.delivery_status) : null,
         };
       });
       setBookings(mappedBookings);
@@ -158,6 +189,88 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const loadCouriers = useCallback(async () => {
+    if (!ownerId) return;
+    try {
+      const list = await apiJson<CourierRow[]>('/api/couriers');
+      setCouriers(list);
+    } catch {
+      setCouriers([]);
+    }
+  }, [ownerId]);
+
+  useEffect(() => {
+    if (activeTab === 'couriers' || activeTab === 'bookings') {
+      loadCouriers();
+    }
+  }, [activeTab, loadCouriers]);
+
+  const createCourier = async () => {
+    if (!newCourier.name.trim() || !newCourier.phone.trim()) {
+      alert('الاسم ورقم الهاتف مطلوبان');
+      return;
+    }
+    setCourierCreating(true);
+    try {
+      const created = await apiJson<CourierRow & { temp_password?: string; email?: string }>('/api/couriers', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newCourier.name.trim(),
+          phone: newCourier.phone.trim(),
+          email: newCourier.email.trim() || undefined,
+          password: newCourier.password.trim() || undefined,
+        }),
+      });
+      setCreatedCreds({
+        name: created.name,
+        email: String(created.email || ''),
+        password: String(created.temp_password || newCourier.password || ''),
+      });
+      setNewCourier({ name: '', phone: '', email: '', password: '' });
+      await loadCouriers();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إنشاء المندوب');
+    } finally {
+      setCourierCreating(false);
+    }
+  };
+
+  const toggleCourierActive = async (id: string, is_active: boolean) => {
+    try {
+      await apiJson(`/api/couriers/${id}/active`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active }),
+      });
+      await loadCouriers();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر التحديث');
+    }
+  };
+
+  const assignCourier = async (bookingId: string, courier_id: string) => {
+    if (!courier_id) return;
+    try {
+      await apiJson(`/api/couriers/assign/${bookingId}`, {
+        method: 'POST',
+        body: JSON.stringify({ courier_id }),
+      });
+      await loadData();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر تعيين المندوب');
+    }
+  };
+
+  const loadCourierReport = async () => {
+    if (!courierReportId) return;
+    try {
+      const r = await apiJson(`/api/couriers/${courierReportId}/report?month=${encodeURIComponent(courierReportMonth)}`);
+      setCourierReport(r);
+    } catch (e: unknown) {
+      setCourierReport(null);
+      alert(e instanceof ApiError ? e.message : 'تعذر جلب التقرير');
+    }
+  };
 
   useEffect(() => {
     if (!ownerId || (activeTab !== 'featured' && activeTab !== 'settings' && activeTab !== 'reports')) return;
@@ -369,6 +482,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           </button>
           <button 
             type="button"
+            data-testid="partner-nav-couriers"
+            onClick={() => setActiveTab('couriers')}
+            className={`w-full flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors ${
+              activeTab === 'couriers' ? 'bg-blue-700' : 'hover:bg-blue-800 text-blue-200'
+            }`}
+          >
+            <Truck size={18} /> المندوبين
+          </button>
+          <button 
+            type="button"
             data-testid="partner-nav-reports"
             onClick={() => setActiveTab('reports')}
             className={`w-full flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors ${
@@ -414,6 +537,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             <h2 className="text-2xl font-bold text-slate-800">
               {activeTab === 'bookings' && 'الطلبات الواصلة'}
               {activeTab === 'equipment' && 'معداتي'}
+              {activeTab === 'couriers' && 'المندوبين'}
               {activeTab === 'reports' && 'التقارير'}
               {activeTab === 'featured' && 'إعلان مميز مدفوع'}
               {activeTab === 'settings' && 'الإعدادات'}
@@ -422,6 +546,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               {loading && 'جاري التحميل من الخادم…'}
               {!loading && activeTab === 'bookings' && `لديك ${bookings.filter((b) => b.status === 'pending').length} طلبات جديدة بانتظار المراجعة`}
               {!loading && activeTab === 'equipment' && `لديك ${myEquipment.length} معدة مسجلة`}
+              {!loading && activeTab === 'couriers' && `${couriers.length} مندوب مسجّل`}
               {!loading && activeTab === 'reports' && 'إحصائيات أداء حسابك'}
               {!loading && activeTab === 'featured' && 'الظهور في مقدمة القائمة بعد الموافقة على الدفع'}
               {!loading && activeTab === 'settings' && 'إدارة معلومات حسابك'}
@@ -561,6 +686,53 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                       </p>
                     )}
                   </div>
+
+                  {booking.deliveryRequested && (
+                    <div className="border-t border-slate-100 pt-4 space-y-3" data-testid="partner-booking-delivery">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="font-bold text-slate-700 flex items-center gap-1">
+                          <Truck size={14} /> توصيل
+                        </span>
+                        {booking.deliveryStatus && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">
+                            {booking.deliveryStatus}
+                          </span>
+                        )}
+                        {booking.courierName && (
+                          <span className="text-slate-500">المندوب: {booking.courierName}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                        <select
+                          data-testid="partner-assign-courier"
+                          className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"
+                          value={booking.assignedCourierId || ''}
+                          onChange={(e) => assignCourier(booking.id, e.target.value)}
+                        >
+                          <option value="">اختر مندوباً / انقل الطلب…</option>
+                          {couriers.filter((c) => c.is_active).map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} — {c.phone}
+                            </option>
+                          ))}
+                        </select>
+                        {booking.deliveryLat != null && booking.deliveryLng != null && (
+                          <a
+                            href={googleMapsDirectionsUrl(booking.deliveryLat, booking.deliveryLng)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="partner-open-delivery-map"
+                            className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-sm font-bold border border-blue-100"
+                          >
+                            <Navigation size={14} /> الخريطة
+                          </a>
+                        )}
+                      </div>
+                      {couriers.length === 0 && (
+                        <p className="text-[11px] text-amber-700">أضف مندوبين من تبويب «المندوبين» أولاً.</p>
+                      )}
+                    </div>
+                  )}
                 </motion.div>
               ))}
             </div>
@@ -614,6 +786,156 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   >
                     تأكيد بعد مراجعة الصورة
                   </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Couriers Tab */}
+        {activeTab === 'couriers' && (
+          <div className="space-y-6" data-testid="partner-couriers-tab">
+            {createdCreds && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-sm space-y-1" data-testid="partner-courier-creds">
+                <p className="font-bold text-emerald-800">تم إنشاء حساب المندوب — احفظ بيانات الدخول:</p>
+                <p>الاسم: {createdCreds.name}</p>
+                <p>البريد: <span className="font-mono">{createdCreds.email}</span></p>
+                <p>كلمة المرور: <span className="font-mono">{createdCreds.password}</span></p>
+                <button type="button" className="text-xs font-bold text-emerald-700 underline mt-1" onClick={() => setCreatedCreds(null)}>
+                  إخفاء
+                </button>
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <Plus size={18} className="text-blue-600" /> إضافة مندوب
+              </h3>
+              <p className="text-xs text-slate-500">يُنشأ حساب دخول تلقائياً بصلاحية مندوب فقط — يرى الطلبات التي تحوّلها له.</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <input
+                  data-testid="partner-courier-name"
+                  placeholder="اسم المندوب"
+                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm"
+                  value={newCourier.name}
+                  onChange={(e) => setNewCourier({ ...newCourier, name: e.target.value })}
+                />
+                <input
+                  data-testid="partner-courier-phone"
+                  placeholder="رقم الهاتف"
+                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm"
+                  value={newCourier.phone}
+                  onChange={(e) => setNewCourier({ ...newCourier, phone: e.target.value })}
+                />
+                <input
+                  data-testid="partner-courier-email"
+                  placeholder="بريد اختياري (وإلا يُولَّد تلقائياً)"
+                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm"
+                  value={newCourier.email}
+                  onChange={(e) => setNewCourier({ ...newCourier, email: e.target.value })}
+                />
+                <input
+                  data-testid="partner-courier-password"
+                  placeholder="كلمة مرور اختيارية (وإلا تُولَّد)"
+                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm"
+                  value={newCourier.password}
+                  onChange={(e) => setNewCourier({ ...newCourier, password: e.target.value })}
+                />
+              </div>
+              <button
+                type="button"
+                data-testid="partner-courier-create"
+                disabled={courierCreating}
+                onClick={createCourier}
+                className="bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
+              >
+                {courierCreating ? 'جاري الإنشاء…' : 'إنشاء مندوب'}
+              </button>
+            </div>
+
+            <div className="grid gap-3">
+              {couriers.map((c) => (
+                <div
+                  key={c.id}
+                  data-testid="partner-courier-card"
+                  className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="font-bold text-slate-800">{c.name}</p>
+                    <p className="text-xs text-slate-500">{c.phone}{c.email ? ` · ${c.email}` : ''}</p>
+                    <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${c.is_active ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {c.is_active ? 'نشط' : 'موقوف'}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleCourierActive(c.id, !c.is_active)}
+                      className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50"
+                    >
+                      {c.is_active ? 'إيقاف' : 'تفعيل'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCourierReportId(c.id)}
+                      className="text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 text-slate-700 border border-slate-200"
+                    >
+                      تقرير
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {couriers.length === 0 && (
+                <p className="text-sm text-slate-500 text-center py-8">لا يوجد مندوبون بعد</p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-3" data-testid="partner-courier-report-panel">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <BarChart2 size={18} /> تقرير مندوب شهري
+              </h3>
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">المندوب</label>
+                  <select
+                    className="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white min-w-[180px]"
+                    value={courierReportId}
+                    onChange={(e) => setCourierReportId(e.target.value)}
+                  >
+                    <option value="">اختر…</option>
+                    {couriers.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 block mb-1">الشهر</label>
+                  <input
+                    type="month"
+                    className="border border-slate-200 rounded-xl px-3 py-2 text-sm"
+                    value={courierReportMonth}
+                    onChange={(e) => setCourierReportMonth(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  data-testid="partner-courier-report-load"
+                  onClick={loadCourierReport}
+                  className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold"
+                >
+                  عرض
+                </button>
+              </div>
+              {courierReport && (
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs text-slate-500">تم التسليم</p>
+                    <p className="text-xl font-bold">{courierReport.delivered_count}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3">
+                    <p className="text-xs text-slate-500">أجور التوصيل</p>
+                    <p className="text-lg font-bold">{Number(courierReport.total_delivery_fees || 0).toLocaleString()} د.ع</p>
+                  </div>
                 </div>
               )}
             </div>

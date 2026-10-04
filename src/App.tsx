@@ -21,6 +21,7 @@ import PartnerDashboard from './components/PartnerDashboard';
 import CustomerDashboard from './components/CustomerDashboard';
 import BookingModal from './components/BookingModal';
 import CheckoutPage from './components/CheckoutPage';
+import CourierDashboard from './components/CourierDashboard';
 import AboutPage from './components/AboutPage';
 import TermsPage from './components/TermsPage';
 import HelpPage from './components/HelpPage';
@@ -83,7 +84,7 @@ function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [view, setView] = useState<'home' | 'auth' | 'admin' | 'partner' | 'customer' | 'checkout' | 'about' | 'terms' | 'help'>('home');
+  const [view, setView] = useState<'home' | 'auth' | 'admin' | 'partner' | 'customer' | 'courier' | 'checkout' | 'about' | 'terms' | 'help'>('home');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentRow | null>(null);
   const [selectedDeliveryFee, setSelectedDeliveryFee] = useState(0);
@@ -118,6 +119,7 @@ export default function App() {
         setUser(me);
         setCart(loadCart(me.id));
         prevUserIdRef.current = me.id;
+        if (me.role === 'courier') setView('courier');
       } else {
         setUser(null);
         setCart(loadCart(null));
@@ -275,7 +277,15 @@ export default function App() {
 
   const handleLogin = (userData: any) => {
     setUser(userData);
-    setView('home');
+    if (userData?.role === 'courier') {
+      setView('courier');
+    } else if (userData?.role === 'owner') {
+      setView('partner');
+    } else if (userData?.role === 'admin') {
+      setView('admin');
+    } else {
+      setView('home');
+    }
   };
 
   const handleLogout = async () => {
@@ -361,6 +371,9 @@ export default function App() {
     notes: string;
     paymentMethod: CartPaymentMethod;
     proofImage?: string | null;
+    deliveryLat?: number | null;
+    deliveryLng?: number | null;
+    deliveryAddress?: string | null;
   }) => {
     if (!user?.id) {
       alert('يرجى تسجيل الدخول لإتمام الحجز');
@@ -379,25 +392,37 @@ export default function App() {
       alert('يرجى إرفاق صورة إثبات التحويل');
       return;
     }
+    const anyDelivery = cart.some((i) => i.wantsDelivery);
+    if (anyDelivery && (formData.deliveryLat == null || formData.deliveryLng == null)) {
+      setCheckoutError('حدد موقع التوصيل على الخريطة');
+      alert('حدد موقع التوصيل على الخريطة');
+      return;
+    }
     setCheckoutError(null);
     setCheckoutSubmitting(true);
     try {
       for (const item of cart) {
         const method = formData.paymentMethod || item.paymentMethod || 'manual';
+        const bookingBody: Record<string, unknown> = {
+          equipment_id: item.id,
+          start_date: new Date(item.startDate).toISOString(),
+          end_date: new Date(item.endDate).toISOString(),
+          customerId: user.id,
+          customer_phone: formData.phone,
+          location: formData.location,
+          notes: formData.notes,
+          delivery_requested: item.wantsDelivery,
+          delivery_fee: item.deliveryFee || 0,
+          payment_preference: method,
+        };
+        if (item.wantsDelivery) {
+          bookingBody.delivery_lat = formData.deliveryLat;
+          bookingBody.delivery_lng = formData.deliveryLng;
+          bookingBody.delivery_address = formData.deliveryAddress || formData.location || null;
+        }
         const booking = await apiJson<any>('/api/bookings', {
           method: 'POST',
-          body: JSON.stringify({
-            equipment_id: item.id,
-            start_date: new Date(item.startDate).toISOString(),
-            end_date: new Date(item.endDate).toISOString(),
-            customerId: user.id,
-            customer_phone: formData.phone,
-            location: formData.location,
-            notes: formData.notes,
-            delivery_requested: item.wantsDelivery,
-            delivery_fee: item.deliveryFee || 0,
-            payment_preference: method,
-          }),
+          body: JSON.stringify(bookingBody),
         });
 
         const paymentBody: Record<string, unknown> = {
@@ -438,6 +463,7 @@ export default function App() {
   if (view === 'auth') return <AuthPage onLogin={handleLogin} />;
   if (view === 'admin') return <AdminDashboard onBack={() => setView('home')} />;
   if (view === 'partner') return <PartnerDashboard ownerId={user?.id} onBack={() => setView('home')} />;
+  if (view === 'courier') return <CourierDashboard onBack={() => setView('home')} />;
   if (view === 'customer') return <CustomerDashboard userId={user?.id} userEmail={user?.email} onBack={() => setView('home')} />;
   if (view === 'about') return <AboutPage onBack={() => setView('home')} />;
   if (view === 'terms') return <TermsPage onBack={() => setView('home')} />;
@@ -495,6 +521,12 @@ export default function App() {
                         <button type="button" onClick={() => { setView('partner'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-right text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                           <Briefcase size={16} />
                           لوحة التحكم
+                        </button>
+                      )}
+                      {user.role === 'courier' && (
+                        <button type="button" data-testid="nav-courier-dashboard" onClick={() => { setView('courier'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-right text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                          <Briefcase size={16} />
+                          لوحة المندوب
                         </button>
                       )}
                       {user.role === 'admin' && (

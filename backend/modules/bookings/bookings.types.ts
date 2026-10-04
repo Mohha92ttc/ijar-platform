@@ -10,6 +10,11 @@ export interface Booking {
   status: BookingStatus;
   delivery_requested?: boolean;
   delivery_fee?: number;
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
+  delivery_address?: string | null;
+  assigned_courier_id?: string | null;
+  delivery_status?: string | null;
   payment_preference?: string;
   created_at: Date;
   updated_at: Date;
@@ -24,6 +29,9 @@ export interface CreateBookingDTO {
   customer_phone?: string;
   delivery_requested?: boolean;
   delivery_fee?: number;
+  delivery_lat?: number | null;
+  delivery_lng?: number | null;
+  delivery_address?: string | null;
   payment_preference?: string;
 }
 

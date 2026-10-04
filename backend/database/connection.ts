@@ -371,6 +371,27 @@ async function createTables() {
     CREATE INDEX IF NOT EXISTS idx_equipment_governorate ON equipment (governorate);
     CREATE INDEX IF NOT EXISTS idx_equipment_area ON equipment (area);
 
+    -- Couriers (مناديب الشريك)
+    CREATE TABLE IF NOT EXISTS couriers (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      name VARCHAR(120) NOT NULL,
+      phone VARCHAR(30) NOT NULL,
+      is_active BOOLEAN DEFAULT TRUE,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_couriers_owner ON couriers (owner_id);
+    CREATE INDEX IF NOT EXISTS idx_couriers_user ON couriers (user_id);
+
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_lat DOUBLE PRECISION;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_lng DOUBLE PRECISION;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_address TEXT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS assigned_courier_id UUID REFERENCES couriers(id) ON DELETE SET NULL;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(30) DEFAULT NULL;
+    CREATE INDEX IF NOT EXISTS idx_bookings_courier ON bookings (assigned_courier_id);
+
     -- Messages Table
     CREATE TABLE IF NOT EXISTS messages (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -448,6 +469,13 @@ async function createTables() {
   `;
 
   await query(createTablesSQL);
+
+  // Add courier role to enum (safe if already present)
+  try {
+    await query(`ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'courier'`);
+  } catch (e) {
+    console.warn('courier role enum note:', e instanceof Error ? e.message : e);
+  }
 }
 
 // Export the pool for direct use if needed
