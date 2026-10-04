@@ -15,6 +15,9 @@ function rowToBooking(row: Record<string, unknown>): Booking {
     status: row.status as BookingStatus,
     created_at: new Date(row.created_at as string),
     updated_at: new Date(row.updated_at as string),
+    payment_preference: row.payment_preference != null ? String(row.payment_preference) : undefined,
+    customer_phone: row.customer_phone != null ? String(row.customer_phone) : undefined,
+    delivery_requested: Boolean(row.delivery_requested),
   };
 }
 
@@ -124,8 +127,8 @@ export class BookingService {
     await this.notificationService.create({
       user_id: equipment.owner_id,
       type: 'system',
-      title: 'New Booking Request',
-      message: `You have a new booking request for ${equipment.title}.`,
+      title: 'طلب حجز جديد',
+      message: `لديك طلب حجز جديد على «${equipment.title}».`,
       related_id: newBooking.id,
     });
 
@@ -170,6 +173,29 @@ export class BookingService {
       throw new Error('Not authorized to update this booking');
     }
 
+    if (status === 'confirmed' && actor.role === 'owner') {
+      const pref = String(existing.payment_preference || '').toLowerCase();
+      const isCod = pref === 'cash_on_delivery' || pref === 'cash';
+      if (!isCod) {
+        const pay = await query(
+          `
+          SELECT status::text AS status, payment_proof
+          FROM payments
+          WHERE booking_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1
+          `,
+          [id]
+        );
+        const row = pay.rows[0];
+        const st = String(row?.status || '');
+        const hasProof = Boolean(row?.payment_proof);
+        if (!hasProof || !['under_review', 'proof_uploaded', 'approved', 'paid', 'completed'].includes(st)) {
+          throw new Error('لا يمكن تأكيد الحجز بدون إثبات تحويل قيد المراجعة أو مقبول');
+        }
+      }
+    }
+
     const res = await query(
       `
       UPDATE bookings SET status = $1::booking_status, updated_at = CURRENT_TIMESTAMP
@@ -189,23 +215,23 @@ export class BookingService {
       await this.notificationService.create({
         user_id: booking.customer_id,
         type: 'booking_confirmed',
-        title: 'Booking Confirmed',
-        message: `Your booking for ${equipment.title} has been confirmed.`,
+        title: 'تم تأكيد الحجز',
+        message: `تم تأكيد حجزك لـ «${equipment.title}».`,
         related_id: booking.id,
       });
     } else if (status === 'cancelled' && oldStatus !== 'cancelled') {
       await this.notificationService.create({
         user_id: booking.customer_id,
         type: 'booking_cancelled',
-        title: 'Booking Cancelled',
-        message: `Your booking for ${equipment.title} has been cancelled.`,
+        title: 'تم إلغاء الحجز',
+        message: `أُلغي حجزك لـ «${equipment.title}».`,
         related_id: booking.id,
       });
       await this.notificationService.create({
         user_id: equipment.owner_id,
         type: 'booking_cancelled',
-        title: 'Booking Cancelled',
-        message: `The booking for ${equipment.title} has been cancelled.`,
+        title: 'تم إلغاء حجز',
+        message: `أُلغي الحجز على «${equipment.title}».`,
         related_id: booking.id,
       });
     }
@@ -230,7 +256,7 @@ export class BookingService {
   async getByCustomer(customerId: string): Promise<any[]> {
     const res = await query(
       `
-      SELECT b.*, e.title as equipment_title, u.name as owner_name, e.location as equipment_location,
+      SELECT b.*, e.title as equipment_title, u.name as owner_name, u.phone as owner_phone, e.location as equipment_location,
              c.name AS courier_name, c.phone AS courier_phone,
              p.status::text AS payment_status,
              p.notes AS payment_notes,

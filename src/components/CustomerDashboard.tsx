@@ -3,12 +3,14 @@ import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone, Sav
 import { apiJson, ApiError, apiLogout } from '../lib/api';
 import NotificationsPanel from './NotificationsPanel';
 import { googleMapsDirectionsUrl } from './MapPicker';
+import { iraqWaDigits } from '../lib/phone';
 
 type Row = {
   id: string;
   equipmentId?: string;
   equipment: string;
   partner: string;
+  partnerPhone?: string | null;
   dates: string;
   total: number;
   status: string;
@@ -105,6 +107,8 @@ export default function CustomerDashboard({
   const [reviewDraft, setReviewDraft] = useState<Record<string, { rating: number; comment: string }>>({});
   const [showNotifications, setShowNotifications] = useState(false);
   const [repayBusy, setRepayBusy] = useState<string | null>(null);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
 
   const loadPrefs = useCallback(() => {
     try {
@@ -164,6 +168,7 @@ export default function CustomerDashboard({
           equipmentId: String(b.equipment_id || ''),
           equipment: String(b.equipment_title || '—'),
           partner: String(b.owner_name || '—'),
+          partnerPhone: b.owner_phone ? String(b.owner_phone) : null,
           dates: `${new Date(b.start_date).toLocaleDateString('ar-IQ')} – ${new Date(b.end_date).toLocaleDateString('ar-IQ')}`,
           total: Number(b.total_amount),
           status: String(b.status),
@@ -191,6 +196,16 @@ export default function CustomerDashboard({
     loadPrefs();
     loadBookings();
     loadFavorites();
+    try {
+      const focus = sessionStorage.getItem('ijar_focus_booking');
+      if (focus) {
+        setFocusBookingId(focus);
+        setActiveTab('rentals');
+        sessionStorage.removeItem('ijar_focus_booking');
+      }
+    } catch {
+      // ignore
+    }
     (async () => {
       try {
         const prof = await apiJson<any>('/api/auth/me');
@@ -205,6 +220,28 @@ export default function CustomerDashboard({
       }
     })();
   }, [userId, userEmail, loadBookings, loadFavorites, loadPrefs]);
+
+  useEffect(() => {
+    if (!userId) {
+      setUnreadNotifs(0);
+      return;
+    }
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const rows = await apiJson<{ is_read?: boolean }[]>(`/api/notifications/user/${userId}`);
+        if (!cancelled) setUnreadNotifs(rows.filter((n) => !n.is_read).length);
+      } catch {
+        if (!cancelled) setUnreadNotifs(0);
+      }
+    };
+    pull();
+    const id = window.setInterval(pull, 45_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [userId, showNotifications]);
 
   const handleLogout = async () => {
     await apiLogout();
@@ -457,10 +494,18 @@ export default function CustomerDashboard({
               type="button"
               data-testid="customer-notifications"
               onClick={() => setShowNotifications(true)}
-              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-100"
+              className="relative p-2 rounded-lg border border-slate-200 hover:bg-slate-100"
               title="الإشعارات"
             >
               <Bell size={18} className="text-slate-600" />
+              {unreadNotifs > 0 && (
+                <span
+                  data-testid="customer-notif-badge"
+                  className="absolute -top-1 -right-1 min-w-[1.1rem] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center"
+                >
+                  {unreadNotifs > 99 ? '99+' : unreadNotifs}
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -475,6 +520,12 @@ export default function CustomerDashboard({
           isOpen={showNotifications}
           onClose={() => setShowNotifications(false)}
           userId={userId}
+          onOpenRelated={(n) => {
+            if (n.related_id) {
+              setFocusBookingId(String(n.related_id));
+              setActiveTab('rentals');
+            }
+          }}
         />
 
         {activeTab === 'rentals' && (
@@ -491,12 +542,36 @@ export default function CustomerDashboard({
               <div
                 key={booking.id}
                 data-testid="customer-booking-row"
-                className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm"
+                className={`bg-white rounded-2xl border p-4 space-y-3 shadow-sm ${
+                  focusBookingId === booking.id ? 'border-blue-500 ring-2 ring-blue-100' : 'border-slate-200'
+                }`}
               >
                 <div className="flex justify-between gap-3 items-start">
                   <div>
                     <h3 className="font-bold text-slate-800">{booking.equipment}</h3>
                     <p className="text-xs text-slate-500 mt-1">{booking.partner}</p>
+                    {booking.partnerPhone &&
+                      ['pending', 'confirmed'].includes(booking.status) &&
+                      iraqWaDigits(booking.partnerPhone) && (
+                        <div className="flex flex-wrap gap-2 mt-2 text-[11px] font-bold">
+                          <a
+                            href={`tel:+${iraqWaDigits(booking.partnerPhone)}`}
+                            data-testid="customer-call-partner"
+                            className="px-2 py-1 rounded-lg bg-slate-100 text-slate-700"
+                          >
+                            اتصال بالشريك
+                          </a>
+                          <a
+                            href={`https://wa.me/${iraqWaDigits(booking.partnerPhone)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="customer-whatsapp-partner"
+                            className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-800"
+                          >
+                            واتساب الشريك
+                          </a>
+                        </div>
+                      )}
                   </div>
                   <span className={`px-3 py-1 rounded-full text-[10px] font-bold shrink-0 ${getStatusColor(booking.status)}`}>
                     {getStatusLabel(booking.status)}

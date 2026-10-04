@@ -1029,7 +1029,20 @@ export default function App() {
             error={checkoutError}
           />
         )}
-        <NotificationsPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} userId={user?.id} />
+        <NotificationsPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} userId={user?.id} onOpenRelated={(n) => {
+          if (!user) return;
+          if (user.role === 'customer') setView('customer');
+          else if (user.role === 'owner') setView('partner');
+          else if (user.role === 'admin') setView('admin');
+          else if (user.role === 'courier') setView('courier');
+          if (n.related_id) {
+            try {
+              sessionStorage.setItem('ijar_focus_booking', String(n.related_id));
+            } catch {
+              // ignore
+            }
+          }
+        }} />
       </AnimatePresence>
 
       <footer className="bg-white border-t border-slate-200 py-8 mt-12">

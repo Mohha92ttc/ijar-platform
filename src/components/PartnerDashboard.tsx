@@ -8,6 +8,7 @@ import { apiJson, ApiError } from '../lib/api';
 import { paymentMethodLabel, type CartPaymentMethod } from '../lib/cartStorage';
 import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from '../lib/iraqLocations';
 import { googleMapsDirectionsUrl } from './MapPicker';
+import { iraqWaDigits } from '../lib/phone';
 
 type Eq = {
   id: string;
@@ -455,7 +456,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
 
   const updateBookingStatus = async (id: string, newStatus: string) => {
     const booking = bookings.find((b) => b.id === id);
-    if (newStatus === 'confirmed' && booking && !booking.isCod && booking.paymentProof) {
+    if (newStatus === 'confirmed' && booking && !booking.isCod) {
+      if (!booking.paymentProof) {
+        alert('لا يمكن الموافقة قبل وجود صورة إثبات التحويل من الزبون.');
+        return;
+      }
       const ok = confirm('هل راجعت صورة إثبات التحويل وتأكدت من وصول المبلغ؟');
       if (!ok) return;
     }
@@ -465,8 +470,8 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         body: JSON.stringify({ status: newStatus }),
       });
       setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b)));
-    } catch {
-      alert('تعذر تحديث حالة الحجز');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر تحديث حالة الحجز');
     }
   };
 
@@ -809,6 +814,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           isOpen={showNotifications}
           onClose={() => setShowNotifications(false)}
           userId={ownerId}
+          onOpenRelated={(n) => {
+            if (n.related_id) {
+              try {
+                sessionStorage.setItem('ijar_focus_booking', String(n.related_id));
+              } catch {
+                // ignore
+              }
+              setActiveTab('bookings');
+            }
+          }}
         />
 
         {/* Bookings Tab */}
@@ -842,9 +857,29 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         {mapPayLabel(booking.paymentPreference)}
                       </span>
                     </div>
-                    <div className="text-sm text-slate-500 flex flex-wrap gap-x-6 gap-y-1">
+                    <div className="text-sm text-slate-500 flex flex-wrap gap-x-6 gap-y-1 items-center">
                       <span className="flex items-center gap-1 font-medium text-slate-700 underline underline-offset-4 decoration-blue-200">{booking.customer}</span>
-                      <span>الهاتف: {booking.phone}</span>
+                      <span>الهاتف: {booking.phone || '—'}</span>
+                      {iraqWaDigits(booking.phone) && (
+                        <>
+                          <a
+                            href={`tel:+${iraqWaDigits(booking.phone)}`}
+                            data-testid="partner-call-customer"
+                            className="text-blue-700 font-bold hover:underline"
+                          >
+                            اتصال
+                          </a>
+                          <a
+                            href={`https://wa.me/${iraqWaDigits(booking.phone)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="partner-whatsapp-customer"
+                            className="text-emerald-700 font-bold hover:underline"
+                          >
+                            واتساب
+                          </a>
+                        </>
+                      )}
                       <span>الموقع: {booking.location}</span>
                       <span>التاريخ: {booking.dates}</span>
                     </div>
@@ -862,9 +897,18 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                           <button 
                             type="button"
                             data-testid="partner-booking-approve"
+                            disabled={!booking.isCod && !booking.paymentProof}
                             onClick={() => updateBookingStatus(booking.id, 'confirmed')}
-                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="موافقة"
+                            className={`p-2 rounded-lg transition-colors ${
+                              !booking.isCod && !booking.paymentProof
+                                ? 'text-slate-300 cursor-not-allowed'
+                                : 'text-green-600 hover:bg-green-50'
+                            }`}
+                            title={
+                              !booking.isCod && !booking.paymentProof
+                                ? 'بانتظار إثبات التحويل'
+                                : 'موافقة'
+                            }
                           >
                             <CheckCircle size={18} />
                           </button>

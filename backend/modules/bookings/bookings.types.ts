@@ -16,6 +16,7 @@ export interface Booking {
   assigned_courier_id?: string | null;
   delivery_status?: string | null;
   payment_preference?: string;
+  customer_phone?: string;
   created_at: Date;
   updated_at: Date;
 }
