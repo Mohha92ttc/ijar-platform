@@ -561,10 +561,22 @@ export default function App() {
           paymentBody.proof_image = formData.proofImage;
         }
 
-        await apiJson('/api/payments/initiate', {
-          method: 'POST',
-          body: JSON.stringify(paymentBody),
-        });
+        try {
+          await apiJson('/api/payments/initiate', {
+            method: 'POST',
+            body: JSON.stringify(paymentBody),
+          });
+        } catch (payErr) {
+          try {
+            await apiJson(`/api/bookings/${booking.id}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: 'cancelled' }),
+            });
+          } catch {
+            // best-effort rollback
+          }
+          throw payErr;
+        }
         done += 1;
         setCart((prev) => prev.filter((x) => !(x.id === item.id && x.startDate === item.startDate)));
       }

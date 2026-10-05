@@ -12,6 +12,13 @@ type AdminEquipment = {
   owner_name?: string;
 };
 
+const statusAr: Record<string, string> = {
+  available: 'متاحة',
+  rented: 'مؤجرة',
+  maintenance: 'صيانة',
+  hidden: 'مخفية',
+};
+
 export default function AdminEquipmentPanel() {
   const [rows, setRows] = useState<AdminEquipment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +96,9 @@ export default function AdminEquipmentPanel() {
                 <td className="p-3">{e.owner_name || '—'}</td>
                 <td className="p-3 text-xs">{e.category || '—'}</td>
                 <td className="p-3">
-                  <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100">{e.status}</span>
+                  <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100">
+                    {statusAr[e.status] || e.status}
+                  </span>
                 </td>
                 <td className="p-3">{Number(e.price_per_day || 0).toLocaleString()} د.ع</td>
                 <td className="p-3">

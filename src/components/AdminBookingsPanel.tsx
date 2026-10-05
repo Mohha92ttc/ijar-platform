@@ -12,6 +12,8 @@ type AdminBooking = {
   equipment_title?: string;
   delivery_requested?: boolean;
   delivery_status?: string | null;
+  return_requested?: boolean;
+  return_status?: string | null;
 };
 
 const statusLabel: Record<string, string> = {
@@ -19,6 +21,14 @@ const statusLabel: Record<string, string> = {
   confirmed: 'مؤكد',
   cancelled: 'ملغي',
   completed: 'مكتمل',
+};
+
+const deliveryAr: Record<string, string> = {
+  pending_assign: 'بانتظار تعيين',
+  assigned: 'معيّن',
+  out_for_delivery: 'قيد التوصيل',
+  delivered: 'تم التسليم',
+  failed: 'فشل',
 };
 
 export default function AdminBookingsPanel() {
@@ -111,8 +121,17 @@ export default function AdminBookingsPanel() {
                     {statusLabel[b.status] || b.status}
                   </span>
                 </td>
-                <td className="p-3 text-xs">
-                  {b.delivery_requested ? b.delivery_status || 'مطلوب' : '—'}
+                <td className="p-3 text-xs space-y-1">
+                  {b.delivery_requested ? (
+                    <div>توصيل: {deliveryAr[String(b.delivery_status || '')] || b.delivery_status || 'مطلوب'}</div>
+                  ) : (
+                    <span>—</span>
+                  )}
+                  {b.return_requested && (
+                    <div className="text-violet-700">
+                      استرجاع: {deliveryAr[String(b.return_status || '')] || b.return_status || 'مطلوب'}
+                    </div>
+                  )}
                 </td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">
