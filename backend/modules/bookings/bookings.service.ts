@@ -169,6 +169,8 @@ export class BookingService {
       if (equipment.owner_id !== actor.userId) {
         throw new Error('Not authorized to update this booking');
       }
+      const { assertOwnerSubscriptionActive } = await import('../subscriptions/subscription.policy');
+      await assertOwnerSubscriptionActive(actor.userId);
     } else if (actor.role !== 'admin') {
       throw new Error('Not authorized to update this booking');
     }

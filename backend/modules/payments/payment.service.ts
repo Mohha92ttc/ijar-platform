@@ -232,12 +232,12 @@ export class PaymentService {
         return;
       }
 
-      if (paymentType === 'subscription_renewal') {
+      if (paymentType === 'subscription_renewal' || paymentType === 'subscription') {
         const uid = String(raw.user_id ?? payment.customer_id);
         await query(
           `
           UPDATE users
-          SET subscription_end_date = COALESCE(subscription_end_date, CURRENT_TIMESTAMP) + interval '1 month',
+          SET subscription_end_date = GREATEST(COALESCE(subscription_end_date, NOW()), NOW()) + INTERVAL '1 month',
               subscription_status = 'active',
               is_approved = TRUE
           WHERE id = $1
@@ -247,8 +247,9 @@ export class PaymentService {
         await this.notificationService.create({
           user_id: uid,
           type: 'system',
-          title: 'تم تجديد الاشتراك',
-          message: 'تمت الموافقة على دفع تجديد الاشتراك.',
+          title: 'تم تفعيل الاشتراك',
+          message:
+            'تمت الموافقة على دفع الاشتراك. معداتك ظهرت في السوق من جديد ولوحة التحكم كاملة.',
           related_id: paymentId,
         });
         return;

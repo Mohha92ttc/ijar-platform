@@ -1,5 +1,6 @@
 import { query } from '../../database/connection';
 import { Equipment, CreateEquipmentDTO, UpdateEquipmentDTO, EquipmentSearchFilters } from './equipment.types';
+import { assertOwnerSubscriptionActive } from '../subscriptions/subscription.policy';
 
 function formatLoc(governorate?: string | null, area?: string | null, fallback = ''): string {
   const g = String(governorate || '').trim();
@@ -42,6 +43,7 @@ function rowToEquipment(row: Record<string, unknown>): Equipment {
 
 export class EquipmentService {
   async create(ownerId: string, data: CreateEquipmentDTO): Promise<Equipment> {
+    await assertOwnerSubscriptionActive(ownerId);
     const governorate = String(data.governorate || '').trim() || String(data.location || '').split('-')[0].trim() || 'بغداد';
     const area = data.area != null && String(data.area).trim() !== '' ? String(data.area).trim() : null;
     const location = formatLoc(governorate, area, data.location || governorate);
@@ -66,6 +68,7 @@ export class EquipmentService {
   }
 
   async update(id: string, ownerId: string, data: UpdateEquipmentDTO): Promise<Equipment> {
+    await assertOwnerSubscriptionActive(ownerId);
     const existing = await this.getById(id);
     if (existing.owner_id !== ownerId) {
       throw new Error('Equipment not found or unauthorized');
@@ -118,14 +121,31 @@ export class EquipmentService {
   }
 
   async delete(id: string, ownerId: string): Promise<void> {
+    await assertOwnerSubscriptionActive(ownerId);
     const res = await query(`DELETE FROM equipment WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
     if (res.rowCount === 0) {
       throw new Error('Equipment not found or unauthorized');
     }
   }
 
-  async getById(id: string): Promise<Equipment> {
-    const res = await query(`SELECT * FROM equipment WHERE id = $1`, [id]);
+  async getById(id: string, opts?: { requirePublicOwner?: boolean }): Promise<Equipment> {
+    const res = await query(
+      opts?.requirePublicOwner
+        ? `
+      SELECT e.*,
+        u.name AS owner_name,
+        (u.featured_until IS NOT NULL AND u.featured_until > NOW()) AS owner_is_featured
+      FROM equipment e
+      JOIN users u ON u.id = e.owner_id
+      WHERE e.id = $1
+        AND e.status NOT IN ('hidden', 'maintenance')
+        AND u.subscription_status = 'active'
+        AND u.subscription_end_date IS NOT NULL
+        AND u.subscription_end_date > NOW()
+      `
+        : `SELECT * FROM equipment WHERE id = $1`,
+      [id]
+    );
     if (res.rows.length === 0) {
       throw new Error('Equipment not found');
     }
@@ -141,6 +161,10 @@ export class EquipmentService {
       FROM equipment e
       JOIN users u ON u.id = e.owner_id
       WHERE e.status NOT IN ('hidden', 'maintenance')
+        AND u.role = 'owner'
+        AND u.subscription_status = 'active'
+        AND u.subscription_end_date IS NOT NULL
+        AND u.subscription_end_date > NOW()
       ORDER BY
         CASE WHEN u.featured_until IS NOT NULL AND u.featured_until > NOW() THEN 0 ELSE 1 END,
         COALESCE(u.featured_priority, 0) DESC,
@@ -164,7 +188,11 @@ export class EquipmentService {
         BOOL_OR(u.featured_until IS NOT NULL AND u.featured_until > NOW()) AS featured
       FROM users u
       JOIN equipment e ON e.owner_id = u.id AND e.status NOT IN ('hidden', 'maintenance')
-      WHERE u.role = 'owner' AND COALESCE(u.is_approved, true) = true
+      WHERE u.role = 'owner'
+        AND COALESCE(u.is_approved, true) = true
+        AND u.subscription_status = 'active'
+        AND u.subscription_end_date IS NOT NULL
+        AND u.subscription_end_date > NOW()
       GROUP BY u.id, u.name
       ORDER BY featured DESC, equipment_count DESC, u.name ASC
       `
@@ -186,6 +214,10 @@ export class EquipmentService {
       FROM equipment e
       JOIN users u ON u.id = e.owner_id
       WHERE e.status NOT IN ('hidden', 'maintenance')
+        AND u.role = 'owner'
+        AND u.subscription_status = 'active'
+        AND u.subscription_end_date IS NOT NULL
+        AND u.subscription_end_date > NOW()
     `;
     const params: unknown[] = [];
     let n = 1;
@@ -280,7 +312,12 @@ export class EquipmentService {
       SELECT c.*,
              COALESCE((
                SELECT COUNT(*)::int FROM equipment e
-               WHERE e.category = c.name AND e.status NOT IN ('hidden')
+               JOIN users u ON u.id = e.owner_id
+               WHERE e.category = c.name
+                 AND e.status NOT IN ('hidden')
+                 AND u.subscription_status = 'active'
+                 AND u.subscription_end_date IS NOT NULL
+                 AND u.subscription_end_date > NOW()
              ), 0) AS equipment_count
       FROM categories c
       WHERE c.is_active = TRUE

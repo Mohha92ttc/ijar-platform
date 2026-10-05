@@ -236,7 +236,11 @@ export class AuthService {
     });
   }
 
-  async getMe(userId: string): Promise<MeResponse> {
+  async getMe(userId: string): Promise<MeResponse & { subscription_active?: boolean }> {
+    const { syncExpiredSubscriptions, isSubscriptionActiveRow } = await import(
+      '../subscriptions/subscription.policy'
+    );
+    await syncExpiredSubscriptions(userId);
     const res = await query(
       `SELECT id, name, email, phone, role, created_at, subscription_status, subscription_end_date FROM users WHERE id = $1`,
       [userId]
@@ -244,7 +248,12 @@ export class AuthService {
     if (res.rows.length === 0) {
       throw new Error('User not found');
     }
-    return res.rows[0];
+    const row = res.rows[0];
+    return {
+      ...row,
+      subscription_active:
+        row.role === 'owner' ? isSubscriptionActiveRow(row) : true,
+    };
   }
 
   async updateMe(

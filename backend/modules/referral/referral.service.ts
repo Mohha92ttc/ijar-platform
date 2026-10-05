@@ -356,6 +356,9 @@ export class ReferralService {
       FROM users u
       JOIN equipment e ON u.id = e.owner_id
       WHERE u.role = 'owner' AND u.is_approved = true
+        AND u.subscription_status = 'active'
+        AND u.subscription_end_date IS NOT NULL
+        AND u.subscription_end_date > NOW()
       AND e.average_rating >= 4
       GROUP BY u.id, u.name, u.bio
       HAVING COUNT(e.id) >= 3

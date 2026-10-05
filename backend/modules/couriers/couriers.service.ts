@@ -34,6 +34,8 @@ export class CouriersService {
 
   /** الشريك ينشئ مندوب: حساب دخول تلقائي بصلاحية courier فقط */
   async createForOwner(ownerId: string, data: CreateCourierDTO): Promise<Courier & { temp_password?: string }> {
+    const { assertOwnerSubscriptionActive } = await import('../subscriptions/subscription.policy');
+    await assertOwnerSubscriptionActive(ownerId);
     const name = String(data.name || '').trim();
     const phone = String(data.phone || '').replace(/\s/g, '');
     if (!name || name.length < 2) throw new Error('اسم المندوب مطلوب');

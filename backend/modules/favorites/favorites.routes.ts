@@ -15,6 +15,10 @@ router.get('/', authenticateToken, requireRole(['customer']), async (req, res) =
       JOIN equipment e ON e.id = f.equipment_id
       JOIN users u ON u.id = e.owner_id
       WHERE f.user_id = $1
+        AND e.status NOT IN ('hidden', 'maintenance')
+        AND u.subscription_status = 'active'
+        AND u.subscription_end_date IS NOT NULL
+        AND u.subscription_end_date > NOW()
       ORDER BY f.created_at DESC
       `,
       [userId]

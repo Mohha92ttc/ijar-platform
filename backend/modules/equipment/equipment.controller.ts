@@ -117,7 +117,18 @@ export class EquipmentController {
   getById = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const equipment = await this.equipmentService.getById(id);
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (actor?.role === 'admin' || actor?.role === 'courier') {
+        const equipment = await this.equipmentService.getById(id);
+        return res.status(200).json(equipment);
+      }
+      if (actor?.role === 'owner' && actor.userId) {
+        const equipment = await this.equipmentService.getById(id);
+        if (equipment.owner_id === actor.userId) {
+          return res.status(200).json(equipment);
+        }
+      }
+      const equipment = await this.equipmentService.getById(id, { requirePublicOwner: true });
       res.status(200).json(equipment);
     } catch (error: any) {
       res.status(404).json({ message: error.message });
@@ -148,8 +159,25 @@ export class EquipmentController {
   getByOwner = async (req: Request, res: Response) => {
     try {
       const { ownerId } = req.params;
-      const items = await this.equipmentService.getByOwner(ownerId);
-      res.status(200).json(items);
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      const self = actor?.role === 'owner' && actor.userId === ownerId;
+      const admin = actor?.role === 'admin';
+      if (self || admin) {
+        const items = await this.equipmentService.getByOwner(ownerId);
+        return res.status(200).json(items);
+      }
+      // Public: only if subscription active
+      const sub = await this.equipmentService.getByOwner(ownerId);
+      const { isSubscriptionActiveRow } = await import('../subscriptions/subscription.policy');
+      const { query } = await import('../../database/connection');
+      const u = await query(
+        `SELECT subscription_status, subscription_end_date FROM users WHERE id = $1 LIMIT 1`,
+        [ownerId]
+      );
+      if (!u.rows[0] || !isSubscriptionActiveRow(u.rows[0])) {
+        return res.status(200).json([]);
+      }
+      res.status(200).json(sub.filter((e) => !['hidden', 'maintenance'].includes(String(e.status))));
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }

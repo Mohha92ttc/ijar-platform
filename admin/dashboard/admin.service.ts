@@ -146,24 +146,49 @@ export class AdminService {
   }
 
   async approveUser(userId: string): Promise<void> {
-    await query("UPDATE users SET is_approved = TRUE, subscription_status = 'active' WHERE id = $1", [userId]);
+    // الموافقة تفتح الدخول فقط — الظهور بالسوق بعد دفع الاشتراك وقبوله
+    await query(
+      `
+      UPDATE users
+      SET is_approved = TRUE,
+          subscription_status = CASE
+            WHEN subscription_status = 'active' AND subscription_end_date IS NOT NULL AND subscription_end_date > NOW()
+              THEN subscription_status
+            ELSE 'pending'
+          END
+      WHERE id = $1
+      `,
+      [userId]
+    );
     await this.notificationService.create({
       user_id: userId,
       type: 'partner_approval',
       title: 'تمت الموافقة على حسابك',
-      message: 'تمت الموافقة على طلب انضمامك كشريك. يمكنك تسجيل الدخول واستخدام لوحة التحكم.',
+      message:
+        'حسابك مفعّل للدخول. لتظهر معداتك في السوق وتُفتح لوحة التحكم بالكامل، ادفع الاشتراك من تبويب «إعلان مميز / اشتراك» وارفع إثبات التحويل.',
       related_id: userId,
     });
   }
 
   async renewSubscription(userId: string, months: number): Promise<void> {
-    await query(`
-      UPDATE users 
-      SET subscription_end_date = COALESCE(subscription_end_date, CURRENT_TIMESTAMP) + ($2 || ' months')::interval,
+    const m = Math.max(1, Math.min(24, Number(months) || 1));
+    await query(
+      `
+      UPDATE users
+      SET subscription_end_date = GREATEST(COALESCE(subscription_end_date, NOW()), NOW()) + ($2::int * INTERVAL '1 month'),
           subscription_status = 'active',
           is_approved = TRUE
       WHERE id = $1
-    `, [userId, months]);
+      `,
+      [userId, m]
+    );
+    await this.notificationService.create({
+      user_id: userId,
+      type: 'system',
+      title: 'تم تفعيل الاشتراك',
+      message: `تم تجديد اشتراكك لمدة ${m} شهر. معداتك ولوحة التحكم عادت للعمل.`,
+      related_id: userId,
+    });
   }
 
   async getAllBookings(): Promise<any[]> {

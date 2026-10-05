@@ -23,9 +23,29 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
   const [completionToken, setCompletionToken] = useState('');
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
+  const [ownerSubPrice, setOwnerSubPrice] = useState<number | null>(null);
+
   React.useEffect(() => {
     setFormData({ name: '', email: '', phone: '', password: '' });
   }, [role]);
+
+  React.useEffect(() => {
+    if (role !== 'owner' || isLogin) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const t = await apiJson<{ subscription_renewal_price?: number }>('/api/platform/transfer-info');
+        if (!cancelled && t.subscription_renewal_price != null) {
+          setOwnerSubPrice(Number(t.subscription_renewal_price));
+        }
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [role, isLogin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,7 +229,12 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
                 <h4 className="font-bold text-blue-800">التسجيل كشريك تجاري</h4>
               </div>
               <p className="text-sm text-blue-700 leading-relaxed">
-                عبّئ الاسم والبريد والهاتف وكلمة المرور أدناه ثم اضغط إنشاء حساب. بعد موافقة الإدارة تدفع الاشتراك من لوحة الشريك بحسابات التحويل الحقيقية للمنصة.
+                عبّئ البيانات ثم اضغط إنشاء حساب. بعد موافقة الإدارة تدخل اللوحة وتدفع الاشتراك
+                {ownerSubPrice != null ? ` (${ownerSubPrice.toLocaleString()} د.ع)` : ''}
+                {' '}بإثبات تحويل. بدون اشتراك مفعّل معداتك ما تظهر بالسوق واللوحة تتجمّد إلا الدفع.
+              </p>
+              <p className="text-xs text-blue-600 mt-2" data-testid="auth-owner-paid-path">
+                مسار الشريك: تسجيل → موافقة إدارة → دفع اشتراك → ظهور بالسوق.
               </p>
             </div>
           )}

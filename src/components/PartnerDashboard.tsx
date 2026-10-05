@@ -136,6 +136,20 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   });
   const [paySettingsSaving, setPaySettingsSaving] = useState(false);
 
+  const subscriptionActive = Boolean(
+    profile?.subscription_active === true ||
+      (profile?.subscription_status === 'active' &&
+        profile?.subscription_end_date &&
+        new Date(profile.subscription_end_date).getTime() > Date.now())
+  );
+
+  const subFreezeDays = (() => {
+    if (!profile?.subscription_end_date) return 999;
+    const end = new Date(profile.subscription_end_date).getTime();
+    if (Number.isNaN(end) || end > Date.now()) return 0;
+    return Math.max(1, Math.floor((Date.now() - end) / (24 * 60 * 60 * 1000)));
+  })();
+
   const loadData = useCallback(async () => {
     if (!ownerId) {
       setMyEquipment([]);
@@ -215,6 +229,22 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   }, [loadData]);
 
   useEffect(() => {
+    if (!profile) return;
+    if (!subscriptionActive && activeTab !== 'featured' && activeTab !== 'settings') {
+      setActiveTab('featured');
+    }
+  }, [profile, subscriptionActive, activeTab]);
+
+  const guardSub = (actionLabel: string) => {
+    if (subscriptionActive) return true;
+    alert(
+      `الحساب مجمّد: ${actionLabel} تحتاج اشتراكاً مفعّلاً. ادفع من تبويب الاشتراك حتى تُعاد منشوراتك للعمل.`
+    );
+    setActiveTab('featured');
+    return false;
+  };
+
+  useEffect(() => {
     (async () => {
       try {
         const cats = await apiJson<any[]>('/api/equipment/categories');
@@ -244,6 +274,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   }, [activeTab, loadCouriers]);
 
   const createCourier = async () => {
+    if (!guardSub('إدارة المندوبين')) return;
     if (!newCourier.name.trim() || !newCourier.phone.trim()) {
       alert('الاسم ورقم الهاتف مطلوبان');
       return;
@@ -455,6 +486,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   };
 
   const updateBookingStatus = async (id: string, newStatus: string) => {
+    if (!guardSub('تحديث الحجوزات')) return;
     const booking = bookings.find((b) => b.id === id);
     if (newStatus === 'confirmed' && booking && !booking.isCod) {
       if (!booking.paymentProof) {
@@ -476,6 +508,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   };
 
   const addEquipment = async () => {
+    if (!guardSub('إضافة/تعديل المعدات')) return;
     if (!ownerId) {
       alert('تعذر تحديد هوية المالك. يرجى تسجيل الدخول مرة أخرى.');
       return;
@@ -640,6 +673,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   };
 
   const deleteEquipment = async (id: string) => {
+    if (!guardSub('حذف المعدات')) return;
     if (!ownerId) return;
     try {
       await apiJson(`/api/equipment/${id}`, {
@@ -768,14 +802,47 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       </nav>
 
       <main className="flex-1 p-4 sm:p-8 pb-24 lg:pb-8">
-        <header className="flex justify-between items-center mb-8">
-          <div>
+        <header className="flex flex-col gap-4 mb-8">
+          {!subscriptionActive && (
+            <div
+              data-testid="partner-sub-freeze-banner"
+              className={`rounded-2xl border p-4 ${
+                subFreezeDays >= 7
+                  ? 'bg-red-50 border-red-300 text-red-900'
+                  : subFreezeDays >= 3
+                    ? 'bg-orange-50 border-orange-300 text-orange-950'
+                    : 'bg-amber-50 border-amber-300 text-amber-950'
+              }`}
+            >
+              <p className="font-bold text-base mb-1">
+                {profile?.subscription_status === 'pending'
+                  ? 'لازم تفعّل الاشتراك عشان تظهر بالسوق'
+                  : 'اشتراكك منتهٍ — معداتك مخفية عن الزبائن'}
+              </p>
+              <p className="text-sm leading-relaxed mb-3">
+                المنشورات موجودة بحسابك بس ما تظهر بالسوق. الطلبات والمعدات والمندوبين مجمّدة.
+                الدفع وتجديد الاشتراك شغّالين فقط.
+                {subFreezeDays >= 3
+                  ? ` (${subFreezeDays} يوم على الانتهاء — الواجهة تبدأ تتجمّد أكثر.)`
+                  : ''}
+              </p>
+              <button
+                type="button"
+                data-testid="partner-sub-renew-cta"
+                onClick={() => setActiveTab('featured')}
+                className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold hover:bg-blue-700"
+              >
+                تفعيل / تجديد الاشتراك الآن
+              </button>
+            </div>
+          )}
+          <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-slate-800">
               {activeTab === 'bookings' && 'الطلبات الواصلة'}
               {activeTab === 'equipment' && 'معداتي'}
               {activeTab === 'couriers' && 'المندوبين'}
               {activeTab === 'reports' && 'التقارير'}
-              {activeTab === 'featured' && 'إعلان مميز مدفوع'}
+              {activeTab === 'featured' && (subscriptionActive ? 'إعلان مميز مدفوع' : 'تفعيل الاشتراك والدفع')}
               {activeTab === 'settings' && 'الإعدادات'}
             </h2>
             <p className="text-slate-500 text-sm">
@@ -784,7 +851,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               {!loading && activeTab === 'equipment' && `لديك ${myEquipment.length} معدة مسجلة`}
               {!loading && activeTab === 'couriers' && `${couriers.length} مندوب مسجّل`}
               {!loading && activeTab === 'reports' && 'إحصائيات أداء حسابك'}
-              {!loading && activeTab === 'featured' && 'الظهور في مقدمة القائمة بعد الموافقة على الدفع'}
+              {!loading && activeTab === 'featured' && (subscriptionActive
+                ? 'الظهور في مقدمة القائمة بعد الموافقة على الدفع'
+                : 'ادفع الاشتراك لترجع معداتك للسوق وتُفتح اللوحة')}
               {!loading && activeTab === 'settings' && 'إدارة معلومات حسابك'}
             </p>
           </div>
@@ -798,7 +867,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             >
               <Bell size={18} className="text-slate-600" />
             </button>
-            {activeTab === 'equipment' && (
+            {activeTab === 'equipment' && subscriptionActive && (
               <button 
                 type="button"
                 data-testid="partner-open-add-equipment"
@@ -1557,6 +1626,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         {/* Featured promotion Tab */}
         {activeTab === 'featured' && (
           <div className="space-y-8 max-w-3xl">
+            {!subscriptionActive && (
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 text-sm text-blue-900" data-testid="partner-sub-required-note">
+                الخطوة الإلزامية: حوّل مبلغ الاشتراك وارفع الإثبات. بعد موافقة الإدارة ترجع كل منشوراتك للسوق وتُفتح اللوحة.
+              </div>
+            )}
             <div data-testid="partner-transfer-info">
               <TransferAccountsPanel
                 info={{
@@ -1572,8 +1646,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               />
             </div>
 
-            <div className="bg-white rounded-2xl p-6 border border-amber-200 shadow-sm">
+            <div className={`bg-white rounded-2xl p-6 border border-amber-200 shadow-sm ${!subscriptionActive ? 'opacity-50 pointer-events-none' : ''}`}>
               <h3 className="text-lg font-bold text-slate-800 mb-2">طلب إعلان مميز</h3>
+              {!subscriptionActive && (
+                <p className="text-xs text-amber-800 mb-2">يتاح بعد تفعيل الاشتراك.</p>
+              )}
               <p className="text-sm text-slate-600 mb-4">
                 1) حوّل المبلغ للحساب أعلاه — 2) ارفع صورة الإثبات — 3) بانتظار موافقة الإدارة.
                 المدة: {transferInfo?.featured_duration_days ?? 30} يوماً — السعر:{' '}
@@ -1606,8 +1683,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               </button>
             </div>
 
-            <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-800 mb-2">تجديد اشتراك المنصة</h3>
+            <div className={`bg-white rounded-2xl p-6 border shadow-sm ${subscriptionActive ? 'border-slate-200' : 'border-blue-400 ring-2 ring-blue-100'}`}>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">
+                {subscriptionActive ? 'تجديد اشتراك المنصة' : 'تفعيل الاشتراك (إلزامي)'}
+              </h3>
               <p className="text-sm text-slate-600 mb-4">
                 نفس حسابات التحويل أعلاه. المبلغ:{' '}
                 <span className="font-bold text-blue-600">
@@ -1635,7 +1714,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 onClick={() => submitPlatformPayment('subscription_renewal', subFile, subNotes)}
                 className="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
               >
-                {paySubmitting ? 'جاري الإرسال…' : 'إرسال طلب تجديد الاشتراك'}
+                {paySubmitting ? 'جاري الإرسال…' : subscriptionActive ? 'إرسال طلب تجديد الاشتراك' : 'رفع إثبات وتفعيل الاشتراك'}
               </button>
             </div>
           </div>
