@@ -86,8 +86,9 @@ export class CouriersController {
       if (!actor?.userId || actor.role !== 'owner') {
         return res.status(403).json({ error: 'للشركاء فقط' });
       }
-      await this.service.unassignBooking(actor.userId, req.params.bookingId);
-      res.json({ ok: true });
+      const leg = String(req.body?.leg || req.body?.delivery_leg || 'outbound');
+      await this.service.unassignBooking(actor.userId, req.params.bookingId, leg);
+      res.json({ ok: true, leg });
     } catch (e: unknown) {
       res.status(400).json({ error: publicError(e, 'تعذر إلغاء التعيين') });
     }

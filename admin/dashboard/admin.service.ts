@@ -12,20 +12,30 @@ export class AdminService {
     const partnerCount = await query(`SELECT COUNT(*) FROM users WHERE role = 'owner'`);
     const eqCount = await query('SELECT COUNT(*) FROM equipment');
     const bookingCount = await query('SELECT COUNT(*) FROM bookings');
-    const paymentSum = await query("SELECT SUM(amount) FROM payments WHERE status = 'approved'");
-    const rateRes = await query(`SELECT commission_rate FROM platform_settings WHERE id = 1`);
-    let commissionRate = Number(rateRes.rows[0]?.commission_rate);
-    if (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 1) {
-      commissionRate = 0.1;
-    }
-    const approvedTotal = parseFloat(String(paymentSum.rows[0].sum || 0));
+    // إيرادات المنصة الفعلية: اشتراكات + إعلانات مميزة معتمدة
+    const platformRevenue = await query(`
+      SELECT COALESCE(SUM(amount), 0) AS sum
+      FROM payments
+      WHERE status = 'approved'
+        AND type IN ('featured_promotion', 'subscription_renewal', 'subscription')
+    `);
+    // عمولة محاسبية من دفعات الحجوزات (الزبون يدفع للشريك — الرقم للمقارنة فقط)
+    const bookingCommission = await query(`
+      SELECT COALESCE(SUM(commission), 0) AS sum
+      FROM payments
+      WHERE status IN ('approved', 'paid', 'completed')
+        AND (type = 'booking' OR type IS NULL OR booking_id IS NOT NULL)
+        AND type NOT IN ('featured_promotion', 'subscription_renewal', 'subscription')
+    `);
+    const approvedPlatform = parseFloat(String(platformRevenue.rows[0].sum || 0));
+    const commissionStored = parseFloat(String(bookingCommission.rows[0].sum || 0));
 
     const stats: AdminStats = {
       totalUsers: parseInt(String(partnerCount.rows[0].count), 10),
       totalEquipment: parseInt(String(eqCount.rows[0].count), 10),
       totalBookings: parseInt(String(bookingCount.rows[0].count), 10),
-      monthlyRevenue: approvedTotal,
-      totalCommission: Math.round(approvedTotal * commissionRate * 100) / 100,
+      monthlyRevenue: approvedPlatform,
+      totalCommission: Math.round(commissionStored * 100) / 100,
     };
 
     const mostRentedRes = await query(`

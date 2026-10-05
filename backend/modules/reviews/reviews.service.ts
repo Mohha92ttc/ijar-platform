@@ -108,18 +108,24 @@ export class ReviewService {
     })) as Review[];
   }
 
-  async getByOwner(ownerId: string): Promise<Review[]> {
+  async getByOwner(ownerId: string): Promise<any[]> {
     const res = await query(
       `
-      SELECT r.*, e.owner_id
+      SELECT r.*, e.owner_id, e.title AS equipment_title, u.name AS reviewer_name
       FROM reviews r
       JOIN equipment e ON e.id = r.equipment_id
+      LEFT JOIN users u ON u.id = r.reviewer_id
       WHERE e.owner_id = $1
       ORDER BY r.created_at DESC
+      LIMIT 50
       `,
       [ownerId]
     );
-    return res.rows.map(rowToReview);
+    return res.rows.map((row) => ({
+      ...rowToReview(row),
+      equipment_title: row.equipment_title ? String(row.equipment_title) : undefined,
+      reviewer_name: row.reviewer_name ? String(row.reviewer_name) : undefined,
+    }));
   }
 
   async getById(id: string): Promise<Review> {

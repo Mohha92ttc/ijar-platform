@@ -111,6 +111,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const [courierReportId, setCourierReportId] = useState('');
   const [courierReportMonth, setCourierReportMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [courierReport, setCourierReport] = useState<any>(null);
+  const [myReviews, setMyReviews] = useState<
+    { id: string; rating: number; comment?: string; equipment_title?: string; reviewer_name?: string; created_at: string }[]
+  >([]);
 
   const [transferInfo, setTransferInfo] = useState<{
     bank_name?: string | null;
@@ -340,11 +343,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
 
   const assignCourier = async (bookingId: string, courier_id: string, leg: 'outbound' | 'return' = 'outbound') => {
     try {
-      if (!courier_id && leg === 'outbound') {
-        await apiJson(`/api/couriers/unassign/${bookingId}`, { method: 'POST', body: '{}' });
-      } else if (!courier_id) {
-        alert('اختر مندوباً للاسترجاع');
-        return;
+      if (!courier_id) {
+        await apiJson(`/api/couriers/unassign/${bookingId}`, {
+          method: 'POST',
+          body: JSON.stringify({ leg }),
+        });
       } else {
         await apiJson(`/api/couriers/assign/${bookingId}`, {
           method: 'POST',
@@ -450,6 +453,23 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         if (activeTab === 'reports' || activeTab === 'featured') {
           const pays = await apiJson<any[]>('/api/payments/my-platform');
           setMyPlatformPayments(pays);
+        }
+        if (activeTab === 'reports' && ownerId) {
+          try {
+            const revs = await apiJson<any[]>(`/api/reviews/owner/${ownerId}`);
+            setMyReviews(
+              (revs || []).map((r) => ({
+                id: String(r.id),
+                rating: Number(r.rating) || 0,
+                comment: r.comment ? String(r.comment) : undefined,
+                equipment_title: r.equipment_title ? String(r.equipment_title) : undefined,
+                reviewer_name: r.reviewer_name ? String(r.reviewer_name) : undefined,
+                created_at: String(r.created_at || ''),
+              }))
+            );
+          } catch {
+            setMyReviews([]);
+          }
         }
         if (activeTab === 'settings') {
           const s = await apiJson<any>(`/api/payments/owner-settings/${ownerId}`);
@@ -1241,7 +1261,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                                 value={booking.returnCourierId || ''}
                                 onChange={(e) => assignCourier(booking.id, e.target.value, 'return')}
                               >
-                                <option value="">اختر مندوب الاسترجاع</option>
+                                <option value="">بدون مندوب (إلغاء التعيين)</option>
                                 {couriers.filter((c) => c.is_active).map((c) => (
                                   <option key={c.id} value={c.id}>
                                     {c.name} — {c.phone}
@@ -1779,6 +1799,29 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6" data-testid="partner-reviews-panel">
+              <h3 className="text-lg font-bold mb-4">تقييمات الزبائن</h3>
+              {myReviews.length === 0 ? (
+                <p className="text-sm text-slate-500">لا تقييمات بعد — تظهر هنا بعد اكتمال الإيجار وتقييم الزبون.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myReviews.map((r) => (
+                    <div key={r.id} className="border border-slate-100 rounded-xl p-3 text-sm" data-testid="partner-review-row">
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <span className="font-bold text-slate-800">{r.equipment_title || 'معدة'}</span>
+                        <span className="text-amber-600 font-bold">{'★'.repeat(Math.min(5, r.rating))} ({r.rating})</span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {r.reviewer_name || 'زبون'}
+                        {r.created_at ? ` · ${new Date(r.created_at).toLocaleDateString('ar-IQ')}` : ''}
+                      </p>
+                      {r.comment && <p className="text-slate-700 mt-2">{r.comment}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

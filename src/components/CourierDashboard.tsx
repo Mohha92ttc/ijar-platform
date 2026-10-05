@@ -450,7 +450,10 @@ export default function CourierDashboard({
                       {(report.items || []).map((it: any) => (
                         <tr key={it.id} className="border-t border-slate-100">
                           <td className="p-3">{it.equipment_title}</td>
-                          <td className="p-3">{statusLabel(it.delivery_status)}</td>
+                          <td className="p-3">
+                            {String(it.delivery_leg) === 'return' ? 'استرجاع · ' : ''}
+                            {statusLabel(it.delivery_status)}
+                          </td>
                           <td className="p-3">{Number(it.delivery_fee || 0).toLocaleString()}</td>
                         </tr>
                       ))}

@@ -142,7 +142,7 @@ export class CouriersService {
     });
   }
 
-  async unassignBooking(ownerId: string, bookingId: string): Promise<void> {
+  async unassignBooking(ownerId: string, bookingId: string, leg: string = 'outbound'): Promise<void> {
     const own = await query(
       `
       SELECT b.id FROM bookings b
@@ -152,6 +152,22 @@ export class CouriersService {
       [bookingId, ownerId]
     );
     if (!own.rows[0]) throw new Error('الطلب غير موجود');
+    if (leg === 'return') {
+      await query(
+        `
+        UPDATE bookings
+        SET return_courier_id = NULL,
+            return_status = CASE
+              WHEN COALESCE(return_requested, FALSE) THEN 'pending_assign'
+              ELSE return_status
+            END,
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [bookingId]
+      );
+      return;
+    }
     await query(
       `
       UPDATE bookings
@@ -258,18 +274,37 @@ export class CouriersService {
     const start = `${yearMonth}-01`;
     const res = await query(
       `
-      SELECT b.*, e.title AS equipment_title, e.category AS equipment_category
-      FROM bookings b
-      JOIN equipment e ON e.id = b.equipment_id
-      WHERE b.assigned_courier_id = $1
-        AND COALESCE(b.delivery_requested, FALSE) = TRUE
-        AND b.updated_at >= $2::date
-        AND b.updated_at < ($2::date + INTERVAL '1 month')
-      ORDER BY b.updated_at DESC
+      SELECT * FROM (
+        SELECT b.id, b.updated_at, b.delivery_fee, e.title AS equipment_title, e.category AS equipment_category,
+               b.delivery_status AS job_status, 'outbound'::text AS delivery_leg
+        FROM bookings b
+        JOIN equipment e ON e.id = b.equipment_id
+        WHERE b.assigned_courier_id = $1
+          AND COALESCE(b.delivery_requested, FALSE) = TRUE
+          AND b.updated_at >= $2::date
+          AND b.updated_at < ($2::date + INTERVAL '1 month')
+
+        UNION ALL
+
+        SELECT b.id, b.updated_at, 0::numeric AS delivery_fee, e.title AS equipment_title, e.category AS equipment_category,
+               b.return_status AS job_status, 'return'::text AS delivery_leg
+        FROM bookings b
+        JOIN equipment e ON e.id = b.equipment_id
+        WHERE b.return_courier_id = $1
+          AND COALESCE(b.return_requested, FALSE) = TRUE
+          AND b.updated_at >= $2::date
+          AND b.updated_at < ($2::date + INTERVAL '1 month')
+      ) jobs
+      ORDER BY jobs.updated_at DESC
       `,
       [courierId, start]
     );
-    const items = res.rows;
+    const items = res.rows.map((row: Record<string, unknown>) => ({
+      ...row,
+      delivery_status: row.job_status,
+      delivery_leg: String(row.delivery_leg || 'outbound'),
+      delivery_fee: Number(row.delivery_fee || 0),
+    }));
     const by_status: Record<string, number> = {};
     let delivered_count = 0;
     let total_delivery_fees = 0;
@@ -278,7 +313,9 @@ export class CouriersService {
       by_status[st] = (by_status[st] || 0) + 1;
       if (st === 'delivered') {
         delivered_count += 1;
-        total_delivery_fees += Number(row.delivery_fee || 0);
+        if (row.delivery_leg === 'outbound') {
+          total_delivery_fees += row.delivery_fee;
+        }
       }
     }
     return { month: yearMonth, delivered_count, total_delivery_fees, by_status, items };

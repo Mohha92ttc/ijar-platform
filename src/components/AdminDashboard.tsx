@@ -1418,27 +1418,22 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         {activeTab === 'stats' && (
           <div className="space-y-6">
             <h3 className="text-xl font-bold text-slate-700 mb-6">الإحصائيات والتقارير</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-slate-500 mb-1">إجمالي الحجوزات</div>
-                  <div className="text-3xl font-black text-slate-800">{stats.totalBookings}</div>
-                </div>
-                <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
-                  <BarChart3 size={28} />
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="text-sm font-bold text-slate-500 mb-1">إجمالي الحجوزات</div>
+                <div className="text-3xl font-black text-slate-800">{stats.totalBookings}</div>
               </div>
-              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-bold text-slate-500 mb-1">عمولة تقديرية (محاسبة فقط)</div>
-                  <div className="text-3xl font-black text-green-600">{stats.totalCommission.toLocaleString()} د.ع</div>
-                  <p className="text-[11px] text-slate-500 mt-2">
-                    الزبون يدفع للشريك مباشرة — هذا الرقم تقديري حسب نسبة الإعدادات، مو أرباح محصّلة في المنصة بعد.
-                  </p>
-                </div>
-                <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
-                  <BarChart3 size={28} />
-                </div>
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="text-sm font-bold text-slate-500 mb-1">إيرادات المنصة (اشتراك + مميز)</div>
+                <div className="text-3xl font-black text-blue-700">{stats.monthlyRevenue.toLocaleString()} د.ع</div>
+                <p className="text-[11px] text-slate-500 mt-2">مدفوعات الشركاء المعتمدة للمنصة فقط.</p>
+              </div>
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="text-sm font-bold text-slate-500 mb-1">عمولة الحجوزات (محاسبة)</div>
+                <div className="text-3xl font-black text-green-600">{stats.totalCommission.toLocaleString()} د.ع</div>
+                <p className="text-[11px] text-slate-500 mt-2">
+                  مجموع عمولة سجلات دفع الحجوزات — الزبون يدفع للشريك مباشرة؛ الرقم للمحاسبة وليس رصيد محصّل.
+                </p>
               </div>
             </div>
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
