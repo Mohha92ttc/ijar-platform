@@ -43,6 +43,10 @@ type Bk = {
   assignedCourierId?: string | null;
   courierName?: string | null;
   deliveryStatus?: string | null;
+  returnRequested?: boolean;
+  returnStatus?: string | null;
+  returnCourierId?: string | null;
+  returnCourierName?: string | null;
 };
 
 type CourierRow = {
@@ -202,6 +206,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           assignedCourierId: b.assigned_courier_id ? String(b.assigned_courier_id) : null,
           courierName: b.courier_name ? String(b.courier_name) : null,
           deliveryStatus: b.delivery_status ? String(b.delivery_status) : null,
+          returnRequested: Boolean(b.return_requested),
+          returnStatus: b.return_status ? String(b.return_status) : null,
+          returnCourierId: b.return_courier_id ? String(b.return_courier_id) : null,
+          returnCourierName: b.return_courier_name ? String(b.return_courier_name) : null,
         };
       });
       setBookings(mappedBookings);
@@ -330,19 +338,36 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     }
   };
 
-  const assignCourier = async (bookingId: string, courier_id: string) => {
+  const assignCourier = async (bookingId: string, courier_id: string, leg: 'outbound' | 'return' = 'outbound') => {
     try {
-      if (!courier_id) {
+      if (!courier_id && leg === 'outbound') {
         await apiJson(`/api/couriers/unassign/${bookingId}`, { method: 'POST', body: '{}' });
+      } else if (!courier_id) {
+        alert('اختر مندوباً للاسترجاع');
+        return;
       } else {
         await apiJson(`/api/couriers/assign/${bookingId}`, {
           method: 'POST',
-          body: JSON.stringify({ courier_id }),
+          body: JSON.stringify({ courier_id, leg }),
         });
       }
       await loadData();
     } catch (e: unknown) {
       alert(e instanceof ApiError ? e.message : 'تعذر تحديث التعيين');
+    }
+  };
+
+  const requestReturn = async (bookingId: string) => {
+    if (!guardSub('طلب الاسترجاع')) return;
+    if (!confirm('طلب استرجاع المعدة من الزبون؟')) return;
+    try {
+      await apiJson(`/api/couriers/request-return/${bookingId}`, {
+        method: 'POST',
+        body: '{}',
+      });
+      await loadData();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر طلب الاسترجاع');
     }
   };
 
@@ -490,8 +515,15 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     const booking = bookings.find((b) => b.id === id);
     if (newStatus === 'completed' && booking?.deliveryRequested) {
       const ds = String(booking.deliveryStatus || '');
-      if (!['delivered', 'failed'].includes(ds)) {
-        alert('أكمل التوصيل أو سجّل تعذّر التسليم قبل إكمال الإيجار.');
+      if (ds !== 'delivered') {
+        alert('أكمل تسليم التوصيل للزبون قبل إكمال الإيجار.');
+        return;
+      }
+    }
+    if (newStatus === 'completed' && booking?.returnRequested) {
+      const rs = String(booking.returnStatus || '');
+      if (rs !== 'delivered') {
+        alert('أكمل استرجاع المعدة من الزبون قبل إكمال الإيجار.');
         return;
       }
     }
@@ -1004,16 +1036,21 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                           type="button"
                           data-testid="partner-booking-complete"
                           disabled={
-                            Boolean(booking.deliveryRequested) &&
-                            !['delivered', 'failed'].includes(String(booking.deliveryStatus || ''))
+                            (Boolean(booking.deliveryRequested) &&
+                              String(booking.deliveryStatus || '') !== 'delivered') ||
+                            (Boolean(booking.returnRequested) &&
+                              String(booking.returnStatus || '') !== 'delivered')
                           }
                           onClick={() => updateBookingStatus(booking.id, 'completed')}
                           className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
                           title={
                             booking.deliveryRequested &&
-                            !['delivered', 'failed'].includes(String(booking.deliveryStatus || ''))
+                            String(booking.deliveryStatus || '') !== 'delivered'
                               ? 'بانتظار اكتمال التوصيل'
-                              : 'إكمال الإيجار'
+                              : booking.returnRequested &&
+                                  String(booking.returnStatus || '') !== 'delivered'
+                                ? 'بانتظار اكتمال الاسترجاع'
+                                : 'إكمال الإيجار'
                           }
                         >
                           إكمال الإيجار
@@ -1122,6 +1159,50 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                       </div>
                       {couriers.length === 0 && (
                         <p className="text-[11px] text-amber-700">أضف مندوبين من تبويب «المندوبين» أولاً.</p>
+                      )}
+
+                      {booking.deliveryStatus === 'delivered' && (
+                        <div className="border-t border-dashed border-slate-200 pt-3 space-y-2" data-testid="partner-return-section">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="font-bold text-slate-700">استرجاع المعدة</span>
+                            {booking.returnRequested ? (
+                              <span className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 font-bold">
+                                {deliveryStatusLabel(booking.returnStatus) === '—'
+                                  ? 'مطلوب'
+                                  : deliveryStatusLabel(booking.returnStatus)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">اختياري بعد التسليم</span>
+                            )}
+                            {booking.returnCourierName && (
+                              <span className="text-slate-500">مندوب الاسترجاع: {booking.returnCourierName}</span>
+                            )}
+                          </div>
+                          {!booking.returnRequested ? (
+                            <button
+                              type="button"
+                              data-testid="partner-request-return"
+                              onClick={() => requestReturn(booking.id)}
+                              className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-800 border border-violet-100"
+                            >
+                              طلب استرجاع من الزبون
+                            </button>
+                          ) : (
+                            <select
+                              data-testid="partner-assign-return-courier"
+                              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"
+                              value={booking.returnCourierId || ''}
+                              onChange={(e) => assignCourier(booking.id, e.target.value, 'return')}
+                            >
+                              <option value="">اختر مندوب الاسترجاع</option>
+                              {couriers.filter((c) => c.is_active).map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name} — {c.phone}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
                       )}
                     </div>
                   )}

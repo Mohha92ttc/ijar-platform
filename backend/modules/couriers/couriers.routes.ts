@@ -27,6 +27,12 @@ router.post(
   controller.assignBooking
 );
 router.post(
+  '/request-return/:bookingId',
+  authenticateToken,
+  requireRole(['owner']),
+  controller.requestReturn
+);
+router.post(
   '/unassign/:bookingId',
   authenticateToken,
   requireRole(['owner']),

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, Package, Calendar, Clock, BarChart3, TrendingUp, Settings, LogOut, Search, Filter, Plus, 
   MapPin, Phone, Mail, Globe, Save, X, Edit2, CheckCircle, CreditCard, Bell, Trash2, ArrowRight, Eye, Download, Info,
-  FileText, Home, Sparkles, Truck
+  FileText, Home, Sparkles, Truck, Headphones
 } from 'lucide-react';
 import { apiJson, ApiError, clearSession, getStoredUser } from '../lib/api';
 import AdminSettings from './AdminSettings';
@@ -14,6 +14,7 @@ import ImageUpload from './ImageUpload';
 import NotificationsPanel from './NotificationsPanel';
 import AdminBookingsPanel from './AdminBookingsPanel';
 import AdminEquipmentPanel from './AdminEquipmentPanel';
+import AdminSupportPanel from './AdminSupportPanel';
 
 export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [partners, setPartners] = useState<any[]>([]);
@@ -460,6 +461,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           </button>
           <button 
             type="button"
+            data-testid="admin-nav-support"
+            onClick={() => setActiveTab('support')}
+            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+              activeTab === 'support' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Headphones size={18} /> رسائل الدعم
+          </button>
+          <button 
+            type="button"
             data-testid="admin-nav-content"
             onClick={() => setActiveTab('content')}
             className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
@@ -526,6 +537,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               { id: 'payment-approval', label: 'دفعات', testId: 'admin-nav-payment-approval-m' },
               { id: 'subscription-approval', label: 'اشتراك', testId: 'admin-nav-subscription-approval-m' },
               { id: 'categories', label: 'تصنيفات', testId: 'admin-nav-categories-m' },
+              { id: 'support', label: 'دعم', testId: 'admin-nav-support-m' },
               { id: 'settings', label: 'إعدادات', testId: 'admin-nav-settings-m' },
               { id: 'stats', label: 'إحصاء', testId: 'admin-nav-stats-m' },
             ] as const
@@ -560,6 +572,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'partner-statement' && 'كشوف حسابات الشركاء'}
             {activeTab === 'categories' && 'إدارة التصنيفات'}
             {activeTab === 'content' && 'إدارة محتوى المنصة'}
+            {activeTab === 'support' && 'رسائل الدعم من صفحة المساعدة'}
             {activeTab === 'payments' && 'إدارة المدفوعات'}
             {activeTab === 'settings' && 'إعدادات النظام'}
             {activeTab === 'stats' && 'الإحصائيات والتقارير'}
@@ -1123,6 +1136,8 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         {activeTab === 'bookings' && <AdminBookingsPanel />}
 
         {activeTab === 'equipment' && <AdminEquipmentPanel />}
+
+        {activeTab === 'support' && <AdminSupportPanel />}
 
         {/* Content Tab */}
         {activeTab === 'content' && (

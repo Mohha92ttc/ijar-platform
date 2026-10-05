@@ -202,26 +202,49 @@ export class CouriersService {
   async listAssignedBookings(courierId: string): Promise<any[]> {
     const res = await query(
       `
-      SELECT b.*, e.title AS equipment_title, e.location AS equipment_location,
-             u.name AS customer_name, u.phone AS customer_user_phone
-      FROM bookings b
-      JOIN equipment e ON e.id = b.equipment_id
-      JOIN users u ON u.id = b.customer_id
-      WHERE b.assigned_courier_id = $1
-        AND COALESCE(b.delivery_requested, FALSE) = TRUE
+      SELECT * FROM (
+        SELECT b.id, b.start_date, b.end_date, b.delivery_lat, b.delivery_lng, b.delivery_address,
+               b.delivery_fee, b.customer_phone, b.status,
+               e.title AS equipment_title, e.location AS equipment_location,
+               u.name AS customer_name, u.phone AS customer_user_phone,
+               b.delivery_status AS job_status,
+               'outbound'::text AS delivery_leg
+        FROM bookings b
+        JOIN equipment e ON e.id = b.equipment_id
+        JOIN users u ON u.id = b.customer_id
+        WHERE b.assigned_courier_id = $1
+          AND COALESCE(b.delivery_requested, FALSE) = TRUE
+
+        UNION ALL
+
+        SELECT b.id, b.start_date, b.end_date, b.delivery_lat, b.delivery_lng, b.delivery_address,
+               b.delivery_fee, b.customer_phone, b.status,
+               e.title AS equipment_title, e.location AS equipment_location,
+               u.name AS customer_name, u.phone AS customer_user_phone,
+               b.return_status AS job_status,
+               'return'::text AS delivery_leg
+        FROM bookings b
+        JOIN equipment e ON e.id = b.equipment_id
+        JOIN users u ON u.id = b.customer_id
+        WHERE b.return_courier_id = $1
+          AND COALESCE(b.return_requested, FALSE) = TRUE
+      ) jobs
       ORDER BY
-        CASE b.delivery_status
+        CASE jobs.job_status
           WHEN 'out_for_delivery' THEN 0
           WHEN 'assigned' THEN 1
           WHEN 'pending_assign' THEN 2
           WHEN 'delivered' THEN 3
           ELSE 4
         END,
-        b.start_date ASC
+        jobs.start_date ASC
       `,
       [courierId]
     );
-    return res.rows;
+    return res.rows.map((row: Record<string, unknown>) => ({
+      ...row,
+      delivery_status: row.job_status,
+    }));
   }
 
   async monthlyReport(courierId: string, yearMonth: string): Promise<{

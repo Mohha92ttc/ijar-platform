@@ -312,10 +312,45 @@ export class PaymentService {
     if (status === 'pending' && approve) {
       const method = String(raw.method ?? payment.payment_method ?? '').toLowerCase();
       const isCod = method === 'cash' || method === 'cash_on_delivery';
-      // COD: pending → approved when partner confirms. Transfer without proof stays blocked.
       if (!isCod) return;
+      // COD with delivery: cash collected at handoff — leave pending until delivered
+      const bookingId = String(raw.booking_id || payment.booking_id || '');
+      if (bookingId) {
+        const b = await query(
+          `SELECT delivery_requested FROM bookings WHERE id = $1 LIMIT 1`,
+          [bookingId]
+        );
+        if (b.rows[0]?.delivery_requested) return;
+      }
     }
     await this.adminReview(String(raw.id || payment.id), approve, notes || (approve ? 'موافقة الشريك' : 'رفض الشريك'));
+  }
+
+  /** On cancel: reject open reviews; mark approved as refunded (manual settlement). */
+  async settleOnBookingCancel(bookingId: string, note?: string): Promise<void> {
+    const payment = await this.repository.findByBookingId(bookingId);
+    if (!payment) return;
+    const raw = payment as Payment & Record<string, unknown>;
+    const st = String(raw.status ?? payment.payment_status);
+    const id = String(raw.id || payment.id);
+    if (['under_review', 'pending', 'proof_uploaded'].includes(st)) {
+      await this.repository.updateStatus(id, 'rejected');
+      await query(`UPDATE payments SET notes = COALESCE(notes,'') || $1 WHERE id = $2`, [
+        ` | ${note || 'إلغاء الحجز'}`,
+        id,
+      ]);
+      return;
+    }
+    if (['approved', 'paid', 'completed'].includes(st)) {
+      try {
+        await query(
+          `UPDATE payments SET status = 'refunded'::payment_status, notes = COALESCE(notes,'') || $1, updated_at = NOW() WHERE id = $2`,
+          [` | ${note || 'بانتظار استرداد بعد إلغاء الحجز'}`, id]
+        );
+      } catch {
+        await this.repository.updateStatus(id, 'rejected');
+      }
+    }
   }
 
   async setOwnerPaymentSettings(settings: OwnerPaymentSettings): Promise<void> {

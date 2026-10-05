@@ -17,6 +17,8 @@ type Row = {
   location: string;
   deliveryRequested?: boolean;
   deliveryStatus?: string | null;
+  returnRequested?: boolean;
+  returnStatus?: string | null;
   deliveryLat?: number | null;
   deliveryLng?: number | null;
   courierName?: string | null;
@@ -179,6 +181,8 @@ export default function CustomerDashboard({
           location: String(b.delivery_address || b.location || b.equipment_location || '—'),
           deliveryRequested: Boolean(b.delivery_requested),
           deliveryStatus: b.delivery_status ? String(b.delivery_status) : null,
+          returnRequested: Boolean(b.return_requested),
+          returnStatus: b.return_status ? String(b.return_status) : null,
           deliveryLat: b.delivery_lat != null ? Number(b.delivery_lat) : null,
           deliveryLng: b.delivery_lng != null ? Number(b.delivery_lng) : null,
           courierName: b.courier_name ? String(b.courier_name) : null,
@@ -624,8 +628,13 @@ export default function CustomerDashboard({
                 {booking.deliveryRequested && (
                   <div className="text-xs space-y-2" data-testid="customer-delivery-status">
                     <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
-                      <Truck size={10} /> {deliveryLabel(booking.deliveryStatus)}
+                      <Truck size={10} /> توصيل: {deliveryLabel(booking.deliveryStatus)}
                     </span>
+                    {booking.returnRequested && (
+                      <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-violet-50 text-violet-700">
+                        استرجاع: {deliveryLabel(booking.returnStatus)}
+                      </span>
+                    )}
                     {booking.courierName && (
                       <p className="flex items-center gap-1 text-slate-600">
                         <Phone size={10} />

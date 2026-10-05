@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { mailService } from '../../services/mail.service';
 import { publicError } from '../../utils/publicError';
+import { query } from '../../database/connection';
 
 export const supportController = {
   /** Public contact form from Help page (no auth). */
@@ -21,6 +22,16 @@ export const supportController = {
         return res.status(400).json({ error: 'الرسالة قصيرة جداً (10 أحرف على الأقل)' });
       }
 
+      const inserted = await query(
+        `
+        INSERT INTO support_messages (name, email, category, message)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        `,
+        [name, email, category, message]
+      );
+      const ticketId = String(inserted.rows[0]?.id || '');
+
       const supportTo =
         process.env.SUPPORT_EMAIL ||
         process.env.EMAIL_FROM ||
@@ -28,33 +39,65 @@ export const supportController = {
         'support@ijar.iq';
 
       const subject = `[إيجار دعم] ${category} — ${name}`;
-      const text = `الاسم: ${name}\nالبريد: ${email}\nالنوع: ${category}\n\n${message}`;
+      const text = `الاسم: ${name}\nالبريد: ${email}\nالنوع: ${category}\nرقم الطلب: ${ticketId}\n\n${message}`;
 
-      if (!mailService.isConfigured()) {
-        console.warn('[support contact]', subject, text.slice(0, 500));
-        return res.status(503).json({
-          error:
-            'خدمة البريد غير مفعّلة حالياً. تواصل مباشرة عبر الهاتف أو البريد الظاهر في صفحة المساعدة.',
-        });
+      let mailSent = false;
+      if (mailService.isConfigured()) {
+        mailSent = await mailService.send({ to: supportTo, subject, text });
+        if (mailSent) {
+          await mailService.send({
+            to: email,
+            subject: 'استلمنا رسالتك — إيجار',
+            text: `مرحباً ${name}،\n\nاستلمنا رسالتك وسنرد خلال 24 ساعة.\nرقم الطلب: ${ticketId}\n\nنوع الطلب: ${category}`,
+          });
+        }
+      } else {
+        console.warn('[support contact saved]', ticketId, subject);
       }
-
-      const sent = await mailService.send({ to: supportTo, subject, text });
-      if (!sent) {
-        return res.status(502).json({ error: 'تعذر إرسال الرسالة. حاول لاحقاً أو تواصل هاتفياً.' });
-      }
-
-      await mailService.send({
-        to: email,
-        subject: 'استلمنا رسالتك — إيجار',
-        text: `مرحباً ${name}،\n\nاستلمنا رسالتك وسنرد خلال 24 ساعة.\n\nنوع الطلب: ${category}`,
-      });
 
       res.status(201).json({
-        message: 'تم إرسال رسالتك بنجاح',
-        id: `contact_${Date.now()}`,
+        message: mailSent
+          ? 'تم إرسال رسالتك بنجاح'
+          : 'تم حفظ رسالتك لدى الإدارة. إن تعذّر البريد راسلنا هاتفياً أيضاً.',
+        id: ticketId,
+        mail_sent: mailSent,
       });
     } catch (error: unknown) {
       res.status(500).json({ error: publicError(error, 'فشل إرسال الرسالة') });
+    }
+  },
+
+  async listMessages(_req: Request, res: Response) {
+    try {
+      const r = await query(
+        `SELECT id, name, email, category, message, status, admin_notes, created_at
+         FROM support_messages ORDER BY created_at DESC LIMIT 100`
+      );
+      res.json(r.rows);
+    } catch (error: unknown) {
+      res.status(500).json({ error: publicError(error, 'فشل جلب الرسائل') });
+    }
+  },
+
+  async updateMessage(req: Request, res: Response) {
+    try {
+      const id = req.params.id;
+      const status = String(req.body?.status || 'open');
+      const admin_notes =
+        req.body?.admin_notes != null ? String(req.body.admin_notes) : undefined;
+      await query(
+        `
+        UPDATE support_messages
+        SET status = $1,
+            admin_notes = COALESCE($2, admin_notes),
+            updated_at = NOW()
+        WHERE id = $3
+        `,
+        [status, admin_notes ?? null, id]
+      );
+      res.json({ ok: true });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل التحديث') });
     }
   },
 

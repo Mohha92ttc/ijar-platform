@@ -14,6 +14,7 @@ type CourierBooking = {
   delivery_address?: string | null;
   location?: string | null;
   delivery_status?: string | null;
+  delivery_leg?: string | null;
   delivery_fee?: number;
   start_date?: string;
   end_date?: string;
@@ -113,11 +114,11 @@ export default function CourierDashboard({
     if (tab === 'report') loadReport();
   }, [tab, loadReport]);
 
-  const setStatus = async (bookingId: string, delivery_status: string) => {
+  const setStatus = async (bookingId: string, delivery_status: string, leg: string = 'outbound') => {
     try {
       await apiJson(`/api/couriers/me/bookings/${bookingId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ delivery_status }),
+        body: JSON.stringify({ delivery_status, leg }),
       });
       await load();
       if (tab === 'report') await loadReport();
@@ -283,16 +284,26 @@ export default function CourierDashboard({
               const phone = b.customer_phone || b.customer_user_phone || '—';
               const wa = normalizeIqPhone(phone);
               const addr = b.delivery_address || b.location || '—';
+              const leg = String(b.delivery_leg || 'outbound');
+              const isReturn = leg === 'return';
               return (
                 <div
-                  key={b.id}
+                  key={`${b.id}-${leg}`}
                   data-testid="courier-booking-card"
+                  data-delivery-leg={leg}
                   className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm"
                 >
                   <div className="flex justify-between items-start gap-2">
                     <div>
                       <h3 className="font-bold text-slate-800">{b.equipment_title || 'طلب توصيل'}</h3>
                       <p className="text-xs text-slate-500 mt-1">{b.customer_name}</p>
+                      <span
+                        className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isReturn ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        {isReturn ? 'استرجاع' : 'توصيل'}
+                      </span>
                     </div>
                     <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
                       {statusLabel(b.delivery_status)}
@@ -306,7 +317,7 @@ export default function CourierDashboard({
                     <p className="flex items-center gap-1">
                       <Phone size={12} /> {phone}
                     </p>
-                    {b.delivery_fee != null && Number(b.delivery_fee) > 0 && (
+                    {!isReturn && b.delivery_fee != null && Number(b.delivery_fee) > 0 && (
                       <p>أجرة التوصيل: {Number(b.delivery_fee).toLocaleString()} د.ع</p>
                     )}
                   </div>
@@ -344,20 +355,20 @@ export default function CourierDashboard({
                       <button
                         type="button"
                         data-testid="courier-start-delivery"
-                        onClick={() => setStatus(b.id, 'out_for_delivery')}
+                        onClick={() => setStatus(b.id, 'out_for_delivery', leg)}
                         className="px-3 py-2.5 rounded-xl text-sm font-bold border border-amber-200 text-amber-800 bg-amber-50"
                       >
-                        بدء التوصيل
+                        {isReturn ? 'بدء الاسترجاع' : 'بدء التوصيل'}
                       </button>
                     )}
                     {b.delivery_status !== 'delivered' && b.delivery_status !== 'failed' && (
                       <button
                         type="button"
                         data-testid="courier-mark-delivered"
-                        onClick={() => setStatus(b.id, 'delivered')}
+                        onClick={() => setStatus(b.id, 'delivered', leg)}
                         className="px-3 py-2.5 rounded-xl text-sm font-bold border border-green-200 text-green-800 bg-green-50 flex items-center gap-1"
                       >
-                        <CheckCircle size={14} /> تم التسليم
+                        <CheckCircle size={14} /> {isReturn ? 'تم الاسترجاع' : 'تم التسليم'}
                       </button>
                     )}
                     {b.delivery_status !== 'delivered' && b.delivery_status !== 'failed' && (
@@ -365,11 +376,13 @@ export default function CourierDashboard({
                         type="button"
                         data-testid="courier-mark-failed"
                         onClick={() => {
-                          if (confirm('تأكيد تعذّر التسليم؟')) setStatus(b.id, 'failed');
+                          if (confirm(isReturn ? 'تأكيد تعذّر الاسترجاع؟' : 'تأكيد تعذّر التسليم؟')) {
+                            setStatus(b.id, 'failed', leg);
+                          }
                         }}
                         className="px-3 py-2.5 rounded-xl text-sm font-bold border border-red-200 text-red-800 bg-red-50"
                       >
-                        تعذّر التسليم
+                        {isReturn ? 'تعذّر الاسترجاع' : 'تعذّر التسليم'}
                       </button>
                     )}
                     {b.delivery_status === 'failed' && (

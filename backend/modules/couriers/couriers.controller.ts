@@ -93,7 +93,7 @@ export class CouriersController {
     }
   };
 
-  /** شريك يعيّن/ينقل طلب لمندوب */
+  /** شريك يعيّن/ينقل طلب لمندوب (توصيل أو استرجاع) */
   assignBooking = async (req: Request, res: Response) => {
     try {
       const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
@@ -103,6 +103,7 @@ export class CouriersController {
       const bookingId = req.params.bookingId;
       const courierId = String(req.body.courier_id || '');
       if (!courierId) return res.status(400).json({ error: 'courier_id مطلوب' });
+      const leg = String(req.body.leg || req.body.delivery_leg || 'outbound');
 
       const courier = await this.service.assertOwned(actor.userId, courierId);
 
@@ -117,27 +118,44 @@ export class CouriersController {
       );
       if (!own.rows[0]) return res.status(404).json({ error: 'الطلب غير موجود' });
 
-      await query(
-        `
-        UPDATE bookings
-        SET assigned_courier_id = $1,
-            delivery_status = CASE
-              WHEN delivery_status = 'delivered' THEN delivery_status
-              ELSE 'assigned'
-            END,
-            updated_at = NOW()
-        WHERE id = $2
-        `,
-        [courierId, bookingId]
-      );
+      if (leg === 'return') {
+        await query(
+          `
+          UPDATE bookings
+          SET return_requested = TRUE,
+              return_courier_id = $1,
+              return_status = CASE
+                WHEN return_status = 'delivered' THEN return_status
+                ELSE 'assigned'
+              END,
+              updated_at = NOW()
+          WHERE id = $2
+          `,
+          [courierId, bookingId]
+        );
+      } else {
+        await query(
+          `
+          UPDATE bookings
+          SET assigned_courier_id = $1,
+              delivery_status = CASE
+                WHEN delivery_status = 'delivered' THEN delivery_status
+                ELSE 'assigned'
+              END,
+              updated_at = NOW()
+          WHERE id = $2
+          `,
+          [courierId, bookingId]
+        );
+      }
 
       if (courier.user_id) {
         try {
           await this.notifications.create({
             user_id: courier.user_id,
             type: 'system',
-            title: 'طلب توصيل جديد',
-            message: `تم تعيينك لتوصيل: ${String(own.rows[0].equipment_title || 'طلب')} — افتح لوحة المندوب.`,
+            title: leg === 'return' ? 'طلب استرجاع جديد' : 'طلب توصيل جديد',
+            message: `تم تعيينك لـ${leg === 'return' ? 'استرجاع' : 'توصيل'}: ${String(own.rows[0].equipment_title || 'طلب')} — افتح لوحة المندوب.`,
             related_id: bookingId,
           });
         } catch {
@@ -145,9 +163,56 @@ export class CouriersController {
         }
       }
 
-      res.json({ ok: true, assigned_courier_id: courierId });
+      res.json({ ok: true, assigned_courier_id: courierId, leg });
     } catch (e: unknown) {
       res.status(400).json({ error: publicError(e, 'تعذر تعيين المندوب') });
+    }
+  };
+
+  requestReturn = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      const bookingId = req.params.bookingId;
+      const own = await query(
+        `
+        SELECT b.id, b.delivery_status, b.customer_id, e.title
+        FROM bookings b
+        JOIN equipment e ON e.id = b.equipment_id
+        WHERE b.id = $1 AND e.owner_id = $2
+        `,
+        [bookingId, actor.userId]
+      );
+      if (!own.rows[0]) return res.status(404).json({ error: 'الطلب غير موجود' });
+      if (String(own.rows[0].delivery_status) !== 'delivered') {
+        return res.status(400).json({ error: 'فعّل الاسترجاع بعد إتمام تسليم التوصيل للزبون' });
+      }
+      await query(
+        `
+        UPDATE bookings
+        SET return_requested = TRUE,
+            return_status = COALESCE(NULLIF(return_status, 'delivered'), 'pending_assign'),
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [bookingId]
+      );
+      try {
+        await this.notifications.create({
+          user_id: String(own.rows[0].customer_id),
+          type: 'system',
+          title: 'طلب استرجاع المعدة',
+          message: `الشريك طلب استرجاع «${own.rows[0].title}». سيُعيَّن مندوب للاستلام من موقعك.`,
+          related_id: bookingId,
+        });
+      } catch {
+        // ignore
+      }
+      res.json({ ok: true });
+    } catch (e: unknown) {
+      res.status(400).json({ error: publicError(e, 'تعذر طلب الاسترجاع') });
     }
   };
 
@@ -175,11 +240,21 @@ export class CouriersController {
       const me = await this.service.getByUserId(actor.userId);
       if (!me) return res.status(403).json({ error: 'مندوب غير معروف' });
       const status = String(req.body.delivery_status || '');
+      const leg = String(req.body.leg || req.body.delivery_leg || 'outbound');
       if (!['assigned', 'out_for_delivery', 'delivered', 'failed'].includes(status)) {
         return res.status(400).json({ error: 'حالة غير صالحة' });
       }
+
+      const isReturn = leg === 'return';
       const resu = await query(
+        isReturn
+          ? `
+        UPDATE bookings
+        SET return_status = $1, updated_at = NOW()
+        WHERE id = $2 AND return_courier_id = $3
+        RETURNING id, customer_id, return_status AS delivery_status
         `
+          : `
         UPDATE bookings
         SET delivery_status = $1, updated_at = NOW()
         WHERE id = $2 AND assigned_courier_id = $3
@@ -194,16 +269,26 @@ export class CouriersController {
         try {
           const title =
             status === 'delivered'
-              ? 'تم تسليم طلبك'
+              ? isReturn
+                ? 'تم استرجاع المعدة'
+                : 'تم تسليم طلبك'
               : status === 'failed'
-                ? 'تعذّر تسليم الطلب'
-                : 'المندوب في الطريق';
+                ? isReturn
+                  ? 'تعذّر استرجاع المعدة'
+                  : 'تعذّر تسليم الطلب'
+                : isReturn
+                  ? 'المندوب في الطريق للاسترجاع'
+                  : 'المندوب في الطريق';
           const message =
             status === 'delivered'
-              ? 'تم تسليم معدتك بنجاح.'
+              ? isReturn
+                ? 'تم استلام المعدة من موقعك وإرجاعها للشريك.'
+                : 'تم تسليم معدتك بنجاح.'
               : status === 'failed'
-                ? 'تعذّر على المندوب إتمام التسليم. سيتواصل الشريك معك لإعادة المحاولة.'
-                : 'مندوب التوصيل في الطريق إليك الآن.';
+                ? 'سجّل المندوب تعذّر المهمة. سيتواصل الشريك معك.'
+                : isReturn
+                  ? 'مندوب الاسترجاع في الطريق إليك.'
+                  : 'مندوب التوصيل في الطريق إليك الآن.';
           await this.notifications.create({
             user_id: customerId,
             type: 'system',
@@ -227,8 +312,8 @@ export class CouriersController {
               await this.notifications.create({
                 user_id: String(ownerId),
                 type: 'system',
-                title: 'فشل توصيل حجز',
-                message: 'سجّل المندوب تعذّر التسليم. راجع الطلب وأعد التعيين إن لزم.',
+                title: isReturn ? 'فشل استرجاع معدة' : 'فشل توصيل حجز',
+                message: 'سجّل المندوب تعذّر المهمة. راجع الطلب وأعد التعيين إن لزم.',
                 related_id: String(resu.rows[0].id),
               });
             }
@@ -238,8 +323,8 @@ export class CouriersController {
         }
       }
 
-      // COD: mark payment paid when delivered
-      if (status === 'delivered') {
+      // COD: mark payment paid when outbound delivered
+      if (!isReturn && status === 'delivered') {
         try {
           await query(
             `

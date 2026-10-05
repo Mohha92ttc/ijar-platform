@@ -7,6 +7,20 @@ const router = Router();
 // Public contact (Help page)
 router.post('/contact', supportController.submitContact);
 
+// Admin inbox (persisted contact messages)
+router.get(
+  '/messages',
+  authenticateToken,
+  requireRole(['admin']),
+  supportController.listMessages
+);
+router.patch(
+  '/messages/:id',
+  authenticateToken,
+  requireRole(['admin']),
+  supportController.updateMessage
+);
+
 // Support tickets
 router.post('/tickets', authenticateToken, supportController.createTicket);
 router.get('/tickets', authenticateToken, supportController.getTickets);

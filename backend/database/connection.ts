@@ -390,7 +390,24 @@ async function createTables() {
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_address TEXT;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS assigned_courier_id UUID REFERENCES couriers(id) ON DELETE SET NULL;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS delivery_status VARCHAR(30) DEFAULT NULL;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_requested BOOLEAN DEFAULT FALSE;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_status VARCHAR(30) DEFAULT NULL;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS return_courier_id UUID REFERENCES couriers(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_bookings_courier ON bookings (assigned_courier_id);
+    CREATE INDEX IF NOT EXISTS idx_bookings_return_courier ON bookings (return_courier_id);
+
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name VARCHAR(120) NOT NULL,
+      email VARCHAR(200) NOT NULL,
+      category VARCHAR(80) DEFAULT 'general',
+      message TEXT NOT NULL,
+      status VARCHAR(30) DEFAULT 'open',
+      admin_notes TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_support_messages_status ON support_messages (status);
 
     CREATE TABLE IF NOT EXISTS favorites (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

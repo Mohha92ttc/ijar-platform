@@ -200,14 +200,21 @@ export class BookingService {
 
     if (status === 'completed' && actor.role === 'owner') {
       const full = await query(
-        `SELECT delivery_requested, delivery_status FROM bookings WHERE id = $1 LIMIT 1`,
+        `SELECT delivery_requested, delivery_status, return_requested, return_status
+         FROM bookings WHERE id = $1 LIMIT 1`,
         [id]
       );
       const row = full.rows[0];
       if (row?.delivery_requested) {
         const ds = String(row.delivery_status || '');
-        if (!['delivered', 'failed'].includes(ds)) {
-          throw new Error('لا يمكن إكمال الحجز قبل تسليم التوصيل أو تسجيل تعذّر التسليم');
+        if (ds !== 'delivered') {
+          throw new Error('لا يمكن إكمال الحجز قبل إتمام تسليم التوصيل للزبون');
+        }
+      }
+      if (row?.return_requested) {
+        const rs = String(row.return_status || '');
+        if (rs !== 'delivered') {
+          throw new Error('لا يمكن إكمال الحجز قبل إتمام استرجاع المعدة من الزبون');
         }
       }
     }
@@ -235,6 +242,13 @@ export class BookingService {
         message: `تم تأكيد حجزك لـ «${equipment.title}».`,
         related_id: booking.id,
       });
+      try {
+        await query(`UPDATE equipment SET status = 'rented'::equipment_status WHERE id = $1 AND status = 'available'::equipment_status`, [
+          booking.equipment_id,
+        ]);
+      } catch {
+        // enum may not have rented in all envs — ignore
+      }
     } else if (status === 'cancelled' && oldStatus !== 'cancelled') {
       await this.notificationService.create({
         user_id: booking.customer_id,
@@ -250,6 +264,33 @@ export class BookingService {
         message: `أُلغي الحجز على «${equipment.title}».`,
         related_id: booking.id,
       });
+      try {
+        await this.paymentService.settleOnBookingCancel(booking.id, 'إلغاء الحجز');
+      } catch (e) {
+        console.warn('[booking] cancel payment settle failed', e instanceof Error ? e.message : e);
+      }
+      try {
+        await query(`UPDATE equipment SET status = 'available'::equipment_status WHERE id = $1`, [
+          booking.equipment_id,
+        ]);
+      } catch {
+        // ignore
+      }
+    } else if (status === 'completed' && oldStatus !== 'completed') {
+      await this.notificationService.create({
+        user_id: booking.customer_id,
+        type: 'system',
+        title: 'اكتمل الإيجار',
+        message: `اكتمل إيجار «${equipment.title}». يمكنك تقييم تجربتك من لوحة الحجوزات.`,
+        related_id: booking.id,
+      });
+      try {
+        await query(`UPDATE equipment SET status = 'available'::equipment_status WHERE id = $1`, [
+          booking.equipment_id,
+        ]);
+      } catch {
+        // ignore
+      }
     }
 
     // Partner confirm/reject also settles the booking payment review when applicable
@@ -326,11 +367,13 @@ export class BookingService {
              p.status::text AS payment_status,
              p.notes AS payment_notes,
              c.name AS courier_name,
-             c.phone AS courier_phone
+             c.phone AS courier_phone,
+             rc.name AS return_courier_name
       FROM bookings b
       JOIN equipment e ON b.equipment_id = e.id
       JOIN users u ON b.customer_id = u.id
       LEFT JOIN couriers c ON c.id = b.assigned_courier_id
+      LEFT JOIN couriers rc ON rc.id = b.return_courier_id
       LEFT JOIN LATERAL (
         SELECT payment_proof, method, status, notes
         FROM payments
