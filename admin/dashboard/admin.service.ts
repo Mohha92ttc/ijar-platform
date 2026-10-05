@@ -198,7 +198,36 @@ export class AdminService {
       JOIN users u ON b.customer_id = u.id
       JOIN equipment e ON b.equipment_id = e.id
       ORDER BY b.created_at DESC
+      LIMIT 200
     `);
+    return res.rows;
+  }
+
+  async updateBookingStatus(bookingId: string, status: string): Promise<void> {
+    const allowed = ['pending', 'confirmed', 'cancelled', 'completed'];
+    if (!allowed.includes(status)) throw new Error('حالة غير صالحة');
+    const res = await query(
+      `
+      UPDATE bookings
+      SET status = $1::booking_status, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $2
+      RETURNING id
+      `,
+      [status, bookingId]
+    );
+    if (res.rows.length === 0) throw new Error('الحجز غير موجود');
+  }
+
+  async listAllEquipment(): Promise<any[]> {
+    const res = await query(
+      `
+      SELECT e.id, e.title, e.category, e.status, e.price_per_day, e.location, u.name AS owner_name
+      FROM equipment e
+      JOIN users u ON u.id = e.owner_id
+      ORDER BY e.created_at DESC
+      LIMIT 300
+      `
+    );
     return res.rows;
   }
 

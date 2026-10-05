@@ -1089,6 +1089,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                           <span className="text-slate-500">المندوب: {booking.courierName}</span>
                         )}
                       </div>
+                      {booking.deliveryStatus === 'failed' && (
+                        <p className="text-[11px] text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2" data-testid="partner-delivery-failed-hint">
+                          فشل التوصيل — اختر مندوباً من القائمة لإعادة المحاولة (تُصفّر حالة الفشل).
+                        </p>
+                      )}
                       <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                         <select
                           data-testid="partner-assign-courier"

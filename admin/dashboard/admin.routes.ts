@@ -23,10 +23,12 @@ router.post('/users/:id/renew', adminController.renewSubscription);
 router.delete('/users/:id', adminController.deleteUser);
 
 // Equipment Management
+router.get('/equipment', adminController.listEquipment);
 router.patch('/equipment/:id/status', adminController.manageEquipment);
 
 // Booking & Payment Overviews
 router.get('/bookings', adminController.getAllBookings);
+router.patch('/bookings/:id/status', adminController.updateBookingStatus);
 router.get('/payments', adminController.getAllPayments);
 router.post('/payments/:id/review', adminController.reviewPayment);
 router.get('/partner-payments-report', adminController.getPartnerPaymentsReport);

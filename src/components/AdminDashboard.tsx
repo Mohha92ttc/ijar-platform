@@ -12,6 +12,8 @@ import PaymentApproval from './PaymentApproval';
 import PartnerStatement from './PartnerStatement';
 import ImageUpload from './ImageUpload';
 import NotificationsPanel from './NotificationsPanel';
+import AdminBookingsPanel from './AdminBookingsPanel';
+import AdminEquipmentPanel from './AdminEquipmentPanel';
 
 export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [partners, setPartners] = useState<any[]>([]);
@@ -376,6 +378,26 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           >
             <Truck size={18} /> المندوبين
           </button>
+          <button
+            type="button"
+            data-testid="admin-nav-bookings"
+            onClick={() => setActiveTab('bookings')}
+            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+              activeTab === 'bookings' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Calendar size={18} /> الحجوزات
+          </button>
+          <button
+            type="button"
+            data-testid="admin-nav-equipment"
+            onClick={() => setActiveTab('equipment')}
+            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+              activeTab === 'equipment' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Package size={18} /> المعدات
+          </button>
           <button 
             type="button"
             data-testid="admin-nav-payment-approval"
@@ -499,6 +521,8 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               { id: 'partners', label: 'شركاء', testId: 'admin-nav-partners-m' },
               { id: 'customers', label: 'زبائن', testId: 'admin-nav-customers-m' },
               { id: 'couriers', label: 'مندوبين', testId: 'admin-nav-couriers-m' },
+              { id: 'bookings', label: 'حجوزات', testId: 'admin-nav-bookings-m' },
+              { id: 'equipment', label: 'معدات', testId: 'admin-nav-equipment-m' },
               { id: 'payment-approval', label: 'دفعات', testId: 'admin-nav-payment-approval-m' },
               { id: 'subscription-approval', label: 'اشتراك', testId: 'admin-nav-subscription-approval-m' },
               { id: 'categories', label: 'تصنيفات', testId: 'admin-nav-categories-m' },
@@ -527,6 +551,8 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'partners' && 'إدارة الشركاء والمشتركين'}
             {activeTab === 'customers' && 'إدارة الزبائن'}
             {activeTab === 'couriers' && 'حسابات المندوبين'}
+            {activeTab === 'bookings' && 'إدارة الحجوزات'}
+            {activeTab === 'equipment' && 'إشراف المعدات'}
             {activeTab === 'payment-approval' && 'موافقات دفع الحجوزات'}
             {activeTab === 'featured-approval' && 'موافقات الإعلان المميز'}
             {activeTab === 'subscription-approval' && 'موافقات اشتراكات الشركاء'}
@@ -1094,6 +1120,10 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           </div>
         )}
 
+        {activeTab === 'bookings' && <AdminBookingsPanel />}
+
+        {activeTab === 'equipment' && <AdminEquipmentPanel />}
+
         {/* Content Tab */}
         {activeTab === 'content' && (
           <div className="space-y-6">
@@ -1380,8 +1410,11 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               </div>
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-bold text-slate-500 mb-1">أرباح العمولات (حسب نسبة الإعدادات)</div>
+                  <div className="text-sm font-bold text-slate-500 mb-1">عمولة تقديرية (محاسبة فقط)</div>
                   <div className="text-3xl font-black text-green-600">{stats.totalCommission.toLocaleString()} د.ع</div>
+                  <p className="text-[11px] text-slate-500 mt-2">
+                    الزبون يدفع للشريك مباشرة — هذا الرقم تقديري حسب نسبة الإعدادات، مو أرباح محصّلة في المنصة بعد.
+                  </p>
                 </div>
                 <div className="w-14 h-14 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
                   <BarChart3 size={28} />

@@ -97,6 +97,26 @@ export class AdminController {
     }
   };
 
+  updateBookingStatus = async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const status = String(req.body?.status || '');
+      await this.adminService.updateBookingStatus(id, status);
+      res.status(200).json({ message: 'تم تحديث الحجز' });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل تحديث الحجز') });
+    }
+  };
+
+  listEquipment = async (_req: Request, res: Response) => {
+    try {
+      const rows = await this.adminService.listAllEquipment();
+      res.status(200).json(rows);
+    } catch (error: unknown) {
+      res.status(500).json({ error: publicError(error, 'فشل جلب المعدات') });
+    }
+  };
+
   getAllPayments = async (_req: Request, res: Response) => {
     try {
       const payments = await this.adminService.getAllPayments();

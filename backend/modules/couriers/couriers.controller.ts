@@ -121,7 +121,10 @@ export class CouriersController {
         `
         UPDATE bookings
         SET assigned_courier_id = $1,
-            delivery_status = COALESCE(NULLIF(delivery_status, 'delivered'), 'assigned'),
+            delivery_status = CASE
+              WHEN delivery_status = 'delivered' THEN delivery_status
+              ELSE 'assigned'
+            END,
             updated_at = NOW()
         WHERE id = $2
         `,
