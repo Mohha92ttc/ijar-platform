@@ -488,6 +488,13 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const updateBookingStatus = async (id: string, newStatus: string) => {
     if (!guardSub('تحديث الحجوزات')) return;
     const booking = bookings.find((b) => b.id === id);
+    if (newStatus === 'completed' && booking?.deliveryRequested) {
+      const ds = String(booking.deliveryStatus || '');
+      if (!['delivered', 'failed'].includes(ds)) {
+        alert('أكمل التوصيل أو سجّل تعذّر التسليم قبل إكمال الإيجار.');
+        return;
+      }
+    }
     if (newStatus === 'confirmed' && booking && !booking.isCod) {
       if (!booking.paymentProof) {
         alert('لا يمكن الموافقة قبل وجود صورة إثبات التحويل من الزبون.');
@@ -996,9 +1003,18 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         <button
                           type="button"
                           data-testid="partner-booking-complete"
+                          disabled={
+                            Boolean(booking.deliveryRequested) &&
+                            !['delivered', 'failed'].includes(String(booking.deliveryStatus || ''))
+                          }
                           onClick={() => updateBookingStatus(booking.id, 'completed')}
-                          className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg"
-                          title="إكمال الإيجار"
+                          className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={
+                            booking.deliveryRequested &&
+                            !['delivered', 'failed'].includes(String(booking.deliveryStatus || ''))
+                              ? 'بانتظار اكتمال التوصيل'
+                              : 'إكمال الإيجار'
+                          }
                         >
                           إكمال الإيجار
                         </button>

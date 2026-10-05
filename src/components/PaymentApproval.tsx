@@ -4,7 +4,7 @@ import { CheckCircle, XCircle, AlertCircle, Eye, Download, MessageCircle, Clock,
 import { Payment } from '../types';
 import { apiJson, ApiError } from '../lib/api';
 
-type Props = { filterType?: string };
+type Props = { filterType?: string | string[] };
 
 export default function PaymentApproval({ filterType }: Props) {
   const [requests, setRequests] = useState<Payment[]>([]);
@@ -75,7 +75,8 @@ export default function PaymentApproval({ filterType }: Props) {
 
   const visibleRequests = useMemo(() => {
     if (!filterType) return requests;
-    return requests.filter((r) => (r as Payment & { type?: string }).type === filterType);
+    const allowed = Array.isArray(filterType) ? filterType : [filterType];
+    return requests.filter((r) => allowed.includes(String((r as Payment & { type?: string }).type || '')));
   }, [requests, filterType]);
 
   const getStatusColor = (status: string) => {

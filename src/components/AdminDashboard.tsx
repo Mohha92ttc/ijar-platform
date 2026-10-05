@@ -396,6 +396,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           >
             <Sparkles size={18} /> الإعلان المميز
           </button>
+          <button 
+            type="button"
+            data-testid="admin-nav-subscription-approval"
+            onClick={() => setActiveTab('subscription-approval')}
+            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+              activeTab === 'subscription-approval' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <CreditCard size={18} /> اشتراكات الشركاء
+          </button>
           <button
             type="button"
             data-testid="admin-nav-password-resets"
@@ -490,6 +500,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               { id: 'customers', label: 'زبائن', testId: 'admin-nav-customers-m' },
               { id: 'couriers', label: 'مندوبين', testId: 'admin-nav-couriers-m' },
               { id: 'payment-approval', label: 'دفعات', testId: 'admin-nav-payment-approval-m' },
+              { id: 'subscription-approval', label: 'اشتراك', testId: 'admin-nav-subscription-approval-m' },
               { id: 'categories', label: 'تصنيفات', testId: 'admin-nav-categories-m' },
               { id: 'settings', label: 'إعدادات', testId: 'admin-nav-settings-m' },
               { id: 'stats', label: 'إحصاء', testId: 'admin-nav-stats-m' },
@@ -516,8 +527,9 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'partners' && 'إدارة الشركاء والمشتركين'}
             {activeTab === 'customers' && 'إدارة الزبائن'}
             {activeTab === 'couriers' && 'حسابات المندوبين'}
-            {activeTab === 'payment-approval' && 'موافقات الدفع'}
+            {activeTab === 'payment-approval' && 'موافقات دفع الحجوزات'}
             {activeTab === 'featured-approval' && 'موافقات الإعلان المميز'}
+            {activeTab === 'subscription-approval' && 'موافقات اشتراكات الشركاء'}
             {activeTab === 'password-resets' && 'طلبات تغيير كلمة المرور'}
             {activeTab === 'partner-statement' && 'كشوف حسابات الشركاء'}
             {activeTab === 'categories' && 'إدارة التصنيفات'}
@@ -683,11 +695,15 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
 
         {/* Payment Approval Tab Content */}
         {activeTab === 'payment-approval' && (
-          <PaymentApproval />
+          <PaymentApproval filterType="booking" />
         )}
 
         {activeTab === 'featured-approval' && (
           <PaymentApproval filterType="featured_promotion" />
+        )}
+
+        {activeTab === 'subscription-approval' && (
+          <PaymentApproval filterType={['subscription_renewal', 'subscription']} />
         )}
 
         {activeTab === 'password-resets' && (

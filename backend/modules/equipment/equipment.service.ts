@@ -1,6 +1,6 @@
 import { query } from '../../database/connection';
 import { Equipment, CreateEquipmentDTO, UpdateEquipmentDTO, EquipmentSearchFilters } from './equipment.types';
-import { assertOwnerSubscriptionActive } from '../subscriptions/subscription.policy';
+import { assertOwnerSubscriptionActive, syncExpiredSubscriptions } from '../subscriptions/subscription.policy';
 
 function formatLoc(governorate?: string | null, area?: string | null, fallback = ''): string {
   const g = String(governorate || '').trim();
@@ -44,6 +44,18 @@ function rowToEquipment(row: Record<string, unknown>): Equipment {
 export class EquipmentService {
   async create(ownerId: string, data: CreateEquipmentDTO): Promise<Equipment> {
     await assertOwnerSubscriptionActive(ownerId);
+    const { saveProofImage } = await import('../../services/upload.service');
+    const imgsRaw = data.images && data.images.length > 0 ? data.images : [];
+    const imgs: string[] = [];
+    for (const img of imgsRaw.slice(0, 5)) {
+      const s = String(img || '');
+      if (!s) continue;
+      if (s.startsWith('data:')) {
+        imgs.push(await saveProofImage(s, 'equipment'));
+      } else {
+        imgs.push(s);
+      }
+    }
     const governorate = String(data.governorate || '').trim() || String(data.location || '').split('-')[0].trim() || 'بغداد';
     const area = data.area != null && String(data.area).trim() !== '' ? String(data.area).trim() : null;
     const location = formatLoc(governorate, area, data.location || governorate);
@@ -52,7 +64,6 @@ export class EquipmentService {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'available', 0, 0)
       RETURNING *
     `;
-    const imgs = data.images && data.images.length > 0 ? data.images : [];
     const res = await query(sql, [
       ownerId,
       data.title,
@@ -105,8 +116,19 @@ export class EquipmentService {
       values.push(data.area);
     }
     if (data.images !== undefined) {
+      const { saveProofImage } = await import('../../services/upload.service');
+      const imgs: string[] = [];
+      for (const img of (data.images || []).slice(0, 5)) {
+        const s = String(img || '');
+        if (!s) continue;
+        if (s.startsWith('data:')) {
+          imgs.push(await saveProofImage(s, 'equipment'));
+        } else {
+          imgs.push(s);
+        }
+      }
       fields.push(`images = $${i++}`);
-      values.push(data.images);
+      values.push(imgs);
     }
     if (data.status !== undefined) {
       fields.push(`status = $${i++}::equipment_status`);
@@ -153,7 +175,6 @@ export class EquipmentService {
   }
 
   async getAll(): Promise<Equipment[]> {
-    const { syncExpiredSubscriptions } = await import('../subscriptions/subscription.policy');
     await syncExpiredSubscriptions();
     const res = await query(
       `

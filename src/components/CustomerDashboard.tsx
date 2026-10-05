@@ -24,6 +24,7 @@ type Row = {
   reviewed?: boolean;
   paymentStatus?: string | null;
   paymentNotes?: string | null;
+  paymentMethod?: string | null;
 };
 
 type Fav = {
@@ -53,16 +54,19 @@ function deliveryLabel(s?: string | null) {
   }
 }
 
-function paymentLabel(s?: string | null) {
+function paymentLabel(s?: string | null, method?: string | null) {
+  const m = String(method || '').toLowerCase();
+  const isCod = m === 'cash' || m === 'cash_on_delivery';
   switch (s) {
     case 'approved':
     case 'paid':
     case 'completed':
-      return 'الدفع مقبول';
+      return isCod ? 'تم استلام النقد / مقبول' : 'الدفع مقبول';
     case 'under_review':
     case 'proof_uploaded':
-    case 'pending':
       return 'الدفع قيد المراجعة';
+    case 'pending':
+      return isCod ? 'دفع عند الاستلام — بانتظار التسليم' : 'الدفع قيد المراجعة';
     case 'rejected':
     case 'failed':
       return 'الدفع مرفوض';
@@ -182,6 +186,7 @@ export default function CustomerDashboard({
           reviewed: Boolean(b.has_review),
           paymentStatus: b.payment_status ? String(b.payment_status) : null,
           paymentNotes: b.payment_notes ? String(b.payment_notes) : null,
+          paymentMethod: b.payment_method ? String(b.payment_method) : null,
         }))
       );
     } catch {
@@ -583,12 +588,12 @@ export default function CustomerDashboard({
                     <MapPin size={12} /> {booking.location}
                   </p>
                   <p className="font-bold text-slate-800">{booking.total.toLocaleString()} د.ع</p>
-                  {paymentLabel(booking.paymentStatus) && (
+                  {paymentLabel(booking.paymentStatus, booking.paymentMethod) && (
                     <p
                       data-testid="customer-payment-status"
                       className={`inline-flex px-2 py-1 rounded-full text-[10px] font-bold ${paymentBadgeClass(booking.paymentStatus)}`}
                     >
-                      {paymentLabel(booking.paymentStatus)}
+                      {paymentLabel(booking.paymentStatus, booking.paymentMethod)}
                     </p>
                   )}
                   {booking.paymentNotes &&

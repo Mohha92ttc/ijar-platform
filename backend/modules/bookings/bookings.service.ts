@@ -198,6 +198,20 @@ export class BookingService {
       }
     }
 
+    if (status === 'completed' && actor.role === 'owner') {
+      const full = await query(
+        `SELECT delivery_requested, delivery_status FROM bookings WHERE id = $1 LIMIT 1`,
+        [id]
+      );
+      const row = full.rows[0];
+      if (row?.delivery_requested) {
+        const ds = String(row.delivery_status || '');
+        if (!['delivered', 'failed'].includes(ds)) {
+          throw new Error('لا يمكن إكمال الحجز قبل تسليم التوصيل أو تسجيل تعذّر التسليم');
+        }
+      }
+    }
+
     const res = await query(
       `
       UPDATE bookings SET status = $1::booking_status, updated_at = CURRENT_TIMESTAMP
@@ -263,6 +277,7 @@ export class BookingService {
              p.status::text AS payment_status,
              p.notes AS payment_notes,
              p.payment_proof AS payment_proof,
+             p.method::text AS payment_method,
              EXISTS (
                SELECT 1 FROM reviews r
                WHERE r.booking_id = b.id OR (r.equipment_id = b.equipment_id AND r.reviewer_id = b.customer_id)
@@ -272,7 +287,7 @@ export class BookingService {
       JOIN users u ON e.owner_id = u.id
       LEFT JOIN couriers c ON c.id = b.assigned_courier_id
       LEFT JOIN LATERAL (
-        SELECT status, notes, payment_proof
+        SELECT status, notes, payment_proof, method
         FROM payments
         WHERE booking_id = b.id
         ORDER BY created_at DESC

@@ -310,7 +310,10 @@ export class PaymentService {
       return;
     }
     if (status === 'pending' && approve) {
-      return;
+      const method = String(raw.method ?? payment.payment_method ?? '').toLowerCase();
+      const isCod = method === 'cash' || method === 'cash_on_delivery';
+      // COD: pending → approved when partner confirms. Transfer without proof stays blocked.
+      if (!isCod) return;
     }
     await this.adminReview(String(raw.id || payment.id), approve, notes || (approve ? 'موافقة الشريك' : 'رفض الشريك'));
   }

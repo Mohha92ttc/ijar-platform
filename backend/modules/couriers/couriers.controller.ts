@@ -187,18 +187,69 @@ export class CouriersController {
       if (!resu.rows[0]) return res.status(404).json({ error: 'الطلب غير معيّن لك' });
 
       const customerId = String(resu.rows[0].customer_id || '');
-      if (customerId && (status === 'out_for_delivery' || status === 'delivered')) {
+      if (customerId && (status === 'out_for_delivery' || status === 'delivered' || status === 'failed')) {
         try {
+          const title =
+            status === 'delivered'
+              ? 'تم تسليم طلبك'
+              : status === 'failed'
+                ? 'تعذّر تسليم الطلب'
+                : 'المندوب في الطريق';
+          const message =
+            status === 'delivered'
+              ? 'تم تسليم معدتك بنجاح.'
+              : status === 'failed'
+                ? 'تعذّر على المندوب إتمام التسليم. سيتواصل الشريك معك لإعادة المحاولة.'
+                : 'مندوب التوصيل في الطريق إليك الآن.';
           await this.notifications.create({
             user_id: customerId,
             type: 'system',
-            title: status === 'delivered' ? 'تم تسليم طلبك' : 'المندوب في الطريق',
-            message:
-              status === 'delivered'
-                ? 'تم تسليم معدتك بنجاح.'
-                : 'مندوب التوصيل في الطريق إليك الآن.',
+            title,
+            message,
             related_id: String(resu.rows[0].id),
           });
+          if (status === 'failed') {
+            const ownerRes = await query(
+              `
+              SELECT e.owner_id
+              FROM bookings b
+              JOIN equipment e ON e.id = b.equipment_id
+              WHERE b.id = $1
+              LIMIT 1
+              `,
+              [req.params.bookingId]
+            );
+            const ownerId = ownerRes.rows[0]?.owner_id;
+            if (ownerId) {
+              await this.notifications.create({
+                user_id: String(ownerId),
+                type: 'system',
+                title: 'فشل توصيل حجز',
+                message: 'سجّل المندوب تعذّر التسليم. راجع الطلب وأعد التعيين إن لزم.',
+                related_id: String(resu.rows[0].id),
+              });
+            }
+          }
+        } catch {
+          // non-blocking
+        }
+      }
+
+      // COD: mark payment paid when delivered
+      if (status === 'delivered') {
+        try {
+          await query(
+            `
+            UPDATE payments
+            SET status = 'approved'::payment_status,
+                notes = COALESCE(notes, '') || ' | تم الاستلام عند التسليم',
+                updated_at = NOW()
+            WHERE booking_id = $1
+              AND method = 'cash'::payment_method
+              AND status IN ('pending'::payment_status, 'under_review'::payment_status)
+            `,
+            [req.params.bookingId]
+          );
         } catch {
           // non-blocking
         }
