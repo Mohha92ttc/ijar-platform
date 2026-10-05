@@ -52,21 +52,20 @@ export default function MapPicker({
       maxZoom: 19,
     }).addTo(map);
 
-    const marker = L.marker([start.lat, start.lng], { draggable: true }).addTo(map);
+    // مركز الخريطة على بغداد للعرض فقط — لا يُعتمد كاختيار إلا بعد ضغط/سحب المستخدم
+    const marker = L.marker([start.lat, start.lng], { draggable: true, opacity: value ? 1 : 0.55 }).addTo(map);
     markerRef.current = marker;
     mapRef.current = map;
 
-    if (!value) {
-      onChangeRef.current(start);
-    }
-
     marker.on('dragend', () => {
       const p = marker.getLatLng();
+      marker.setOpacity(1);
       onChangeRef.current({ lat: p.lat, lng: p.lng });
     });
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       marker.setLatLng(e.latlng);
+      marker.setOpacity(1);
       onChangeRef.current({ lat: e.latlng.lat, lng: e.latlng.lng });
     });
 
@@ -111,7 +110,7 @@ export default function MapPicker({
   return (
     <div className="space-y-2" data-testid="map-picker">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-slate-500">اضغط على الخريطة أو اسحب الدبوس لتحديد موقع التوصيل</p>
+        <p className="text-[11px] text-slate-500">اضغط على الخريطة أو اسحب الدبوس لتحديد الموقع</p>
         <button
           type="button"
           data-testid="map-use-my-location"
@@ -126,9 +125,13 @@ export default function MapPicker({
         style={{ height, width: '100%', borderRadius: 12, overflow: 'hidden', zIndex: 0 }}
         className="border border-slate-200"
       />
-      {value && (
+      {value ? (
         <p className="text-[10px] text-slate-400 font-mono" data-testid="map-coords">
           {value.lat.toFixed(5)}, {value.lng.toFixed(5)}
+        </p>
+      ) : (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1.5" data-testid="map-pick-hint">
+          لم يُحدد موقع بعد — اضغط على الخريطة أو «موقعي الحالي»
         </p>
       )}
     </div>

@@ -42,15 +42,20 @@ export class BookingController {
   updateStatus = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
+      const { status, reason, cancel_reason } = req.body;
       const actor = (req as any).user as { userId?: string; role?: string } | undefined;
       if (!actor?.userId || !actor.role) {
         return res.status(401).json({ message: 'Unauthorized' });
       }
-      const booking = await this.bookingService.updateStatus(id, status, {
-        userId: actor.userId,
-        role: actor.role,
-      });
+      const booking = await this.bookingService.updateStatus(
+        id,
+        status,
+        {
+          userId: actor.userId,
+          role: actor.role,
+        },
+        { reason: reason || cancel_reason }
+      );
       res.status(200).json(booking);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -107,6 +112,26 @@ export class BookingController {
       }
       const available = await this.bookingService.checkAvailability(equipmentId, startDate, endDate);
       res.status(200).json({ available });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  };
+
+  getBusyRanges = async (req: Request, res: Response) => {
+    try {
+      const equipmentId = String(req.query.equipment_id || '');
+      if (!equipmentId) {
+        return res.status(400).json({ message: 'equipment_id مطلوب' });
+      }
+      const fromRaw = req.query.from ? String(req.query.from) : '';
+      const toRaw = req.query.to ? String(req.query.to) : '';
+      const from = fromRaw ? new Date(`${fromRaw}T12:00:00`) : undefined;
+      const to = toRaw ? new Date(`${toRaw}T12:00:00`) : undefined;
+      if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) {
+        return res.status(400).json({ message: 'تواريخ غير صالحة' });
+      }
+      const ranges = await this.bookingService.getBusyRanges(equipmentId, from, to);
+      res.status(200).json({ ranges });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }

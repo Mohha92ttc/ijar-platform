@@ -44,11 +44,17 @@ type EquipmentRow = {
   rating: number;
   reviews: number;
   image: string;
+  images: string[];
+  description: string;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
   owner_id: string;
   owner_name?: string;
   /** يُعاد من الخادم عند تفعيل إعلان مميز مدفوع للشريك */
   owner_featured?: boolean;
 };
+
+type CategoryChip = { name: string; image?: string | null };
 
 type PublicPartner = {
   id: string;
@@ -66,7 +72,7 @@ const PLACEHOLDER_IMG =
 
 
 function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {
-  const images = e.images as string[] | undefined;
+  const images = (Array.isArray(e.images) ? (e.images as string[]) : []).filter(Boolean);
   const hint = parseLocationHint(String(e.location || ''));
   const governorate = String(e.governorate || hint.governorate || '');
   const area = String(e.area || hint.area || '');
@@ -80,7 +86,11 @@ function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {
     area,
     rating: Number(e.average_rating ?? 0),
     reviews: Number(e.review_count ?? 0),
-    image: images?.[0] || PLACEHOLDER_IMG,
+    image: images[0] || PLACEHOLDER_IMG,
+    images,
+    description: String(e.description || ''),
+    pickup_lat: e.pickup_lat != null && Number.isFinite(Number(e.pickup_lat)) ? Number(e.pickup_lat) : null,
+    pickup_lng: e.pickup_lng != null && Number.isFinite(Number(e.pickup_lng)) ? Number(e.pickup_lng) : null,
     owner_featured: Boolean(e.owner_is_featured),
     owner_id: String(e.owner_id),
     owner_name: e.owner_name ? String(e.owner_name) : undefined,
@@ -93,7 +103,7 @@ export default function App() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [selectedEquipment, setSelectedEquipment] = useState<EquipmentRow | null>(null);
   const [selectedDeliveryFee, setSelectedDeliveryFee] = useState(0);
-  const [categories, setCategories] = useState<string[]>(['الكل']);
+  const [categories, setCategories] = useState<CategoryChip[]>([{ name: 'الكل' }]);
   const [activeCategory, setActiveCategory] = useState('الكل');
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -255,7 +265,13 @@ export default function App() {
   const refreshCategories = useCallback(async () => {
     try {
       const cats = await apiJson<any[]>('/api/equipment/categories');
-      setCategories(['الكل', ...cats.map(c => c.name)]);
+      setCategories([
+        { name: 'الكل' },
+        ...cats.map((c) => ({
+          name: String(c.name),
+          image: c.image ? String(c.image) : null,
+        })),
+      ]);
     } catch {
       // Fallback
     }
@@ -275,6 +291,24 @@ export default function App() {
     refreshCategories();
     refreshPartners();
   }, [refreshEquipment, refreshCategories, refreshPartners]);
+
+  // Deep-links: ?partner= / ?equipment=
+  useEffect(() => {
+    if (loadingList) return;
+    const params = new URLSearchParams(window.location.search);
+    const partnerId = params.get('partner');
+    const equipmentId = params.get('equipment');
+    if (partnerId && partnerId !== selectedOwnerId) {
+      setSelectedOwnerId(partnerId);
+      setActiveCategory('الكل');
+    }
+    if (equipmentId && (!selectedEquipment || selectedEquipment.id !== equipmentId)) {
+      const found = list.find((e) => e.id === equipmentId);
+      if (found) setSelectedEquipment(found);
+    }
+    // only on list load / first paint
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingList, list]);
 
   const ownerOptions = useMemo(() => {
     const m = new Map<string, string>();
@@ -331,7 +365,28 @@ export default function App() {
     setSelectedOwnerId(partnerId);
     setSearchQ('');
     setActiveCategory('الكل');
+    const params = new URLSearchParams(window.location.search);
+    params.set('partner', partnerId);
+    params.delete('equipment');
+    const next = `${window.location.pathname}?${params}${window.location.hash}`;
+    window.history.replaceState({}, '', next);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const openEquipment = (item: EquipmentRow) => {
+    setSelectedEquipment(item);
+    const params = new URLSearchParams(window.location.search);
+    params.set('equipment', item.id);
+    const next = `${window.location.pathname}?${params}${window.location.hash}`;
+    window.history.replaceState({}, '', next);
+  };
+
+  const closeEquipment = () => {
+    setSelectedEquipment(null);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('equipment');
+    const q = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${q ? `?${q}` : ''}${window.location.hash}`);
   };
 
   const areaSuggestions = useMemo(() => {
@@ -402,7 +457,7 @@ export default function App() {
   }, []);
 
   const openBooking = async (item: EquipmentRow) => {
-    setSelectedEquipment(item);
+    openEquipment(item);
     setSelectedDeliveryFee(0);
     if (item.owner_id) {
       try {
@@ -461,7 +516,7 @@ export default function App() {
       }
       return [...prev.filter((x) => !(x.id === line.id && x.startDate === line.startDate)), line];
     });
-    setSelectedEquipment(null);
+    closeEquipment();
   };
 
   const removeFromCart = (id: string, startDate?: string) => {
@@ -853,14 +908,24 @@ export default function App() {
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
             {categories.map((cat) => (
               <button
-                key={cat}
+                key={cat.name}
                 type="button"
-                onClick={() => setActiveCategory(cat)}
-                className={`shrink-0 min-h-10 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                  activeCategory === cat ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-slate-200'
+                onClick={() => setActiveCategory(cat.name)}
+                className={`shrink-0 min-h-10 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
+                  activeCategory === cat.name
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                    : 'bg-white text-slate-600 border border-slate-200'
                 }`}
               >
-                {cat}
+                {cat.image ? (
+                  <img
+                    src={cat.image}
+                    alt=""
+                    className="w-7 h-7 rounded-full object-cover border border-white/40"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : null}
+                {cat.name}
               </button>
             ))}
           </div>
@@ -958,6 +1023,15 @@ export default function App() {
                 setPriceMax('');
                 setFilterGovernorate('');
                 setFilterArea('');
+                const params = new URLSearchParams(window.location.search);
+                params.delete('partner');
+                params.delete('equipment');
+                const q = params.toString();
+                window.history.replaceState(
+                  {},
+                  '',
+                  `${window.location.pathname}${q ? `?${q}` : ''}${window.location.hash}`
+                );
               }}
               className="text-sm text-blue-600 font-medium hover:underline"
             >
@@ -973,7 +1047,7 @@ export default function App() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredEquipment.map((item) => (
               <motion.div key={item.id} whileHover={{ y: -4 }} className="bg-white rounded-2xl overflow-hidden border border-slate-200 card-shadow card-shadow-hover cursor-pointer group">
-                <div className="aspect-[4/3] relative overflow-hidden" onClick={() => setSelectedEquipment(item)}>
+                <div className="aspect-[4/3] relative overflow-hidden" onClick={() => openBooking(item)}>
                   <img src={item.image} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" referrerPolicy="no-referrer" />
                   <div className="absolute top-3 left-3 flex flex-wrap gap-1">
                     <span className="bg-white/90 backdrop-blur px-2 py-1 rounded-lg text-[10px] font-bold text-slate-700">{item.category}</span>
@@ -1045,7 +1119,7 @@ export default function App() {
           <BookingModal
             equipment={selectedEquipment}
             deliveryFee={selectedDeliveryFee}
-            onClose={() => setSelectedEquipment(null)}
+            onClose={closeEquipment}
             onConfirm={(data) => addToCart(selectedEquipment, data)}
           />
         )}

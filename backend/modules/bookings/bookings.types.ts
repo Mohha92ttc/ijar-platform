@@ -17,6 +17,7 @@ export interface Booking {
   delivery_status?: string | null;
   payment_preference?: string;
   customer_phone?: string;
+  cancel_reason?: string | null;
   created_at: Date;
   updated_at: Date;
 }

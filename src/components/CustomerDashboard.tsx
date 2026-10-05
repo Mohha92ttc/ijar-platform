@@ -21,6 +21,9 @@ type Row = {
   returnStatus?: string | null;
   deliveryLat?: number | null;
   deliveryLng?: number | null;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  cancelReason?: string | null;
   courierName?: string | null;
   courierPhone?: string | null;
   reviewed?: boolean;
@@ -190,6 +193,9 @@ export default function CustomerDashboard({
           returnStatus: b.return_status ? String(b.return_status) : null,
           deliveryLat: b.delivery_lat != null ? Number(b.delivery_lat) : null,
           deliveryLng: b.delivery_lng != null ? Number(b.delivery_lng) : null,
+          pickupLat: b.equipment_pickup_lat != null ? Number(b.equipment_pickup_lat) : null,
+          pickupLng: b.equipment_pickup_lng != null ? Number(b.equipment_pickup_lng) : null,
+          cancelReason: b.cancel_reason ? String(b.cancel_reason) : null,
           courierName: b.courier_name ? String(b.courier_name) : null,
           courierPhone: b.courier_phone ? String(b.courier_phone) : null,
           reviewed: Boolean(b.has_review),
@@ -639,6 +645,26 @@ export default function CustomerDashboard({
                       </label>
                     )}
                 </div>
+                {booking.status === 'cancelled' && booking.cancelReason && (
+                  <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-2 py-1" data-testid="customer-cancel-reason">
+                    سبب الإلغاء: {booking.cancelReason}
+                  </p>
+                )}
+                {!booking.deliveryRequested &&
+                  booking.pickupLat != null &&
+                  booking.pickupLng != null &&
+                  Number.isFinite(booking.pickupLat) &&
+                  Number.isFinite(booking.pickupLng) && (
+                    <a
+                      href={googleMapsDirectionsUrl(booking.pickupLat, booking.pickupLng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="customer-open-pickup-map"
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-50 text-slate-700 font-bold border border-slate-200 text-xs"
+                    >
+                      <Navigation size={12} /> موقع الاستلام على الخريطة
+                    </a>
+                  )}
                 {booking.deliveryRequested && (
                   <div className="text-xs space-y-2" data-testid="customer-delivery-status">
                     <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">

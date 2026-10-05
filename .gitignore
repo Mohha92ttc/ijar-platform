@@ -12,3 +12,5 @@ coverage/
 /e2e/reports/audit-issues.jsonl
 /e2e/reports/AUDIT-LAST-RUN.md
 .neon
+
+audit-*.png

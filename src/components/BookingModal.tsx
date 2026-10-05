@@ -68,6 +68,14 @@ export default function BookingModal({
   >([]);
   const [availChecking, setAvailChecking] = useState(false);
   const [availError, setAvailError] = useState<string | null>(null);
+  const [busyRanges, setBusyRanges] = useState<{ start: string; end: string }[]>([]);
+  const [galleryIdx, setGalleryIdx] = useState(0);
+
+  const gallery = useMemo(() => {
+    const imgs = Array.isArray(equipment?.images) ? equipment.images.filter(Boolean) : [];
+    if (imgs.length) return imgs as string[];
+    return equipment?.image ? [String(equipment.image)] : [];
+  }, [equipment]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,6 +102,29 @@ export default function BookingModal({
       cancelled = true;
     };
   }, [equipment?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!equipment?.id) return;
+      try {
+        const from = todayIso();
+        const to = addDaysIso(from, 180);
+        const res = await apiJson<{ ranges: { start: string; end: string }[] }>(
+          `/api/bookings/busy-ranges?equipment_id=${encodeURIComponent(equipment.id)}&from=${from}&to=${to}`
+        );
+        if (!cancelled) setBusyRanges(Array.isArray(res.ranges) ? res.ranges : []);
+      } catch {
+        if (!cancelled) setBusyRanges([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [equipment?.id]);
+
+  const dateOverlapsBusy = (start: string, end: string) =>
+    busyRanges.some((r) => start < r.end && end > r.start);
 
   const effectiveStart = startToday ? todayIso() : startDate;
   const endDate = useMemo(() => {
@@ -149,8 +180,31 @@ export default function BookingModal({
           {step === 1 ? (
             <div className="space-y-6">
               <div className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <img src={equipment.image} className="w-20 h-20 rounded-xl object-cover" alt="" />
-                <div>
+                <div className="shrink-0 w-24 space-y-1">
+                  <img
+                    src={gallery[galleryIdx] || equipment.image}
+                    className="w-24 h-24 rounded-xl object-cover"
+                    alt=""
+                    data-testid="booking-main-image"
+                  />
+                  {gallery.length > 1 && (
+                    <div className="flex gap-1 overflow-x-auto" data-testid="booking-gallery">
+                      {gallery.map((src: string, i: number) => (
+                        <button
+                          key={`${src}-${i}`}
+                          type="button"
+                          onClick={() => setGalleryIdx(i)}
+                          className={`w-8 h-8 rounded-md overflow-hidden border ${
+                            galleryIdx === i ? 'border-blue-500' : 'border-slate-200'
+                          }`}
+                        >
+                          <img src={src} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
                   <h4 className="font-bold text-slate-800">{equipment.title}</h4>
                   <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
                     <MapPin size={12} /> {equipment.location}
@@ -162,8 +216,43 @@ export default function BookingModal({
                       {Number(equipment.rating || 0).toFixed(1)} ({Number(equipment.reviews || 0)} تقييم)
                     </p>
                   )}
+                  <button
+                    type="button"
+                    data-testid="booking-share-link"
+                    className="mt-2 text-[11px] font-bold text-blue-600 hover:underline"
+                    onClick={async () => {
+                      const url = `${window.location.origin}${window.location.pathname}?equipment=${encodeURIComponent(equipment.id)}`;
+                      try {
+                        await navigator.clipboard.writeText(url);
+                        alert('تم نسخ رابط المعدة');
+                      } catch {
+                        prompt('انسخ الرابط:', url);
+                      }
+                    }}
+                  >
+                    نسخ رابط المشاركة
+                  </button>
                 </div>
               </div>
+
+              {equipment.description && String(equipment.description).trim() && String(equipment.description).trim() !== '—' && (
+                <p className="text-sm text-slate-600 leading-relaxed bg-white border border-slate-100 rounded-xl p-3" data-testid="booking-description">
+                  {equipment.description}
+                </p>
+              )}
+
+              {busyRanges.length > 0 && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-1" data-testid="booking-busy-ranges">
+                  <p className="text-xs font-bold text-amber-900">تواريخ محجوزة (غير متاحة)</p>
+                  <ul className="text-[11px] text-amber-800 space-y-0.5 max-h-24 overflow-y-auto">
+                    {busyRanges.slice(0, 12).map((r) => (
+                      <li key={`${r.start}-${r.end}`}>
+                        من {formatArDate(r.start)} إلى {formatArDate(r.end)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {reviews.length > 0 && (
                 <div className="space-y-2" data-testid="booking-reviews-list">
@@ -284,6 +373,10 @@ export default function BookingModal({
                 disabled={days <= 0 || !effectiveStart || !endDate || availChecking}
                 onClick={async () => {
                   setAvailError(null);
+                  if (dateOverlapsBusy(effectiveStart, endDate)) {
+                    setAvailError('المعدة محجوزة في هذه التواريخ. راجع القائمة أعلاه وغيّر الموعد.');
+                    return;
+                  }
                   setAvailChecking(true);
                   try {
                     const q = new URLSearchParams({

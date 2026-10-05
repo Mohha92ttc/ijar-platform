@@ -7,7 +7,7 @@ import NotificationsPanel from './NotificationsPanel';
 import { apiJson, ApiError } from '../lib/api';
 import { paymentMethodLabel, type CartPaymentMethod } from '../lib/cartStorage';
 import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from '../lib/iraqLocations';
-import { googleMapsDirectionsUrl } from './MapPicker';
+import MapPicker, { googleMapsDirectionsUrl, type MapPin } from './MapPicker';
 import { iraqWaDigits } from '../lib/phone';
 
 type Eq = {
@@ -18,9 +18,12 @@ type Eq = {
   price: number;
   description: string;
   image: string;
+  images: string[];
   location?: string;
   governorate?: string;
   area?: string;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
 };
 
 type Bk = {
@@ -90,7 +93,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     governorate: 'بغداد',
     area: '',
     imageFile: null as File | null,
-    existingImage: '' as string,
+    extraImageFiles: [] as File[],
+    existingImages: [] as string[],
+    pickupPin: null as MapPin | null,
   });
   const [categoryOptions, setCategoryOptions] = useState<string[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -174,6 +179,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       const mapped: Eq[] = equip.map((e) => {
         const loc = String(e.location || '');
         const hint = parseLocationHint(loc);
+        const imgs = Array.isArray(e.images) ? (e.images as string[]).filter(Boolean) : [];
         return {
           id: String(e.id),
           title: String(e.title),
@@ -181,10 +187,13 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           status: String(e.status),
           price: Number(e.price_per_day),
           description: String(e.description || ''),
-          image: Array.isArray(e.images) && (e.images as string[])[0] ? (e.images as string[])[0] : '',
+          image: imgs[0] || '',
+          images: imgs,
           location: loc,
           governorate: String(e.governorate || hint.governorate || 'بغداد'),
           area: String(e.area || hint.area || ''),
+          pickup_lat: e.pickup_lat != null && Number.isFinite(Number(e.pickup_lat)) ? Number(e.pickup_lat) : null,
+          pickup_lng: e.pickup_lng != null && Number.isFinite(Number(e.pickup_lng)) ? Number(e.pickup_lng) : null,
         };
       });
       setMyEquipment(mapped);
@@ -566,7 +575,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     }
   };
 
-  const updateBookingStatus = async (id: string, newStatus: string) => {
+  const updateBookingStatus = async (id: string, newStatus: string, reason?: string) => {
     if (!guardSub('تحديث الحجوزات')) return;
     const booking = bookings.find((b) => b.id === id);
     if (newStatus === 'completed' && booking?.deliveryRequested) {
@@ -591,16 +600,35 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       const ok = confirm('هل راجعت صورة إثبات التحويل وتأكدت من وصول المبلغ؟');
       if (!ok) return;
     }
+    let cancelReason = reason;
+    if (newStatus === 'cancelled' && !cancelReason) {
+      const typed = window.prompt('سبب رفض/إلغاء الحجز (يظهر للزبون):', 'المعدة غير متاحة');
+      if (typed === null) return;
+      cancelReason = typed.trim() || 'رفض الشريك للحجز';
+    }
     try {
       await apiJson(`/api/bookings/${id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify({ status: newStatus, reason: cancelReason }),
       });
       setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b)));
     } catch (e) {
       alert(e instanceof ApiError ? e.message : 'تعذر تحديث حالة الحجز');
     }
   };
+
+  const emptyEquipmentForm = () => ({
+    title: '',
+    category: '',
+    price: '',
+    description: '',
+    governorate: 'بغداد',
+    area: '',
+    imageFile: null as File | null,
+    extraImageFiles: [] as File[],
+    existingImages: [] as string[],
+    pickupPin: null as MapPin | null,
+  });
 
   const addEquipment = async () => {
     if (!guardSub('إضافة/تعديل المعدات')) return;
@@ -622,23 +650,25 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       return;
     }
 
-    if (!editingEquipmentId && !newEquipment.imageFile) {
+    const hasAnyImage =
+      Boolean(newEquipment.imageFile) ||
+      newEquipment.extraImageFiles.length > 0 ||
+      newEquipment.existingImages.length > 0;
+    if (!editingEquipmentId && !hasAnyImage) {
       alert('أرفق صورة حقيقية للمعدة قبل الحفظ.');
       return;
     }
 
-    let imageUrl =
-      editingEquipmentId && newEquipment.existingImage
-        ? newEquipment.existingImage
-        : '';
+    const images: string[] = [...newEquipment.existingImages];
     if (newEquipment.imageFile) {
-      imageUrl = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.readAsDataURL(newEquipment.imageFile!);
-      });
+      images.unshift(await fileToDataUrl(newEquipment.imageFile));
     }
-    if (!imageUrl) {
+    for (const f of newEquipment.extraImageFiles) {
+      if (images.length >= 5) break;
+      images.push(await fileToDataUrl(f));
+    }
+    const uniqueImages = Array.from(new Set(images.filter(Boolean))).slice(0, 5);
+    if (!uniqueImages.length) {
       alert('الصورة مطلوبة.');
       return;
     }
@@ -646,25 +676,26 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     const governorate = newEquipment.governorate.trim();
     const area = newEquipment.area.trim() || null;
     const location = formatEquipmentLocation(governorate, area);
+    const pickup_lat = newEquipment.pickupPin?.lat ?? null;
+    const pickup_lng = newEquipment.pickupPin?.lng ?? null;
 
     try {
       if (editingEquipmentId) {
-        const body: Record<string, unknown> = {
-          title: newEquipment.title,
-          description: newEquipment.description || '—',
-          category: newEquipment.category,
-          price_per_day: price,
-          location,
-          governorate,
-          area,
-          ownerId,
-        };
-        if (newEquipment.imageFile || newEquipment.existingImage) {
-          body.images = [imageUrl];
-        }
         await apiJson(`/api/equipment/${editingEquipmentId}`, {
           method: 'PUT',
-          body: JSON.stringify(body),
+          body: JSON.stringify({
+            title: newEquipment.title,
+            description: newEquipment.description || '—',
+            category: newEquipment.category,
+            price_per_day: price,
+            location,
+            governorate,
+            area,
+            images: uniqueImages,
+            pickup_lat,
+            pickup_lng,
+            ownerId,
+          }),
         });
       } else {
         await apiJson('/api/equipment', {
@@ -677,21 +708,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             location,
             governorate,
             area,
-            images: [imageUrl],
+            images: uniqueImages,
+            pickup_lat,
+            pickup_lng,
             ownerId,
           }),
         });
       }
-      setNewEquipment({
-        title: '',
-        category: '',
-        price: '',
-        description: '',
-        governorate: 'بغداد',
-        area: '',
-        imageFile: null,
-        existingImage: '',
-      });
+      setNewEquipment(emptyEquipmentForm());
       setShowAddForm(false);
       setEditingEquipmentId(null);
       await loadData();
@@ -710,7 +734,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       governorate: equipment.governorate || 'بغداد',
       area: equipment.area || '',
       imageFile: null,
-      existingImage: equipment.image || '',
+      extraImageFiles: [],
+      existingImages: equipment.images?.length ? equipment.images : equipment.image ? [equipment.image] : [],
+      pickupPin:
+        equipment.pickup_lat != null && equipment.pickup_lng != null
+          ? { lat: equipment.pickup_lat, lng: equipment.pickup_lng }
+          : null,
     });
     setShowAddForm(true);
     setActiveTab('equipment');
@@ -1632,18 +1661,61 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   </div>
                 </div>
                 <div className="space-y-2 mb-4">
-                  <label className="text-sm font-medium text-slate-700">صورة المعدة</label>
+                  <label className="text-sm font-medium text-slate-700">صور المعدة (حتى 5)</label>
                   <ImageUpload
                     key={editingEquipmentId || 'new'}
-                    currentImage={newEquipment.existingImage || undefined}
+                    currentImage={newEquipment.existingImages[0] || undefined}
                     onImageSelect={(file) =>
                       setNewEquipment({
                         ...newEquipment,
                         imageFile: file,
-                        existingImage: file ? newEquipment.existingImage : '',
+                        existingImages: file
+                          ? newEquipment.existingImages
+                          : newEquipment.existingImages.slice(1),
                       })
                     }
                     className="h-48"
+                  />
+                  {newEquipment.existingImages.length > 1 && (
+                    <div className="flex flex-wrap gap-2">
+                      {newEquipment.existingImages.slice(1).map((src, i) => (
+                        <div key={`${src}-${i}`} className="relative w-16 h-16 rounded-lg overflow-hidden border">
+                          <img src={src} alt="" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            className="absolute top-0 left-0 bg-red-500 text-white text-[10px] px-1"
+                            onClick={() =>
+                              setNewEquipment({
+                                ...newEquipment,
+                                existingImages: newEquipment.existingImages.filter((_, idx) => idx !== i + 1),
+                              })
+                            }
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    data-testid="partner-equipment-extra-images"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []).slice(0, 4);
+                      setNewEquipment({ ...newEquipment, extraImageFiles: files });
+                    }}
+                    className="block w-full text-xs text-slate-500"
+                  />
+                  <p className="text-[11px] text-slate-400">يمكنك إضافة صور إضافية للمعدة</p>
+                </div>
+                <div className="space-y-2 mb-4" data-testid="partner-equipment-pickup-map">
+                  <label className="text-sm font-medium text-slate-700">موقع الاستلام (للزبون عند الاستلام الذاتي)</label>
+                  <MapPicker
+                    value={newEquipment.pickupPin}
+                    onChange={(pin) => setNewEquipment({ ...newEquipment, pickupPin: pin })}
+                    height={180}
                   />
                 </div>
                 <textarea
@@ -1668,16 +1740,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     onClick={() => {
                       setShowAddForm(false);
                       setEditingEquipmentId(null);
-                      setNewEquipment({
-                        title: '',
-                        category: '',
-                        price: '',
-                        description: '',
-                        governorate: 'بغداد',
-                        area: '',
-                        imageFile: null,
-                        existingImage: '',
-                      });
+                      setNewEquipment(emptyEquipmentForm());
                     }}
                     className="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-700"
                   >

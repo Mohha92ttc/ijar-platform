@@ -8,6 +8,7 @@ const bookingController = new BookingController();
 // Customer routes
 router.post('/', authenticateToken, requireRole(['customer']), bookingController.create);
 router.get('/availability', bookingController.checkAvailability);
+router.get('/busy-ranges', bookingController.getBusyRanges);
 router.get('/customer/:customerId', authenticateToken, requireRole(['customer', 'admin']), bookingController.getByCustomer);
 router.get('/equipment/:equipmentId', authenticateToken, requireRole(['customer', 'owner', 'admin']), bookingController.getByEquipment);
 router.get('/owner/:ownerId', authenticateToken, requireRole(['owner', 'admin']), bookingController.getByOwner);

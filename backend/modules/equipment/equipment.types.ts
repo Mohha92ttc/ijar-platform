@@ -10,6 +10,8 @@ export interface Equipment {
   location: string;
   governorate?: string | null;
   area?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
   images: string[];
   status: EquipmentStatus;
   average_rating: number;
@@ -38,6 +40,8 @@ export interface CreateEquipmentDTO {
   location: string;
   governorate?: string;
   area?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
   images?: string[];
 }
 
@@ -49,6 +53,8 @@ export interface UpdateEquipmentDTO {
   location?: string;
   governorate?: string;
   area?: string | null;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
   images?: string[];
   status?: EquipmentStatus;
 }

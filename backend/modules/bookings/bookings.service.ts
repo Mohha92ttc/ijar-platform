@@ -18,6 +18,7 @@ function rowToBooking(row: Record<string, unknown>): Booking {
     payment_preference: row.payment_preference != null ? String(row.payment_preference) : undefined,
     customer_phone: row.customer_phone != null ? String(row.customer_phone) : undefined,
     delivery_requested: Boolean(row.delivery_requested),
+    cancel_reason: row.cancel_reason != null ? String(row.cancel_reason) : null,
   };
 }
 
@@ -150,7 +151,42 @@ export class BookingService {
     return res.rows.length === 0;
   }
 
-  async updateStatus(id: string, status: BookingStatus, actor: { userId: string; role: string }): Promise<Booking> {
+  /** Occupied ranges for calendar UX (pending + confirmed) */
+  async getBusyRanges(
+    equipmentId: string,
+    from?: Date,
+    to?: Date
+  ): Promise<{ start: string; end: string; status: string }[]> {
+    const params: unknown[] = [equipmentId];
+    let sql = `
+      SELECT start_date::date AS start, end_date::date AS end, status::text AS status
+      FROM bookings
+      WHERE equipment_id = $1
+        AND status IN ('pending', 'confirmed')
+    `;
+    if (from) {
+      params.push(from);
+      sql += ` AND end_date >= $${params.length}`;
+    }
+    if (to) {
+      params.push(to);
+      sql += ` AND start_date <= $${params.length}`;
+    }
+    sql += ` ORDER BY start_date ASC LIMIT 200`;
+    const res = await query(sql, params);
+    return res.rows.map((r: any) => ({
+      start: String(r.start).slice(0, 10),
+      end: String(r.end).slice(0, 10),
+      status: String(r.status),
+    }));
+  }
+
+  async updateStatus(
+    id: string,
+    status: BookingStatus,
+    actor: { userId: string; role: string },
+    opts?: { reason?: string }
+  ): Promise<Booking> {
     const existing = await this.getById(id);
     const oldStatus = existing.status;
 
@@ -219,13 +255,25 @@ export class BookingService {
       }
     }
 
+    const cancelReason =
+      status === 'cancelled' && opts?.reason
+        ? String(opts.reason).trim().slice(0, 500)
+        : null;
+
     const res = await query(
       `
-      UPDATE bookings SET status = $1::booking_status, updated_at = CURRENT_TIMESTAMP
+      UPDATE bookings SET
+        status = $1::booking_status,
+        cancel_reason = CASE
+          WHEN $1::booking_status = 'cancelled' AND $3::text IS NOT NULL AND $3::text <> '' THEN $3::text
+          WHEN $1::booking_status = 'cancelled' THEN cancel_reason
+          ELSE cancel_reason
+        END,
+        updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
       RETURNING *
     `,
-      [status, id]
+      [status, id, cancelReason]
     );
     if (res.rows.length === 0) {
       throw new Error('Booking not found');
@@ -250,22 +298,30 @@ export class BookingService {
         // enum may not have rented in all envs — ignore
       }
     } else if (status === 'cancelled' && oldStatus !== 'cancelled') {
+      const reasonSuffix = booking.cancel_reason
+        ? ` السبب: ${booking.cancel_reason}`
+        : cancelReason
+          ? ` السبب: ${cancelReason}`
+          : '';
       await this.notificationService.create({
         user_id: booking.customer_id,
         type: 'booking_cancelled',
         title: 'تم إلغاء الحجز',
-        message: `أُلغي حجزك لـ «${equipment.title}».`,
+        message: `أُلغي حجزك لـ «${equipment.title}».${reasonSuffix}`,
         related_id: booking.id,
       });
       await this.notificationService.create({
         user_id: equipment.owner_id,
         type: 'booking_cancelled',
         title: 'تم إلغاء حجز',
-        message: `أُلغي الحجز على «${equipment.title}».`,
+        message: `أُلغي الحجز على «${equipment.title}».${reasonSuffix}`,
         related_id: booking.id,
       });
       try {
-        await this.paymentService.settleOnBookingCancel(booking.id, 'إلغاء الحجز');
+        await this.paymentService.settleOnBookingCancel(
+          booking.id,
+          cancelReason || booking.cancel_reason || 'إلغاء الحجز'
+        );
       } catch (e) {
         console.warn('[booking] cancel payment settle failed', e instanceof Error ? e.message : e);
       }
@@ -300,7 +356,9 @@ export class BookingService {
           booking.id,
           actor.userId,
           status === 'confirmed',
-          status === 'confirmed' ? 'موافقة الشريك على الحجز والدفع' : 'رفض الشريك للحجز'
+          status === 'confirmed'
+            ? 'موافقة الشريك على الحجز والدفع'
+            : cancelReason || booking.cancel_reason || 'رفض الشريك للحجز'
         );
       } catch (e) {
         console.warn('[booking] owner payment review failed', e instanceof Error ? e.message : e);
@@ -314,6 +372,7 @@ export class BookingService {
     const res = await query(
       `
       SELECT b.*, e.title as equipment_title, u.name as owner_name, u.phone as owner_phone, e.location as equipment_location,
+             e.pickup_lat AS equipment_pickup_lat, e.pickup_lng AS equipment_pickup_lng,
              c.name AS courier_name, c.phone AS courier_phone,
              p.status::text AS payment_status,
              p.notes AS payment_notes,

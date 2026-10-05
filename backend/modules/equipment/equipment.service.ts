@@ -25,6 +25,10 @@ function rowToEquipment(row: Record<string, unknown>): Equipment {
     location: locationRaw || formatLoc(governorate, area),
     governorate,
     area,
+    pickup_lat:
+      row.pickup_lat != null && Number.isFinite(Number(row.pickup_lat)) ? Number(row.pickup_lat) : null,
+    pickup_lng:
+      row.pickup_lng != null && Number.isFinite(Number(row.pickup_lng)) ? Number(row.pickup_lng) : null,
     images: Array.isArray(row.images) ? (row.images as string[]) : [],
     status: row.status as Equipment['status'],
     average_rating: Number(row.average_rating ?? 0),
@@ -59,9 +63,13 @@ export class EquipmentService {
     const governorate = String(data.governorate || '').trim() || String(data.location || '').split('-')[0].trim() || 'بغداد';
     const area = data.area != null && String(data.area).trim() !== '' ? String(data.area).trim() : null;
     const location = formatLoc(governorate, area, data.location || governorate);
+    const pickupLat =
+      data.pickup_lat != null && Number.isFinite(Number(data.pickup_lat)) ? Number(data.pickup_lat) : null;
+    const pickupLng =
+      data.pickup_lng != null && Number.isFinite(Number(data.pickup_lng)) ? Number(data.pickup_lng) : null;
     const sql = `
-      INSERT INTO equipment (owner_id, title, description, category, price_per_day, location, governorate, area, images, status, average_rating, review_count)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'available', 0, 0)
+      INSERT INTO equipment (owner_id, title, description, category, price_per_day, location, governorate, area, pickup_lat, pickup_lng, images, status, average_rating, review_count)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'available', 0, 0)
       RETURNING *
     `;
     const res = await query(sql, [
@@ -73,6 +81,8 @@ export class EquipmentService {
       location,
       governorate,
       area,
+      pickupLat,
+      pickupLng,
       imgs,
     ]);
     return rowToEquipment(res.rows[0]);
@@ -114,6 +124,18 @@ export class EquipmentService {
     if (data.area !== undefined) {
       fields.push(`area = $${i++}`);
       values.push(data.area);
+    }
+    if (data.pickup_lat !== undefined) {
+      fields.push(`pickup_lat = $${i++}`);
+      values.push(
+        data.pickup_lat != null && Number.isFinite(Number(data.pickup_lat)) ? Number(data.pickup_lat) : null
+      );
+    }
+    if (data.pickup_lng !== undefined) {
+      fields.push(`pickup_lng = $${i++}`);
+      values.push(
+        data.pickup_lng != null && Number.isFinite(Number(data.pickup_lng)) ? Number(data.pickup_lng) : null
+      );
     }
     if (data.images !== undefined) {
       const { saveProofImage } = await import('../../services/upload.service');

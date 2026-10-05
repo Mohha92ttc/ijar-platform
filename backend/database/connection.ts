@@ -366,6 +366,9 @@ async function createTables() {
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_preference VARCHAR(50);
     ALTER TABLE equipment ADD COLUMN IF NOT EXISTS governorate VARCHAR(100);
     ALTER TABLE equipment ADD COLUMN IF NOT EXISTS area VARCHAR(100);
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS pickup_lat DOUBLE PRECISION;
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS pickup_lng DOUBLE PRECISION;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
     UPDATE equipment
       SET governorate = TRIM(SPLIT_PART(location, '-', 1))
       WHERE (governorate IS NULL OR governorate = '')
