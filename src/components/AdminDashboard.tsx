@@ -275,8 +275,11 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
 
   const addCategory = async () => {
     if (newCategory.name) {
-      let imageUrl = 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400';
-      
+      if (!newCategory.imageFile) {
+        alert('أرفق صورة للتصنيف قبل الحفظ.');
+        return;
+      }
+
       const submitCategory = async (img: string) => {
         try {
           await apiJson('/api/equipment/categories', {
@@ -296,8 +299,6 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         const reader = new FileReader();
         reader.onloadend = () => submitCategory(reader.result as string);
         reader.readAsDataURL(newCategory.imageFile);
-      } else {
-        submitCategory(imageUrl);
       }
     }
   };

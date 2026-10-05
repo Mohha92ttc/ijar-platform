@@ -74,6 +74,8 @@ function paymentLabel(s?: string | null, method?: string | null) {
       return 'الدفع مرفوض';
     case 'refunded':
       return 'بانتظار استرداد المبلغ';
+    case 'completed':
+      return isCod ? 'تم استلام النقد / مقبول' : 'الدفع مكتمل / تم الاسترداد';
     default:
       return s ? `دفع: ${s}` : null;
   }

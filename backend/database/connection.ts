@@ -288,6 +288,7 @@ async function createTables() {
     ALTER TYPE payment_status ADD VALUE IF NOT EXISTS 'paid';
     ALTER TYPE payment_status ADD VALUE IF NOT EXISTS 'failed';
     ALTER TYPE payment_status ADD VALUE IF NOT EXISTS 'refunded';
+    ALTER TYPE payment_status ADD VALUE IF NOT EXISTS 'completed';
 
     ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'stripe';
     ALTER TYPE payment_method ADD VALUE IF NOT EXISTS 'manual';

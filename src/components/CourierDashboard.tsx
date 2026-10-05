@@ -64,9 +64,11 @@ export default function CourierDashboard({
     by_status: Record<string, number>;
     items: any[];
   } | null>(null);
-  const [tab, setTab] = useState<'orders' | 'report'>('orders');
+  const [tab, setTab] = useState<'orders' | 'report' | 'account'>('orders');
   const [notes, setNotes] = useState<{ id: string; title: string; message: string; is_read: boolean }[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '' });
+  const [passwordSaving, setPasswordSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -246,6 +248,16 @@ export default function CourierDashboard({
             }`}
           >
             <BarChart2 size={16} /> تقرير الشهر
+          </button>
+          <button
+            type="button"
+            data-testid="courier-tab-account"
+            onClick={() => setTab('account')}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 ${
+              tab === 'account' ? 'bg-emerald-700 text-white' : 'bg-white border border-slate-200 text-slate-600'
+            }`}
+          >
+            حسابي
           </button>
         </div>
 
@@ -464,6 +476,61 @@ export default function CourierDashboard({
             ) : (
               <p className="text-sm text-slate-500">جاري تحميل التقرير…</p>
             )}
+          </div>
+        )}
+
+        {tab === 'account' && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3" data-testid="courier-account-tab">
+            <p className="text-sm font-bold text-slate-800">تغيير كلمة المرور</p>
+            <p className="text-xs text-slate-500">
+              {profile?.name || 'مندوب'} {profile?.phone ? `· ${profile.phone}` : ''}
+            </p>
+            <input
+              type="password"
+              data-testid="courier-password-current"
+              placeholder="كلمة المرور الحالية"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+              value={passwordForm.current}
+              onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+            />
+            <input
+              type="password"
+              data-testid="courier-password-new"
+              placeholder="كلمة المرور الجديدة (8 أحرف على الأقل)"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm"
+              value={passwordForm.next}
+              onChange={(e) => setPasswordForm({ ...passwordForm, next: e.target.value })}
+            />
+            <button
+              type="button"
+              data-testid="courier-password-save"
+              disabled={passwordSaving}
+              onClick={async () => {
+                if (passwordForm.next.length < 8) {
+                  alert('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+                  return;
+                }
+                setPasswordSaving(true);
+                try {
+                  await apiJson('/api/auth/me', {
+                    method: 'PATCH',
+                    body: JSON.stringify({
+                      currentPassword: passwordForm.current,
+                      newPassword: passwordForm.next,
+                    }),
+                  });
+                  setPasswordForm({ current: '', next: '' });
+                  alert('تم تحديث كلمة المرور');
+                } catch (e: any) {
+                  alert(e?.message || 'تعذر تحديث كلمة المرور');
+                } finally {
+                  setPasswordSaving(false);
+                }
+              }}
+              className="w-full py-2.5 rounded-xl text-sm font-bold bg-emerald-700 text-white disabled:opacity-50"
+            >
+              {passwordSaving ? 'جاري الحفظ…' : 'تحديث كلمة المرور'}
+            </button>
           </div>
         )}
       </div>

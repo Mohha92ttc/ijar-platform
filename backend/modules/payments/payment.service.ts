@@ -460,6 +460,37 @@ export class PaymentService {
     return await this.repository.findAllUnderReview();
   }
 
+  /** Admin marks a refunded payment as manually settled with the customer. */
+  async settleRefund(paymentId: string, notes?: string): Promise<void> {
+    const payment = await this.repository.findById(paymentId);
+    if (!payment) throw new Error('Payment not found');
+    const raw = payment as Payment & Record<string, unknown>;
+    const st = String(raw.status ?? payment.payment_status);
+    if (st !== 'refunded') {
+      throw new Error('الدفعة ليست بانتظار استرداد');
+    }
+    await query(
+      `
+      UPDATE payments
+      SET status = 'completed'::payment_status,
+          notes = COALESCE(notes, '') || $1,
+          updated_at = NOW()
+      WHERE id = $2
+      `,
+      [` | تم تأكيد الاسترداد${notes ? `: ${notes}` : ''}`, paymentId]
+    );
+    const customerId = String(raw.customer_id || payment.customer_id || '');
+    if (customerId) {
+      await this.notificationService.create({
+        user_id: customerId,
+        type: 'payment',
+        title: 'تم استرداد المبلغ',
+        message: 'تم تأكيد إتمام استرداد دفعتك بعد إلغاء الحجز.',
+        related_id: paymentId,
+      });
+    }
+  }
+
   async listOwnerBookingEarnings(ownerId: string): Promise<{
     gross: number;
     commission: number;

@@ -46,6 +46,20 @@ export default function PaymentsTab() {
     }
   };
 
+  const settleRefund = async (id: string) => {
+    if (!confirm('تأكيد أن الاسترداد للزبون تم يدوياً؟')) return;
+    try {
+      await apiJson(`/api/admin/payments/${id}/settle-refund`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: 'تم الاسترداد يدوياً' }),
+      });
+      fetchData();
+      setSelectedPayment(null);
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : 'فشل تأكيد الاسترداد');
+    }
+  };
+
   const filteredPayments = payments.filter((p) => {
     const q = searchQ.trim().toLowerCase();
     const statusOk = statusFilter === 'all' || String(p.status) === statusFilter;
@@ -129,6 +143,7 @@ export default function PaymentsTab() {
       case 'failed':
       case 'rejected': return 'فشل / مرفوض';
       case 'refunded': return 'بانتظار استرداد';
+      case 'completed': return 'استرداد مكتمل / مكتمل';
       default: return status;
     }
   };
@@ -299,6 +314,17 @@ export default function PaymentsTab() {
                           </button>
                         </>
                       )}
+                      {String(payment.status) === 'refunded' && (
+                        <button
+                          type="button"
+                          data-testid="admin-settle-refund"
+                          onClick={() => settleRefund(payment.id)}
+                          className="px-2 py-1 text-[10px] font-bold text-violet-800 bg-violet-50 border border-violet-100 rounded-lg"
+                          title="تأكيد إتمام الاسترداد"
+                        >
+                          تم الاسترداد
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -388,6 +414,16 @@ export default function PaymentsTab() {
                   رفض
                 </button>
               </div>
+            )}
+            {String(selectedPayment.status) === 'refunded' && (
+              <button
+                type="button"
+                data-testid="admin-settle-refund-modal"
+                onClick={() => settleRefund(selectedPayment.id)}
+                className="w-full mt-4 py-2 bg-violet-700 text-white rounded-lg font-medium hover:bg-violet-800"
+              >
+                تأكيد إتمام الاسترداد
+              </button>
             )}
             <button
               type="button"

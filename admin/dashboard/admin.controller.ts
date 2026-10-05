@@ -167,6 +167,17 @@ export class AdminController {
     }
   };
 
+  settleRefund = async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const notes = req.body?.notes != null ? String(req.body.notes) : undefined;
+      await this.adminService.settleRefund(id, notes);
+      res.status(200).json({ message: 'تم تأكيد الاسترداد' });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل تأكيد الاسترداد') });
+    }
+  };
+
   getPasswordResetRequests = async (_req: Request, res: Response) => {
     try {
       const list = await this.adminService.getPasswordResetRequests();

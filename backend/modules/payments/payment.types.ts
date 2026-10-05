@@ -1,4 +1,4 @@
-export type PaymentStatus = 'pending' | 'proof_uploaded' | 'under_review' | 'approved' | 'rejected' | 'refunded';
+export type PaymentStatus = 'pending' | 'proof_uploaded' | 'under_review' | 'approved' | 'rejected' | 'refunded' | 'paid' | 'failed' | 'completed';
 /** Stored in DB enum + client aliases mapped in service */
 export type PaymentMethod =
   | 'stripe'

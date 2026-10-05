@@ -362,6 +362,10 @@ export class AdminService {
     await this.paymentService.adminReview(paymentId, approve, notes);
   }
 
+  async settleRefund(paymentId: string, notes?: string): Promise<void> {
+    await this.paymentService.settleRefund(paymentId, notes);
+  }
+
   async getPasswordResetRequests(): Promise<any[]> {
     const res = await query(
       `

@@ -59,7 +59,10 @@ type PublicPartner = {
 };
 
 const PLACEHOLDER_IMG =
-  'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400';
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300"><rect fill="#e2e8f0" width="400" height="300"/><text x="200" y="155" text-anchor="middle" fill="#64748b" font-family="sans-serif" font-size="18">بدون صورة</text></svg>`
+  );
 
 
 function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {

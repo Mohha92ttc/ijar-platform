@@ -31,6 +31,7 @@ router.get('/bookings', adminController.getAllBookings);
 router.patch('/bookings/:id/status', adminController.updateBookingStatus);
 router.get('/payments', adminController.getAllPayments);
 router.post('/payments/:id/review', adminController.reviewPayment);
+router.post('/payments/:id/settle-refund', adminController.settleRefund);
 router.get('/partner-payments-report', adminController.getPartnerPaymentsReport);
 router.get('/password-reset-requests', adminController.getPasswordResetRequests);
 router.post('/password-reset-requests/:id/review', adminController.reviewPasswordResetRequest);
