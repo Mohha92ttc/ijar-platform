@@ -565,7 +565,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'couriers' && 'حسابات المندوبين'}
             {activeTab === 'bookings' && 'إدارة الحجوزات'}
             {activeTab === 'equipment' && 'إشراف المعدات'}
-            {activeTab === 'payment-approval' && 'موافقات دفع الحجوزات'}
+            {activeTab === 'payment-approval' && 'تجاوز إداري لمدفوعات الحجوزات (يُفضَّل مراجعة الشريك أولاً)'}
             {activeTab === 'featured-approval' && 'موافقات الإعلان المميز'}
             {activeTab === 'subscription-approval' && 'موافقات اشتراكات الشركاء'}
             {activeTab === 'password-resets' && 'طلبات تغيير كلمة المرور'}
@@ -734,7 +734,12 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
 
         {/* Payment Approval Tab Content */}
         {activeTab === 'payment-approval' && (
-          <PaymentApproval filterType="booking" />
+          <div className="space-y-3">
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3" data-testid="admin-booking-payment-hint">
+              المراجعة الأساسية لإثبات تحويل الحجز عند الشريك. موافقة الأدمن هنا تجاوز إداري: تؤكد الحجز المعلّق، والرفض يلغي الحجز.
+            </p>
+            <PaymentApproval filterType="booking" />
+          </div>
         )}
 
         {activeTab === 'featured-approval' && (

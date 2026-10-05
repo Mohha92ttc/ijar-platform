@@ -25,6 +25,7 @@ import favoritesRoutes from './backend/modules/favorites/favorites.routes';
 import { initializeDatabase } from './backend/database/connection';
 import { MigrationService } from './backend/services/migration.service';
 import { WebSocketService } from './backend/services/websocket.service';
+import { setRealtimeService } from './backend/services/realtime';
 import { authenticateToken, requireRole, AuthenticatedRequest } from './backend/modules/auth/auth.middleware';
 import { ensureUploadDir, UPLOAD_DIR } from './backend/services/upload.service';
 
@@ -276,6 +277,7 @@ async function startServer() {
 
   const wsService = new WebSocketService(server);
   await wsService.initialize();
+  setRealtimeService(wsService);
   console.log('Database: PostgreSQL');
   console.log('Environment:', process.env.NODE_ENV || 'development');
 }

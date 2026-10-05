@@ -261,24 +261,50 @@ export class PaymentService {
         return;
       }
 
-      // دفعات مرتبطة بحجز
+      // دفعات مرتبطة بحجز — مزامنة حالة الحجز مع قرار المراجعة
+      const bookingId = payment.booking_id ? String(payment.booking_id) : '';
+      if (bookingId) {
+        try {
+          await query(
+            `
+            UPDATE bookings
+            SET status = 'confirmed'::booking_status, updated_at = NOW()
+            WHERE id = $1 AND status = 'pending'::booking_status
+            `,
+            [bookingId]
+          );
+          try {
+            await query(
+              `UPDATE equipment SET status = 'rented'::equipment_status
+               WHERE id = (SELECT equipment_id FROM bookings WHERE id = $1)
+                 AND status = 'available'::equipment_status`,
+              [bookingId]
+            );
+          } catch {
+            // enum may differ
+          }
+        } catch (e) {
+          console.warn('[payment] booking sync failed', e instanceof Error ? e.message : e);
+        }
+      }
+
       await this.notificationService.create({
         user_id: payment.owner_id,
         type: 'system',
-        title: 'استلام دفعة',
-        message: `تم استلام دفعة بقيمة ${payment.owner_amount} للحجز ${payment.booking_id || '—'}.`,
+        title: 'استلام دفعة / تأكيد حجز',
+        message: `تمت الموافقة على دفعة الحجز ${bookingId || '—'} وتأكيد الحجز إن كان معلّقاً.`,
         related_id: payment.id,
       });
 
       await this.notificationService.create({
         user_id: payment.customer_id,
         type: 'system',
-        title: 'تمت الموافقة على الدفع',
-        message: `تمت الموافقة على دفعك للحجز ${payment.booking_id || '—'}.`,
+        title: 'تمت الموافقة على الدفع والحجز',
+        message: `تمت الموافقة على دفعك وتأكيد حجزك ${bookingId || '—'}.`,
         related_id: payment.id,
       });
     } else {
-      if (paymentType === 'featured_promotion' || paymentType === 'subscription_renewal') {
+      if (paymentType === 'featured_promotion' || paymentType === 'subscription_renewal' || paymentType === 'subscription') {
         const uid = String(raw.user_id ?? payment.customer_id);
         await this.notificationService.create({
           user_id: uid,
@@ -290,13 +316,47 @@ export class PaymentService {
         return;
       }
 
+      const bookingId = payment.booking_id ? String(payment.booking_id) : '';
+      if (bookingId) {
+        try {
+          await query(
+            `
+            UPDATE bookings
+            SET status = 'cancelled'::booking_status, updated_at = NOW()
+            WHERE id = $1 AND status IN ('pending'::booking_status, 'confirmed'::booking_status)
+            `,
+            [bookingId]
+          );
+          try {
+            await query(
+              `UPDATE equipment SET status = 'available'::equipment_status
+               WHERE id = (SELECT equipment_id FROM bookings WHERE id = $1)`,
+              [bookingId]
+            );
+          } catch {
+            // ignore
+          }
+        } catch (e) {
+          console.warn('[payment] booking cancel sync failed', e instanceof Error ? e.message : e);
+        }
+      }
+
       await this.notificationService.create({
         user_id: payment.customer_id,
         type: 'system',
         title: 'تم رفض الدفع',
-        message: `تم رفض دفعتك للحجز ${payment.booking_id || '—'}. السبب: ${adminNotes || 'غير محدد'}`,
+        message: `تم رفض دفعتك للحجز ${bookingId || '—'}. السبب: ${adminNotes || 'غير محدد'}`,
         related_id: payment.id,
       });
+      if (payment.owner_id) {
+        await this.notificationService.create({
+          user_id: payment.owner_id,
+          type: 'system',
+          title: 'رُفضت دفعة حجز',
+          message: `رُفضت دفعة الزبون للحجز ${bookingId || '—'}.`,
+          related_id: payment.id,
+        });
+      }
     }
   }
 

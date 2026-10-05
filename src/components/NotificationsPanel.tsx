@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Bell, X, CheckCircle, MessageCircle, User, Calendar, DollarSign } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
+import { onRealtimeNotification } from '../lib/realtime';
 
 type ApiNotification = {
   id: string;
@@ -56,7 +57,7 @@ export default function NotificationsPanel({
   useEffect(() => {
     if (!isOpen || !userId || prefsOff) return;
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       setLoading(true);
       try {
         const res = await apiFetch(`/api/notifications/user/${userId}`);
@@ -67,9 +68,14 @@ export default function NotificationsPanel({
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    };
+    load();
+    const off = onRealtimeNotification(() => {
+      if (!cancelled) load();
+    });
     return () => {
       cancelled = true;
+      off();
     };
   }, [isOpen, userId, prefsOff]);
 

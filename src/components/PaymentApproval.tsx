@@ -112,6 +112,7 @@ export default function PaymentApproval({ filterType }: Props) {
   const approveLabel = (type?: string) => {
     if (type === 'featured_promotion') return 'موافقة وتفعيل الإعلان المميز';
     if (type === 'subscription_renewal' || type === 'subscription') return 'موافقة وتجديد الاشتراك';
+    if (type === 'booking') return 'موافقة وتأكيد الحجز';
     return 'موافقة على الدفعة';
   };
 

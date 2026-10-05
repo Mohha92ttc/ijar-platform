@@ -28,6 +28,7 @@ import HelpPage from './components/HelpPage';
 import PrivacyPage from './components/PrivacyPage';
 import NotificationsPanel from './components/NotificationsPanel';
 import { apiJson, clearSession, ApiError, apiLogout, friendlyAuthMessage, validateSession, apiFetch } from './lib/api';
+import { connectRealtime, disconnectRealtime, onRealtimeNotification } from './lib/realtime';
 import { loadCart, saveCart, clearCartStorage, switchCartUser, type CartLine, type CartPaymentMethod } from './lib/cartStorage';
 import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from './lib/iraqLocations';
 import InstallAppButtons from './components/InstallAppButtons';
@@ -198,6 +199,7 @@ export default function App() {
   useEffect(() => {
     if (!user?.id) {
       setUnreadNotifs(0);
+      disconnectRealtime();
       return;
     }
     let cancelled = false;
@@ -210,10 +212,16 @@ export default function App() {
       }
     };
     pull();
+    connectRealtime();
+    const off = onRealtimeNotification(() => {
+      if (!cancelled) setUnreadNotifs((n) => n + 1);
+    });
     const id = window.setInterval(pull, 45_000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      off();
+      disconnectRealtime();
     };
   }, [user?.id, showNotifications]);
 

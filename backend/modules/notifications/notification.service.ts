@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { query } from '../../database/connection';
 import { Notification, CreateNotificationDTO, NotificationType } from './notification.types';
 import { mailService } from '../../services/mail.service';
+import { getRealtimeService } from '../../services/realtime';
 
 /** Map app notification types to DB enum notification_type */
 function toDbType(type: NotificationType | string): string {
@@ -55,8 +56,25 @@ export class NotificationService {
       [id, data.user_id, dbType, data.title, data.message, JSON.stringify(related)]
     );
 
+    const notification = rowToNotification(res.rows[0]);
+
+    try {
+      await getRealtimeService()?.sendNotificationToUser(data.user_id, {
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: {
+          id: notification.id,
+          related_id: notification.related_id,
+          created_at: notification.created_at,
+        },
+      });
+    } catch {
+      // non-blocking
+    }
+
     await this.sendEmail(data.user_id, data.title, data.message);
-    return rowToNotification(res.rows[0]);
+    return notification;
   }
 
   async notifyAdmins(payload: Omit<CreateNotificationDTO, 'user_id'>): Promise<void> {
