@@ -153,6 +153,8 @@ export class EquipmentService {
   }
 
   async getAll(): Promise<Equipment[]> {
+    const { syncExpiredSubscriptions } = await import('../subscriptions/subscription.policy');
+    await syncExpiredSubscriptions();
     const res = await query(
       `
       SELECT e.*,
