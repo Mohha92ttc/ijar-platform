@@ -8,7 +8,8 @@ export class PlatformController {
       const r = await query(
         `SELECT bank_name, bank_account_iban, card_number_display, zain_cash_phone,
                 account_holder_name, transfer_instructions,
-                featured_ad_price, featured_duration_days, subscription_renewal_price
+                featured_ad_price, featured_duration_days, subscription_renewal_price,
+                COALESCE(subscription_duration_months, 1) AS subscription_duration_months
          FROM platform_settings WHERE id = 1`
       );
       const row = r.rows[0];
@@ -24,6 +25,7 @@ export class PlatformController {
           featured_ad_price: 50000,
           featured_duration_days: 30,
           subscription_renewal_price: 100000,
+          subscription_duration_months: 1,
         });
       }
       const mastercard = row.card_number_display ?? null;
@@ -40,6 +42,7 @@ export class PlatformController {
         featured_ad_price: Number(row.featured_ad_price ?? 50000),
         featured_duration_days: Number(row.featured_duration_days ?? 30),
         subscription_renewal_price: Number(row.subscription_renewal_price ?? 100000),
+        subscription_duration_months: Number(row.subscription_duration_months ?? 1),
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Error';

@@ -37,6 +37,7 @@ export default function AdminSettings() {
     featured_ad_price: 50000,
     featured_duration_days: 30,
     subscription_renewal_price: 100000,
+    subscription_duration_months: 1,
     commission_rate: 0.1,
   });
 
@@ -70,6 +71,7 @@ export default function AdminSettings() {
           featured_ad_price: Number(d.featured_ad_price ?? 50000),
           featured_duration_days: Number(d.featured_duration_days ?? 30),
           subscription_renewal_price: Number(d.subscription_renewal_price ?? 100000),
+          subscription_duration_months: Number(d.subscription_duration_months ?? 1),
           commission_rate: Number(d.commission_rate ?? 0.1),
         });
       } catch {
@@ -90,6 +92,7 @@ export default function AdminSettings() {
           featured_ad_price: Number(platformBank.featured_ad_price),
           featured_duration_days: Number(platformBank.featured_duration_days),
           subscription_renewal_price: Number(platformBank.subscription_renewal_price),
+          subscription_duration_months: Number(platformBank.subscription_duration_months),
           commission_rate: Number(platformBank.commission_rate),
         }),
       });
@@ -319,6 +322,20 @@ export default function AdminSettings() {
               data-testid="admin-subscription-price"
               value={platformBank.subscription_renewal_price}
               onChange={(e) => setPlatformBank({ ...platformBank, subscription_renewal_price: Number(e.target.value) })}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">مدة الاشتراك عند الموافقة (أشهر)</label>
+            <input
+              type="number"
+              min={1}
+              max={36}
+              data-testid="admin-subscription-months"
+              value={platformBank.subscription_duration_months}
+              onChange={(e) =>
+                setPlatformBank({ ...platformBank, subscription_duration_months: Number(e.target.value) })
+              }
               className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
             />
           </div>

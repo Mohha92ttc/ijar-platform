@@ -49,6 +49,19 @@ export class PaymentController {
     }
   };
 
+  myBookingEarnings = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string } }).user;
+      if (!actor?.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const summary = await this.service.listOwnerBookingEarnings(actor.userId);
+      res.status(200).json(summary);
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل جلب الأرباح') });
+    }
+  };
+
   review = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

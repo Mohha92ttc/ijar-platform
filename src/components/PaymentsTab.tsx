@@ -109,9 +109,11 @@ export default function PaymentsTab() {
       case 'paid':
       case 'approved': return 'bg-green-100 text-green-700';
       case 'pending': 
-      case 'under_review': return 'bg-amber-100 text-amber-700';
+      case 'under_review':
+      case 'proof_uploaded': return 'bg-amber-100 text-amber-700';
       case 'failed':
       case 'rejected': return 'bg-red-100 text-red-700';
+      case 'refunded': return 'bg-violet-100 text-violet-700';
       default: return 'bg-slate-100 text-slate-700';
     }
   };
@@ -123,8 +125,10 @@ export default function PaymentsTab() {
       case 'approved': return 'مكتمل';
       case 'pending': return 'قيد الانتظار';
       case 'under_review': return 'قيد المراجعة';
+      case 'proof_uploaded': return 'إثبات مرفوع';
       case 'failed':
       case 'rejected': return 'فشل / مرفوض';
+      case 'refunded': return 'بانتظار استرداد';
       default: return status;
     }
   };
@@ -204,10 +208,11 @@ export default function PaymentsTab() {
             className="px-4 py-2 bg-slate-100 rounded-lg text-sm font-medium text-slate-600 border-0"
           >
             <option value="all">كل الحالات</option>
-            <option value="pending">pending</option>
-            <option value="under_review">under_review</option>
-            <option value="approved">approved</option>
-            <option value="rejected">rejected</option>
+            <option value="pending">قيد الانتظار</option>
+            <option value="under_review">قيد المراجعة</option>
+            <option value="approved">معتمد</option>
+            <option value="rejected">مرفوض</option>
+            <option value="refunded">بانتظار استرداد</option>
           </select>
         </div>
         <div className="flex items-center gap-3">

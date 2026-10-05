@@ -94,10 +94,26 @@ export default function CheckoutPage({
   const deliverySum = useMemo(() => cart.reduce((s, i) => s + Number(i.deliveryFee || 0), 0), [cart]);
   const total = rentalSum + deliverySum;
   const requireProof = needsPaymentProof(paymentMethod);
+  const ownersMissingAccounts = useMemo(() => {
+    if (!requireProof) return [] as string[];
+    const owners = [...new Set(cart.map((c) => c.owner_id).filter(Boolean))] as string[];
+    return owners.filter((oid) => {
+      const h = ownerHints[oid];
+      if (!h) return false; // still loading — don't block yet
+      const has =
+        Boolean(h.mastercard || h.card_number) ||
+        Boolean(h.zain_cash || h.wallet_number) ||
+        Boolean(h.bank_account) ||
+        Boolean(h.phone_number);
+      return !has;
+    });
+  }, [cart, ownerHints, requireProof]);
+
   const canSubmit =
     cart.length > 0 &&
     (!requireProof || Boolean(proofDataUrl)) &&
-    (!needsDeliveryMap || Boolean(deliveryPin));
+    (!needsDeliveryMap || Boolean(deliveryPin)) &&
+    ownersMissingAccounts.length === 0;
 
   const handleProofFile = (file: File | null) => {
     if (!file) {
@@ -112,6 +128,12 @@ export default function CheckoutPage({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (requireProof && ownersMissingAccounts.length > 0) {
+      alert(
+        'الشريك لم يُضف حسابات استلام بعد. اختر «دفع عند التسليم» أو تواصل مع الشريك ليضيف زين كاش / ماستركارد من إعداداته.'
+      );
+      return;
+    }
     if (requireProof && !proofDataUrl) {
       alert('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
       return;
@@ -330,9 +352,17 @@ export default function CheckoutPage({
                   />
                   );
                 })}
-                {Object.keys(ownerHints).length === 0 && (
+                {ownersMissingAccounts.length > 0 && (
+                  <p
+                    className="text-[11px] text-red-700 bg-red-50 border border-red-100 rounded-xl p-3"
+                    data-testid="checkout-missing-accounts"
+                  >
+                    حسابات التحويل غير متوفرة لهذا الشريك. اختر «دفع عند التسليم» أو انتظر حتى يضيف الشريك زين كاش / ماستركارد من إعداداته.
+                  </p>
+                )}
+                {Object.keys(ownerHints).length === 0 && ownersMissingAccounts.length === 0 && (
                   <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
-                    الشريك لم يضف حسابات التحويل بعد — سيتم إشعاره لإضافتها من إعداداته.
+                    جاري تحميل حسابات التحويل…
                   </p>
                 )}
               </div>

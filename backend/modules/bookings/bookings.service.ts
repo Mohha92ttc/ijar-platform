@@ -161,8 +161,8 @@ export class BookingService {
       if (status !== 'cancelled') {
         throw new Error('الزبون يمكنه إلغاء الحجز فقط');
       }
-      if (!['pending', 'confirmed'].includes(oldStatus)) {
-        throw new Error('لا يمكن إلغاء هذا الحجز في حالته الحالية');
+      if (oldStatus !== 'pending') {
+        throw new Error('بعد تأكيد الحجز لا يمكن الإلغاء من لوحتك — تواصل مع الشريك أو الدعم');
       }
     } else if (actor.role === 'owner') {
       const equipment = await this.equipmentService.getById(existing.equipment_id);

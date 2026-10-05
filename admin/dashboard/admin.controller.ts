@@ -99,9 +99,11 @@ export class AdminController {
 
   updateBookingStatus = async (req: Request, res: Response) => {
     try {
+      const actor = (req as Request & { user?: { userId?: string } }).user;
+      if (!actor?.userId) return res.status(401).json({ error: 'Unauthorized' });
       const { id } = req.params;
       const status = String(req.body?.status || '');
-      await this.adminService.updateBookingStatus(id, status);
+      await this.adminService.updateBookingStatus(id, status, actor.userId);
       res.status(200).json({ message: 'تم تحديث الحجز' });
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل تحديث الحجز') });

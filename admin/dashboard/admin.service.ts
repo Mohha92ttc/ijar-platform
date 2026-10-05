@@ -213,19 +213,15 @@ export class AdminService {
     return res.rows;
   }
 
-  async updateBookingStatus(bookingId: string, status: string): Promise<void> {
+  async updateBookingStatus(bookingId: string, status: string, adminUserId: string): Promise<void> {
     const allowed = ['pending', 'confirmed', 'cancelled', 'completed'];
     if (!allowed.includes(status)) throw new Error('حالة غير صالحة');
-    const res = await query(
-      `
-      UPDATE bookings
-      SET status = $1::booking_status, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2
-      RETURNING id
-      `,
-      [status, bookingId]
-    );
-    if (res.rows.length === 0) throw new Error('الحجز غير موجود');
+    const { BookingService } = await import('../../backend/modules/bookings/bookings.service');
+    const bookingService = new BookingService();
+    await bookingService.updateStatus(bookingId, status as 'pending' | 'confirmed' | 'cancelled' | 'completed', {
+      userId: adminUserId,
+      role: 'admin',
+    });
   }
 
   async listAllEquipment(): Promise<any[]> {
@@ -269,6 +265,8 @@ export class AdminService {
         featured_ad_price: r.featured_ad_price != null ? Number(r.featured_ad_price) : 50000,
         featured_duration_days: r.featured_duration_days != null ? Number(r.featured_duration_days) : 30,
         subscription_renewal_price: r.subscription_renewal_price != null ? Number(r.subscription_renewal_price) : 100000,
+        subscription_duration_months:
+          r.subscription_duration_months != null ? Number(r.subscription_duration_months) : 1,
         commission_rate: r.commission_rate != null ? Number(r.commission_rate) : 0.1,
       };
     }
@@ -289,6 +287,7 @@ export class AdminService {
       featured_ad_price: 50000,
       featured_duration_days: 30,
       subscription_renewal_price: 100000,
+      subscription_duration_months: 1,
       commission_rate: 0.1,
     };
   }
@@ -305,11 +304,12 @@ export class AdminService {
         id, name, description, phones, emails, addresses, mission, vision,
         bank_name, bank_account_iban, card_number_display, zain_cash_phone, account_holder_name,
         transfer_instructions,
-        featured_ad_price, featured_duration_days, subscription_renewal_price, commission_rate
+        featured_ad_price, featured_duration_days, subscription_renewal_price, commission_rate,
+        subscription_duration_months
       )
       VALUES (
         1, $1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+        $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
       )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
@@ -328,7 +328,8 @@ export class AdminService {
         featured_ad_price = EXCLUDED.featured_ad_price,
         featured_duration_days = EXCLUDED.featured_duration_days,
         subscription_renewal_price = EXCLUDED.subscription_renewal_price,
-        commission_rate = EXCLUDED.commission_rate
+        commission_rate = EXCLUDED.commission_rate,
+        subscription_duration_months = EXCLUDED.subscription_duration_months
     `,
       [
         data.name || 'إيجار',
@@ -348,6 +349,7 @@ export class AdminService {
         Number(data.featured_duration_days ?? 30),
         Number(data.subscription_renewal_price ?? 100000),
         Number(data.commission_rate ?? 0.1),
+        Math.max(1, Math.min(36, Number(data.subscription_duration_months ?? 1) || 1)),
       ]
     );
   }

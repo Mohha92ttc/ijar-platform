@@ -240,22 +240,25 @@ export class PaymentService {
 
       if (paymentType === 'subscription_renewal' || paymentType === 'subscription') {
         const uid = String(raw.user_id ?? payment.customer_id);
+        const monthsRes = await query(
+          `SELECT COALESCE(subscription_duration_months, 1) AS months FROM platform_settings WHERE id = 1`
+        );
+        const months = Math.max(1, Math.min(36, parseInt(String(monthsRes.rows[0]?.months ?? 1), 10) || 1));
         await query(
           `
           UPDATE users
-          SET subscription_end_date = GREATEST(COALESCE(subscription_end_date, NOW()), NOW()) + INTERVAL '1 month',
+          SET subscription_end_date = GREATEST(COALESCE(subscription_end_date, NOW()), NOW()) + ($2::int * INTERVAL '1 month'),
               subscription_status = 'active',
               is_approved = TRUE
           WHERE id = $1
           `,
-          [uid]
+          [uid, months]
         );
         await this.notificationService.create({
           user_id: uid,
           type: 'system',
           title: 'تم تفعيل الاشتراك',
-          message:
-            'تمت الموافقة على دفع الاشتراك. معداتك ظهرت في السوق من جديد ولوحة التحكم كاملة.',
+          message: `تمت الموافقة على دفع الاشتراك لمدة ${months} شهر. معداتك ظهرت في السوق من جديد ولوحة التحكم كاملة.`,
           related_id: paymentId,
         });
         return;
@@ -413,6 +416,32 @@ export class PaymentService {
           `UPDATE payments SET status = 'refunded'::payment_status, notes = COALESCE(notes,'') || $1, updated_at = NOW() WHERE id = $2`,
           [` | ${note || 'بانتظار استرداد بعد إلغاء الحجز'}`, id]
         );
+        const ownerId = String(raw.owner_id || payment.owner_id || '');
+        const customerId = String(raw.customer_id || payment.customer_id || '');
+        if (customerId) {
+          await this.notificationService.create({
+            user_id: customerId,
+            type: 'payment',
+            title: 'طلب استرداد مبلغ',
+            message: 'أُلغي الحجز بعد دفع معتمد. الاسترداد يدوي — سنتواصل معك أو مع الشريك لإتمام الإرجاع.',
+            related_id: bookingId,
+          });
+        }
+        if (ownerId) {
+          await this.notificationService.create({
+            user_id: ownerId,
+            type: 'payment',
+            title: 'استرداد مطلوب بعد إلغاء',
+            message: 'حُجز أُلغي بعد دفع معتمد. راجع الزبون وأتمّ الاسترداد يدوياً إن لزم.',
+            related_id: bookingId,
+          });
+        }
+        await this.notificationService.notifyAdmins({
+          type: 'payment',
+          title: 'استرداد معلّق',
+          message: `دفعة حجز ${bookingId} بانتظار استرداد يدوي بعد الإلغاء.`,
+          related_id: id,
+        });
       } catch {
         await this.repository.updateStatus(id, 'rejected');
       }
@@ -429,6 +458,35 @@ export class PaymentService {
 
   async getPaymentsForReview(): Promise<Payment[]> {
     return await this.repository.findAllUnderReview();
+  }
+
+  async listOwnerBookingEarnings(ownerId: string): Promise<{
+    gross: number;
+    commission: number;
+    net: number;
+    count: number;
+  }> {
+    const res = await query(
+      `
+      SELECT
+        COALESCE(SUM(amount), 0) AS gross,
+        COALESCE(SUM(commission), 0) AS commission,
+        COALESCE(SUM(owner_amount), 0) AS net,
+        COUNT(*)::int AS cnt
+      FROM payments
+      WHERE owner_id = $1
+        AND booking_id IS NOT NULL
+        AND status IN ('approved', 'paid', 'completed', 'under_review', 'pending', 'proof_uploaded')
+      `,
+      [ownerId]
+    );
+    const row = res.rows[0] || {};
+    return {
+      gross: Number(row.gross || 0),
+      commission: Number(row.commission || 0),
+      net: Number(row.net || 0),
+      count: Number(row.cnt || 0),
+    };
   }
 
   async listMyPlatformPayments(ownerId: string): Promise<any[]> {

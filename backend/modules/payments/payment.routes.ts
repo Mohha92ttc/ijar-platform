@@ -33,6 +33,12 @@ router.get(
   requireRole(['owner']),
   controller.myPlatformPayments
 );
+router.get(
+  '/my-earnings',
+  authenticateToken,
+  requireRole(['owner']),
+  controller.myBookingEarnings
+);
 
 // Admin routes
 router.get('/reviews', authenticateToken, requireRole(['admin']), controller.getPendingReviews);

@@ -114,6 +114,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const [myReviews, setMyReviews] = useState<
     { id: string; rating: number; comment?: string; equipment_title?: string; reviewer_name?: string; created_at: string }[]
   >([]);
+  const [earnings, setEarnings] = useState<{ gross: number; commission: number; net: number; count: number } | null>(
+    null
+  );
 
   const [transferInfo, setTransferInfo] = useState<{
     bank_name?: string | null;
@@ -126,6 +129,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     featured_ad_price?: number;
     featured_duration_days?: number;
     subscription_renewal_price?: number;
+    subscription_duration_months?: number;
   } | null>(null);
   const [featNotes, setFeatNotes] = useState('');
   const [subNotes, setSubNotes] = useState('');
@@ -470,6 +474,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           } catch {
             setMyReviews([]);
           }
+          try {
+            const earn = await apiJson<{ gross: number; commission: number; net: number; count: number }>(
+              '/api/payments/my-earnings'
+            );
+            setEarnings(earn);
+          } catch {
+            setEarnings(null);
+          }
         }
         if (activeTab === 'settings') {
           const s = await apiJson<any>(`/api/payments/owner-settings/${ownerId}`);
@@ -610,16 +622,25 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       return;
     }
 
+    if (!editingEquipmentId && !newEquipment.imageFile) {
+      alert('أرفق صورة حقيقية للمعدة قبل الحفظ.');
+      return;
+    }
+
     let imageUrl =
       editingEquipmentId && newEquipment.existingImage
         ? newEquipment.existingImage
-        : 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&q=80&w=400';
+        : '';
     if (newEquipment.imageFile) {
       imageUrl = await new Promise<string>((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result as string);
         reader.readAsDataURL(newEquipment.imageFile!);
       });
+    }
+    if (!imageUrl) {
+      alert('الصورة مطلوبة.');
+      return;
     }
 
     const governorate = newEquipment.governorate.trim();
@@ -1770,6 +1791,29 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               </div>
             </div>
 
+            {earnings && (
+              <div
+                className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                data-testid="partner-earnings-breakdown"
+              >
+                <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                  <p className="text-xs text-slate-500">إجمالي مدفوعات الحجوزات</p>
+                  <p className="text-xl font-bold text-slate-800">{earnings.gross.toLocaleString()} د.ع</p>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                  <p className="text-xs text-slate-500">عمولة المنصة (محاسبة)</p>
+                  <p className="text-xl font-bold text-amber-700">{earnings.commission.toLocaleString()} د.ع</p>
+                </div>
+                <div className="bg-white p-4 rounded-2xl border border-slate-200">
+                  <p className="text-xs text-slate-500">صافي الشريك (محاسبة)</p>
+                  <p className="text-xl font-bold text-emerald-700">{earnings.net.toLocaleString()} د.ع</p>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    الزبون يدفع لك مباشرة — الأرقام للمحاسبة حسب نسبة العمولة ({earnings.count} دفعة).
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-2xl border border-slate-200 p-6" data-testid="partner-payments-report-panel">
               <h3 className="text-lg font-bold mb-4">تقرير مدفوعاتي للمنصة</h3>
               <div className="overflow-x-auto">
@@ -1895,6 +1939,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 <span className="font-bold text-blue-600">
                   {(transferInfo?.subscription_renewal_price ?? 100000).toLocaleString()} د.ع
                 </span>
+                {' '}لمدة {transferInfo?.subscription_duration_months ?? 1} شهر بعد موافقة الإدارة.
               </p>
               <textarea
                 value={subNotes}

@@ -72,6 +72,8 @@ function paymentLabel(s?: string | null, method?: string | null) {
     case 'rejected':
     case 'failed':
       return 'الدفع مرفوض';
+    case 'refunded':
+      return 'بانتظار استرداد المبلغ';
     default:
       return s ? `دفع: ${s}` : null;
   }
@@ -81,6 +83,7 @@ function paymentBadgeClass(s?: string | null) {
   if (!s) return 'bg-slate-100 text-slate-600';
   if (['approved', 'paid', 'completed'].includes(s)) return 'bg-green-50 text-green-700';
   if (['rejected', 'failed'].includes(s)) return 'bg-red-50 text-red-700';
+  if (s === 'refunded') return 'bg-violet-50 text-violet-800';
   return 'bg-amber-50 text-amber-800';
 }
 
@@ -667,7 +670,7 @@ export default function CustomerDashboard({
                       )}
                   </div>
                 )}
-                {(booking.status === 'pending' || booking.status === 'confirmed') && (
+                {booking.status === 'pending' && (
                   <button
                     type="button"
                     data-testid="customer-cancel-booking"
@@ -676,6 +679,11 @@ export default function CustomerDashboard({
                   >
                     إلغاء الحجز
                   </button>
+                )}
+                {booking.status === 'confirmed' && (
+                  <p className="text-[11px] text-slate-500" data-testid="customer-cancel-locked">
+                    بعد التأكيد لا يمكن الإلغاء من هنا — تواصل مع الشريك أو الدعم.
+                  </p>
                 )}
                 {booking.status === 'completed' && !booking.reviewed && (
                   <div className="border-t border-slate-100 pt-3 space-y-2" data-testid="customer-review-box">
