@@ -386,6 +386,98 @@ export class CouriersController {
     }
   };
 
+  /** شريك يسجّل التسليم/الاسترجاع بنفسه (بدون مندوب) */
+  ownerMarkDelivery = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      const bookingId = req.params.bookingId;
+      const status = String(req.body.delivery_status || '');
+      const leg = String(req.body.leg || req.body.delivery_leg || 'outbound');
+      if (!['delivered', 'failed', 'out_for_delivery'].includes(status)) {
+        return res.status(400).json({ error: 'حالة غير صالحة' });
+      }
+
+      const own = await query(
+        `
+        SELECT b.id, b.customer_id, b.delivery_requested, b.return_requested
+        FROM bookings b
+        JOIN equipment e ON e.id = b.equipment_id
+        WHERE b.id = $1 AND e.owner_id = $2
+        `,
+        [bookingId, actor.userId]
+      );
+      if (!own.rows[0]) return res.status(404).json({ error: 'الطلب غير موجود' });
+
+      const isReturn = leg === 'return';
+      if (isReturn && !own.rows[0].return_requested) {
+        return res.status(400).json({ error: 'لم يُطلب استرجاع لهذا الحجز' });
+      }
+      if (!isReturn && !own.rows[0].delivery_requested) {
+        return res.status(400).json({ error: 'لا يوجد توصيل مطلوب لهذا الحجز' });
+      }
+
+      await query(
+        isReturn
+          ? `UPDATE bookings SET return_status = $1, updated_at = NOW() WHERE id = $2`
+          : `UPDATE bookings SET delivery_status = $1, updated_at = NOW() WHERE id = $2`,
+        [status, bookingId]
+      );
+
+      const customerId = String(own.rows[0].customer_id || '');
+      if (customerId && (status === 'delivered' || status === 'failed')) {
+        try {
+          await this.notifications.create({
+            user_id: customerId,
+            type: 'system',
+            title:
+              status === 'delivered'
+                ? isReturn
+                  ? 'تم استرجاع المعدة'
+                  : 'تم تسليم طلبك'
+                : isReturn
+                  ? 'تعذّر الاسترجاع'
+                  : 'تعذّر التسليم',
+            message:
+              status === 'delivered'
+                ? isReturn
+                  ? 'سجّل الشريك استلام المعدة من موقعك.'
+                  : 'سجّل الشريك تسليم المعدة إليك.'
+                : 'سجّل الشريك تعذّر المهمة. تواصل معه عند الحاجة.',
+            related_id: bookingId,
+          });
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!isReturn && status === 'delivered') {
+        try {
+          await query(
+            `
+            UPDATE payments
+            SET status = 'approved'::payment_status,
+                notes = COALESCE(notes, '') || ' | تم الاستلام عند التسليم (شريك)',
+                updated_at = NOW()
+            WHERE booking_id = $1
+              AND method = 'cash'::payment_method
+              AND status IN ('pending'::payment_status, 'under_review'::payment_status)
+            `,
+            [bookingId]
+          );
+        } catch {
+          // ignore
+        }
+      }
+
+      res.json({ ok: true, leg, delivery_status: status });
+    } catch (e: unknown) {
+      res.status(400).json({ error: publicError(e, 'تعذر تحديث حالة التوصيل') });
+    }
+  };
+
   me = async (req: Request, res: Response) => {
     try {
       const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;

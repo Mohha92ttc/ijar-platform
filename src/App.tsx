@@ -495,6 +495,14 @@ export default function App() {
       alert('يرجى إرفاق صورة إثبات التحويل');
       return;
     }
+    const ownerIds = [...new Set(cart.map((i) => String(i.owner_id || '')).filter(Boolean))];
+    if (needsProof && ownerIds.length > 1) {
+      const msg =
+        'السلة فيها معدات من أكثر من شريك. أتمّ الحجوزات شريكاً شريكاً (أفرغ السلة واحجز لكل شريك على حدة) لأن إثبات التحويل يُرسل لحساب واحد.';
+      setCheckoutError(msg);
+      alert(msg);
+      return;
+    }
     const anyDelivery = cart.some((i) => i.wantsDelivery);
     if (anyDelivery && (formData.deliveryLat == null || formData.deliveryLng == null)) {
       setCheckoutError('حدد موقع التوصيل على الخريطة');

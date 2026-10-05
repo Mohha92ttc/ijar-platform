@@ -75,11 +75,17 @@ export class PaymentService {
     // Check for duplicate / blocking payment for this booking
     const existing = await this.repository.findByBookingId(data.booking_id);
     const existingStatus = String(existing?.payment_status || '');
-    if (existing && ['approved', 'under_review', 'paid', 'completed'].includes(existingStatus)) {
+    if (existing && ['approved', 'paid', 'completed'].includes(existingStatus)) {
       throw new Error('Payment already exists for this booking');
     }
+    // Allow replace when rejected/failed OR still under_review (wrong proof)
     const reuseId =
-      existing && ['rejected', 'failed'].includes(existingStatus) ? String(existing.id) : null;
+      existing && ['rejected', 'failed', 'under_review', 'proof_uploaded', 'pending'].includes(existingStatus)
+        ? String(existing.id)
+        : null;
+    if (existing && !reuseId) {
+      throw new Error('Payment already exists for this booking');
+    }
 
     const bookingParticipants = await this.resolveBookingParticipants(data.booking_id);
     const effectiveCustomerId = customerId || bookingParticipants.customerId;

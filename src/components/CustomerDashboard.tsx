@@ -357,7 +357,7 @@ export default function CustomerDashboard({
           amount: booking.total,
           payment_method: 'manual',
           proof_image,
-          notes: 'إعادة رفع إثبات بعد الرفض',
+          notes: 'تحديث/استبدال إثبات الدفع',
         }),
       });
       alert('تم إرسال إثبات الدفع للمراجعة');
@@ -604,13 +604,22 @@ export default function CustomerDashboard({
                     ['rejected', 'failed'].includes(String(booking.paymentStatus)) && (
                       <p className="text-red-600 text-[11px]">ملاحظة: {booking.paymentNotes}</p>
                     )}
-                  {['rejected', 'failed'].includes(String(booking.paymentStatus)) &&
-                    booking.status !== 'cancelled' && (
+                  {['rejected', 'failed', 'under_review', 'proof_uploaded'].includes(
+                    String(booking.paymentStatus)
+                  ) &&
+                    booking.status !== 'cancelled' &&
+                    booking.paymentMethod !== 'cash' &&
+                    booking.paymentMethod !== 'cash_on_delivery' && (
                       <label
                         data-testid="customer-repay-proof"
                         className="inline-flex items-center gap-2 mt-1 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200 cursor-pointer hover:bg-amber-100"
                       >
-                        {repayBusy === booking.id ? 'جاري الإرسال…' : 'إعادة رفع إثبات الدفع'}
+                        {repayBusy === booking.id
+                          ? 'جاري الإرسال…'
+                          : String(booking.paymentStatus) === 'under_review' ||
+                              String(booking.paymentStatus) === 'proof_uploaded'
+                            ? 'استبدال إثبات الدفع'
+                            : 'إعادة رفع إثبات الدفع'}
                         <input
                           type="file"
                           accept="image/*"

@@ -38,6 +38,12 @@ router.post(
   requireRole(['owner']),
   controller.unassignBooking
 );
+router.post(
+  '/mark-status/:bookingId',
+  authenticateToken,
+  requireRole(['owner']),
+  controller.ownerMarkDelivery
+);
 
 router.patch('/:id', authenticateToken, requireRole(['owner']), controller.update);
 router.patch('/:id/active', authenticateToken, requireRole(['owner']), controller.setActive);

@@ -371,6 +371,30 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     }
   };
 
+  const ownerMarkDelivery = async (
+    bookingId: string,
+    delivery_status: 'delivered' | 'failed',
+    leg: 'outbound' | 'return' = 'outbound'
+  ) => {
+    if (!guardSub('تحديث التوصيل')) return;
+    const label =
+      delivery_status === 'delivered'
+        ? leg === 'return'
+          ? 'تسجيل استرجاع المعدة يدوياً؟'
+          : 'تسجيل تسليم المعدة يدوياً (بدون مندوب)؟'
+        : 'تسجيل تعذّر التسليم؟';
+    if (!confirm(label)) return;
+    try {
+      await apiJson(`/api/couriers/mark-status/${bookingId}`, {
+        method: 'POST',
+        body: JSON.stringify({ delivery_status, leg }),
+      });
+      await loadData();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر تحديث الحالة');
+    }
+  };
+
   const saveCourierEdit = async (id: string, name: string, phone: string) => {
     const n = prompt('اسم المندوب', name);
     if (n == null) return;
@@ -1157,8 +1181,30 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                           </a>
                         )}
                       </div>
+                      {booking.deliveryStatus !== 'delivered' && (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            data-testid="partner-self-delivered"
+                            onClick={() => ownerMarkDelivery(booking.id, 'delivered', 'outbound')}
+                            className="text-xs font-bold px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-100"
+                          >
+                            سلّمت بنفسي
+                          </button>
+                          {booking.deliveryStatus !== 'failed' && (
+                            <button
+                              type="button"
+                              data-testid="partner-self-failed"
+                              onClick={() => ownerMarkDelivery(booking.id, 'failed', 'outbound')}
+                              className="text-xs font-bold px-3 py-2 rounded-xl bg-red-50 text-red-800 border border-red-100"
+                            >
+                              تعذّر التسليم
+                            </button>
+                          )}
+                        </div>
+                      )}
                       {couriers.length === 0 && (
-                        <p className="text-[11px] text-amber-700">أضف مندوبين من تبويب «المندوبين» أولاً.</p>
+                        <p className="text-[11px] text-amber-700">أضف مندوبين من تبويب «المندوبين» أولاً، أو سجّل «سلّمت بنفسي».</p>
                       )}
 
                       {booking.deliveryStatus === 'delivered' && (
@@ -1188,19 +1234,31 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                               طلب استرجاع من الزبون
                             </button>
                           ) : (
-                            <select
-                              data-testid="partner-assign-return-courier"
-                              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"
-                              value={booking.returnCourierId || ''}
-                              onChange={(e) => assignCourier(booking.id, e.target.value, 'return')}
-                            >
-                              <option value="">اختر مندوب الاسترجاع</option>
-                              {couriers.filter((c) => c.is_active).map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name} — {c.phone}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="space-y-2">
+                              <select
+                                data-testid="partner-assign-return-courier"
+                                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"
+                                value={booking.returnCourierId || ''}
+                                onChange={(e) => assignCourier(booking.id, e.target.value, 'return')}
+                              >
+                                <option value="">اختر مندوب الاسترجاع</option>
+                                {couriers.filter((c) => c.is_active).map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name} — {c.phone}
+                                  </option>
+                                ))}
+                              </select>
+                              {booking.returnStatus !== 'delivered' && (
+                                <button
+                                  type="button"
+                                  data-testid="partner-self-return-delivered"
+                                  onClick={() => ownerMarkDelivery(booking.id, 'delivered', 'return')}
+                                  className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-800 border border-violet-100"
+                                >
+                                  استرجعت بنفسي
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
