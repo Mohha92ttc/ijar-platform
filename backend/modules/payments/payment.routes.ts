@@ -39,6 +39,12 @@ router.get(
   requireRole(['owner']),
   controller.myBookingEarnings
 );
+router.post(
+  '/:id/settle-refund',
+  authenticateToken,
+  requireRole(['owner']),
+  controller.ownerSettleRefund
+);
 
 // Admin routes
 router.get('/reviews', authenticateToken, requireRole(['admin']), controller.getPendingReviews);

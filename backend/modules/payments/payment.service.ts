@@ -492,14 +492,24 @@ export class PaymentService {
     return await this.repository.findAllUnderReview();
   }
 
-  /** Admin marks a refunded payment as manually settled with the customer. */
-  async settleRefund(paymentId: string, notes?: string): Promise<void> {
+  /** Admin or owning partner marks a refunded payment as manually settled with the customer. */
+  async settleRefund(
+    paymentId: string,
+    notes?: string,
+    actor?: { userId: string; role: string }
+  ): Promise<void> {
     const payment = await this.repository.findById(paymentId);
     if (!payment) throw new Error('Payment not found');
     const raw = payment as Payment & Record<string, unknown>;
     const st = String(raw.status ?? payment.payment_status);
     if (st !== 'refunded') {
       throw new Error('الدفعة ليست بانتظار استرداد');
+    }
+    if (actor?.role === 'owner') {
+      const ownerId = String(raw.owner_id || payment.owner_id || '');
+      if (!ownerId || ownerId !== actor.userId) {
+        throw new Error('غير مصرح بتأكيد استرداد هذه الدفعة');
+      }
     }
     await query(
       `
@@ -509,7 +519,10 @@ export class PaymentService {
           updated_at = NOW()
       WHERE id = $2
       `,
-      [` | تم تأكيد الاسترداد${notes ? `: ${notes}` : ''}`, paymentId]
+      [
+        ` | تم تأكيد الاسترداد${actor?.role === 'owner' ? ' (الشريك)' : ''}${notes ? `: ${notes}` : ''}`,
+        paymentId,
+      ]
     );
     const customerId = String(raw.customer_id || payment.customer_id || '');
     if (customerId) {
@@ -539,7 +552,7 @@ export class PaymentService {
       FROM payments
       WHERE owner_id = $1
         AND booking_id IS NOT NULL
-        AND status IN ('approved', 'paid', 'completed', 'under_review', 'pending', 'proof_uploaded')
+        AND status IN ('approved', 'paid', 'completed')
       `,
       [ownerId]
     );

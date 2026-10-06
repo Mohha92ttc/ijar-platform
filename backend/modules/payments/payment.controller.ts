@@ -62,6 +62,23 @@ export class PaymentController {
     }
   };
 
+  ownerSettleRefund = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      const notes = req.body?.notes != null ? String(req.body.notes) : undefined;
+      await this.service.settleRefund(req.params.id, notes, {
+        userId: actor.userId,
+        role: 'owner',
+      });
+      res.status(200).json({ message: 'تم تأكيد الاسترداد' });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل تأكيد الاسترداد') });
+    }
+  };
+
   review = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

@@ -33,6 +33,12 @@ router.post(
   controller.requestReturn
 );
 router.post(
+  '/cancel-return/:bookingId',
+  authenticateToken,
+  requireRole(['owner']),
+  controller.cancelReturn
+);
+router.post(
   '/unassign/:bookingId',
   authenticateToken,
   requireRole(['owner']),

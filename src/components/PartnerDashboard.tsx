@@ -38,6 +38,7 @@ type Bk = {
   paymentPreference?: string;
   paymentProof?: string | null;
   paymentStatus?: string | null;
+  paymentId?: string | null;
   isCod: boolean;
   deliveryRequested?: boolean;
   deliveryLat?: number | null;
@@ -218,6 +219,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           paymentPreference: pref || String(b.payment_db_method || ''),
           paymentProof: resolveProofUrl(b.payment_proof ? String(b.payment_proof) : null),
           paymentStatus: b.payment_status ? String(b.payment_status) : null,
+          paymentId: b.payment_id ? String(b.payment_id) : null,
           isCod,
           deliveryRequested: Boolean(b.delivery_requested),
           deliveryLat: b.delivery_lat != null ? Number(b.delivery_lat) : null,
@@ -429,6 +431,34 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       await loadData();
     } catch (e: unknown) {
       alert(e instanceof ApiError ? e.message : 'تعذر طلب الاسترجاع');
+    }
+  };
+
+  const cancelReturn = async (bookingId: string) => {
+    if (!guardSub('إلغاء الاسترجاع', { allowLifecycle: true })) return;
+    if (!confirm('إلغاء طلب الاسترجاع؟ يمكنك إكمال الإيجار بعدها مباشرة.')) return;
+    try {
+      await apiJson(`/api/couriers/cancel-return/${bookingId}`, {
+        method: 'POST',
+        body: '{}',
+      });
+      await loadData();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إلغاء الاسترجاع');
+    }
+  };
+
+  const confirmRefundSettled = async (paymentId: string) => {
+    if (!guardSub('تأكيد الاسترداد', { allowLifecycle: true })) return;
+    if (!confirm('أكدت أنك أرجعت المبلغ للزبون؟')) return;
+    try {
+      await apiJson(`/api/payments/${paymentId}/settle-refund`, {
+        method: 'POST',
+        body: JSON.stringify({ notes: 'استرداد يدوي من الشريك' }),
+      });
+      await loadData();
+    } catch (e: unknown) {
+      alert(e instanceof ApiError ? e.message : 'تعذر تأكيد الاسترداد');
     }
   };
 
@@ -1297,6 +1327,23 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     )}
                   </div>
 
+                  {booking.paymentStatus === 'refunded' && booking.paymentId && (
+                    <div
+                      className="border-t border-violet-100 pt-3 flex flex-wrap items-center gap-2"
+                      data-testid="partner-refund-settle"
+                    >
+                      <span className="text-xs text-violet-800 font-bold">بانتظار تأكيد استرداد المبلغ للزبون</span>
+                      <button
+                        type="button"
+                        data-testid="partner-confirm-refund"
+                        onClick={() => confirmRefundSettled(booking.paymentId!)}
+                        className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-900 border border-violet-200"
+                      >
+                        أكّدت الاسترداد للزبون
+                      </button>
+                    </div>
+                  )}
+
                   {booking.deliveryRequested && booking.status === 'confirmed' && (
                     <div className="border-t border-slate-100 pt-4 space-y-3" data-testid="partner-booking-delivery">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -1402,6 +1449,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                             </button>
                           ) : (
                             <div className="space-y-2">
+                              {booking.returnStatus !== 'delivered' && (
+                                <button
+                                  type="button"
+                                  data-testid="partner-cancel-return"
+                                  onClick={() => cancelReturn(booking.id)}
+                                  className="text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 text-slate-700 border border-slate-200"
+                                >
+                                  إلغاء طلب الاسترجاع
+                                </button>
+                              )}
                               <select
                                 data-testid="partner-assign-return-courier"
                                 className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white"
@@ -1958,10 +2015,14 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="text-sm text-slate-500 mb-1">إيرادات المؤكدة + المكتملة</div>
+                <div className="text-sm text-slate-500 mb-1">إيرادات محصّلة (دفع مقبول)</div>
                 <div className="text-2xl font-bold text-blue-600">
                   {bookings
-                    .filter((b) => b.status === 'confirmed' || b.status === 'completed')
+                    .filter(
+                      (b) =>
+                        (b.status === 'confirmed' || b.status === 'completed') &&
+                        ['approved', 'paid', 'completed'].includes(String(b.paymentStatus || ''))
+                    )
                     .reduce((sum, b) => sum + b.total, 0)
                     .toLocaleString()}{' '}
                   د.ع
@@ -1995,10 +2056,10 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   <p className="text-xl font-bold text-amber-700">{earnings.commission.toLocaleString()} د.ع</p>
                 </div>
                 <div className="bg-white p-4 rounded-2xl border border-slate-200">
-                  <p className="text-xs text-slate-500">صافي الشريك (محاسبة)</p>
+                  <p className="text-xs text-slate-500">صافي الشريك (محصّل)</p>
                   <p className="text-xl font-bold text-emerald-700">{earnings.net.toLocaleString()} د.ع</p>
                   <p className="text-[10px] text-slate-400 mt-1">
-                    الزبون يدفع لك مباشرة — الأرقام للمحاسبة حسب نسبة العمولة ({earnings.count} دفعة).
+                    فقط الدفعات المقبولة/المكتملة ({earnings.count}) — بدون قيد المراجعة أو COD غير المستلم.
                   </p>
                 </div>
               </div>

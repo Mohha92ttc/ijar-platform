@@ -229,6 +229,60 @@ export class CouriersController {
     }
   };
 
+  cancelReturn = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      const bookingId = req.params.bookingId;
+      const own = await query(
+        `
+        SELECT b.id, b.return_requested, b.return_status, b.customer_id, e.title, b.status::text AS status
+        FROM bookings b
+        JOIN equipment e ON e.id = b.equipment_id
+        WHERE b.id = $1 AND e.owner_id = $2
+        `,
+        [bookingId, actor.userId]
+      );
+      if (!own.rows[0]) return res.status(404).json({ error: 'الطلب غير موجود' });
+      if (String(own.rows[0].status) !== 'confirmed') {
+        return res.status(400).json({ error: 'الحجز غير مؤكد' });
+      }
+      if (!own.rows[0].return_requested) {
+        return res.status(400).json({ error: 'لا يوجد طلب استرجاع لإلغائه' });
+      }
+      if (String(own.rows[0].return_status) === 'delivered') {
+        return res.status(400).json({ error: 'لا يمكن إلغاء استرجاع مكتمل' });
+      }
+      await query(
+        `
+        UPDATE bookings
+        SET return_requested = FALSE,
+            return_status = NULL,
+            return_courier_id = NULL,
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [bookingId]
+      );
+      try {
+        await this.notifications.create({
+          user_id: String(own.rows[0].customer_id),
+          type: 'system',
+          title: 'أُلغي طلب الاسترجاع',
+          message: `الشريك ألغى طلب استرجاع «${own.rows[0].title}».`,
+          related_id: bookingId,
+        });
+      } catch {
+        // ignore
+      }
+      res.json({ ok: true });
+    } catch (e: unknown) {
+      res.status(400).json({ error: publicError(e, 'تعذر إلغاء الاسترجاع') });
+    }
+  };
+
   myBookings = async (req: Request, res: Response) => {
     try {
       const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
@@ -309,27 +363,47 @@ export class CouriersController {
             message,
             related_id: String(resu.rows[0].id),
           });
-          if (status === 'failed') {
-            const ownerRes = await query(
-              `
-              SELECT e.owner_id
-              FROM bookings b
-              JOIN equipment e ON e.id = b.equipment_id
-              WHERE b.id = $1
-              LIMIT 1
-              `,
-              [req.params.bookingId]
-            );
-            const ownerId = ownerRes.rows[0]?.owner_id;
-            if (ownerId) {
-              await this.notifications.create({
-                user_id: String(ownerId),
-                type: 'system',
-                title: isReturn ? 'فشل استرجاع معدة' : 'فشل توصيل حجز',
-                message: 'سجّل المندوب تعذّر المهمة. راجع الطلب وأعد التعيين إن لزم.',
-                related_id: String(resu.rows[0].id),
-              });
-            }
+          const ownerRes = await query(
+            `
+            SELECT e.owner_id
+            FROM bookings b
+            JOIN equipment e ON e.id = b.equipment_id
+            WHERE b.id = $1
+            LIMIT 1
+            `,
+            [req.params.bookingId]
+          );
+          const ownerId = ownerRes.rows[0]?.owner_id;
+          if (ownerId) {
+            const ownerTitle =
+              status === 'delivered'
+                ? isReturn
+                  ? 'تم استرجاع معدة'
+                  : 'تم تسليم حجز'
+                : status === 'failed'
+                  ? isReturn
+                    ? 'فشل استرجاع معدة'
+                    : 'فشل توصيل حجز'
+                  : isReturn
+                    ? 'مندوب الاسترجاع في الطريق'
+                    : 'مندوب التوصيل في الطريق';
+            const ownerMessage =
+              status === 'delivered'
+                ? isReturn
+                  ? 'المندوب أكمل استرجاع المعدة من الزبون.'
+                  : 'المندوب أكمل تسليم المعدة للزبون.'
+                : status === 'failed'
+                  ? 'سجّل المندوب تعذّر المهمة. راجع الطلب وأعد التعيين إن لزم.'
+                  : isReturn
+                    ? 'المندوب خرج لاسترجاع المعدة.'
+                    : 'المندوب خرج لتوصيل الطلب.';
+            await this.notifications.create({
+              user_id: String(ownerId),
+              type: 'system',
+              title: ownerTitle,
+              message: ownerMessage,
+              related_id: String(resu.rows[0].id),
+            });
           }
         } catch {
           // non-blocking

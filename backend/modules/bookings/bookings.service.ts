@@ -147,33 +147,36 @@ export class BookingService {
     return newBooking;
   }
 
-  /** Cancel pending bookings older than 48h so they stop locking the calendar. */
+  /** Cancel pending bookings older than 48h via full cancel path (settle + notifs). */
   private async expireStalePending(equipmentId?: string): Promise<void> {
     try {
+      const params: unknown[] = [];
+      let sql = `
+        SELECT id FROM bookings
+        WHERE status = 'pending'
+          AND created_at < NOW() - INTERVAL '48 hours'
+      `;
       if (equipmentId) {
-        await query(
-          `
-          UPDATE bookings
-          SET status = 'cancelled'::booking_status,
-              cancel_reason = COALESCE(cancel_reason, 'انتهت مهلة الانتظار دون تأكيد (48 ساعة)'),
-              updated_at = NOW()
-          WHERE equipment_id = $1
-            AND status = 'pending'
-            AND created_at < NOW() - INTERVAL '48 hours'
-          `,
-          [equipmentId]
-        );
-      } else {
-        await query(
-          `
-          UPDATE bookings
-          SET status = 'cancelled'::booking_status,
-              cancel_reason = COALESCE(cancel_reason, 'انتهت مهلة الانتظار دون تأكيد (48 ساعة)'),
-              updated_at = NOW()
-          WHERE status = 'pending'
-            AND created_at < NOW() - INTERVAL '48 hours'
-          `
-        );
+        params.push(equipmentId);
+        sql += ` AND equipment_id = $${params.length}`;
+      }
+      sql += ` ORDER BY created_at ASC LIMIT 40`;
+      const res = await query(sql, params);
+      for (const row of res.rows) {
+        try {
+          await this.updateStatus(
+            String(row.id),
+            'cancelled',
+            { userId: 'system-expire', role: 'admin' },
+            { reason: 'انتهت مهلة الانتظار دون تأكيد (48 ساعة)' }
+          );
+        } catch (e) {
+          console.warn(
+            '[booking] expire one stale pending failed',
+            row.id,
+            e instanceof Error ? e.message : e
+          );
+        }
       }
     } catch (e) {
       console.warn('[booking] expireStalePending failed', e instanceof Error ? e.message : e);
@@ -325,6 +328,10 @@ export class BookingService {
       status === 'cancelled' && opts?.reason
         ? String(opts.reason).trim().slice(0, 500)
         : null;
+    const adminNote =
+      actor.role === 'admin' && opts?.reason
+        ? String(opts.reason).trim().slice(0, 500)
+        : null;
 
     const res = await query(
       `
@@ -335,11 +342,18 @@ export class BookingService {
           WHEN $1::booking_status = 'cancelled' THEN cancel_reason
           ELSE cancel_reason
         END,
+        admin_notes = CASE
+          WHEN $4::text IS NOT NULL AND $4::text <> '' THEN
+            TRIM(BOTH FROM COALESCE(admin_notes, '') ||
+              CASE WHEN COALESCE(admin_notes, '') = '' THEN '' ELSE E'\n' END ||
+              $4::text)
+          ELSE admin_notes
+        END,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
       RETURNING *
     `,
-      [status, id, cancelReason]
+      [status, id, cancelReason, adminNote]
     );
     if (res.rows.length === 0) {
       throw new Error('Booking not found');
@@ -400,6 +414,35 @@ export class BookingService {
         message: `اكتمل إيجار «${equipment.title}». يمكنك تقييم تجربتك من لوحة الحجوزات.`,
         related_id: booking.id,
       });
+      if (actor.role === 'admin') {
+        try {
+          await query(
+            `
+            UPDATE payments
+            SET status = 'approved'::payment_status,
+                notes = COALESCE(notes, '') || ' | اعتماد COD عند إكمال إداري',
+                updated_at = NOW()
+            WHERE booking_id = $1
+              AND method = 'cash'::payment_method
+              AND status IN ('pending'::payment_status, 'under_review'::payment_status)
+            `,
+            [booking.id]
+          );
+        } catch {
+          // non-blocking
+        }
+        try {
+          await this.notificationService.create({
+            user_id: equipment.owner_id,
+            type: 'system',
+            title: 'إكمال إداري لحجز',
+            message: `أُكمل حجز «${equipment.title}» من الإدارة${adminNote ? `: ${adminNote}` : ''}.`,
+            related_id: booking.id,
+          });
+        } catch {
+          // non-blocking
+        }
+      }
       await this.releaseEquipmentIfIdle(booking.equipment_id);
     }
 
@@ -437,6 +480,7 @@ export class BookingService {
   }
 
   async getByCustomer(customerId: string): Promise<any[]> {
+    await this.expireStalePending();
     const res = await query(
       `
       SELECT b.*, e.title as equipment_title, u.name as owner_name, u.phone as owner_phone, e.location as equipment_location,
@@ -488,9 +532,11 @@ export class BookingService {
   }
 
   async getByOwner(ownerId: string): Promise<any[]> {
+    await this.expireStalePending();
     const res = await query(
       `
       SELECT b.*, e.title as equipment_title, u.name as customer_name,
+             p.id AS payment_id,
              p.payment_proof AS payment_proof,
              p.method::text AS payment_db_method,
              p.status::text AS payment_status,
@@ -506,7 +552,7 @@ export class BookingService {
       LEFT JOIN couriers c ON c.id = b.assigned_courier_id
       LEFT JOIN couriers rc ON rc.id = b.return_courier_id
       LEFT JOIN LATERAL (
-        SELECT payment_proof, method, status, notes, commission, owner_amount
+        SELECT id, payment_proof, method, status, notes, commission, owner_amount
         FROM payments
         WHERE booking_id = b.id
         ORDER BY created_at DESC

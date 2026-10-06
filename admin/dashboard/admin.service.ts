@@ -407,7 +407,7 @@ export class AdminService {
   }
 
   async settleRefund(paymentId: string, notes?: string): Promise<void> {
-    await this.paymentService.settleRefund(paymentId, notes);
+    await this.paymentService.settleRefund(paymentId, notes, { userId: 'admin', role: 'admin' });
   }
 
   async getPasswordResetRequests(): Promise<any[]> {
