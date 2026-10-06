@@ -1368,9 +1368,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                       {couriers.length === 0 && (
                         <p className="text-[11px] text-amber-700">أضف مندوبين من تبويب «المندوبين» أولاً، أو سجّل «سلّمت بنفسي».</p>
                       )}
+                    </div>
+                  )}
 
-                      {booking.deliveryStatus === 'delivered' && (
-                        <div className="border-t border-dashed border-slate-200 pt-3 space-y-2" data-testid="partner-return-section">
+                  {booking.status === 'confirmed' &&
+                    (!booking.deliveryRequested || booking.deliveryStatus === 'delivered') && (
+                    <div className="border-t border-dashed border-slate-200 pt-3 space-y-2" data-testid="partner-return-section">
                           <div className="flex flex-wrap items-center gap-2 text-xs">
                             <span className="font-bold text-slate-700">استرجاع المعدة</span>
                             {booking.returnRequested ? (
@@ -1380,7 +1383,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                                   : deliveryStatusLabel(booking.returnStatus)}
                               </span>
                             ) : (
-                              <span className="text-slate-400">اختياري بعد التسليم</span>
+                              <span className="text-slate-400">
+                                {booking.deliveryRequested ? 'اختياري بعد التسليم' : 'استلام ذاتي — اختياري'}
+                              </span>
                             )}
                             {booking.returnCourierName && (
                               <span className="text-slate-500">مندوب الاسترجاع: {booking.returnCourierName}</span>
@@ -1437,8 +1442,6 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                               )}
                             </div>
                           )}
-                        </div>
-                      )}
                     </div>
                   )}
                   {booking.deliveryRequested && booking.status === 'pending' && (

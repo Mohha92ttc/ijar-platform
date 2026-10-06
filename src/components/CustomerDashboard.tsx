@@ -79,8 +79,6 @@ function paymentLabel(s?: string | null, method?: string | null) {
       return 'الدفع مرفوض';
     case 'refunded':
       return 'بانتظار استرداد المبلغ';
-    case 'completed':
-      return isCod ? 'تم استلام النقد / مقبول' : 'الدفع مكتمل / تم الاسترداد';
     default:
       return s ? `دفع: ${s}` : null;
   }
@@ -347,10 +345,14 @@ export default function CustomerDashboard({
 
   const cancelBooking = async (bookingId: string) => {
     if (!confirm('هل تريد إلغاء هذا الحجز؟')) return;
+    const reason = window.prompt('سبب الإلغاء (اختياري لكن يُفضّل)') || '';
     try {
       await apiJson(`/api/bookings/${bookingId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'cancelled' }),
+        body: JSON.stringify({
+          status: 'cancelled',
+          reason: reason.trim() || 'إلغاء من الزبون',
+        }),
       });
       await loadBookings();
     } catch (e) {
@@ -676,30 +678,9 @@ export default function CustomerDashboard({
                     <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700">
                       <Truck size={10} /> توصيل: {deliveryLabel(booking.deliveryStatus)}
                     </span>
-                    {booking.returnRequested && (
-                      <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-violet-50 text-violet-700">
-                        استرجاع: {deliveryLabel(booking.returnStatus)}
-                      </span>
-                    )}
-                    {booking.courierName && !booking.returnRequested && (
+                    {booking.courierName && (
                       <p className="flex items-center gap-1 text-slate-600">
                         <Phone size={10} />
-                        {booking.courierName}
-                        {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
-                      </p>
-                    )}
-                    {booking.returnRequested && (booking.returnCourierName || booking.courierName) && (
-                      <p className="flex items-center gap-1 text-slate-600" data-testid="customer-return-courier">
-                        <Phone size={10} />
-                        استرجاع:{' '}
-                        {booking.returnCourierName || booking.courierName}
-                        {(booking.returnCourierPhone || booking.courierPhone)
-                          ? ` · ${booking.returnCourierPhone || booking.courierPhone}`
-                          : ''}
-                      </p>
-                    )}
-                    {booking.courierName && booking.returnRequested && (
-                      <p className="flex items-center gap-1 text-slate-500 text-[11px]">
                         توصيل: {booking.courierName}
                         {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
                       </p>
@@ -718,6 +699,27 @@ export default function CustomerDashboard({
                           <Navigation size={12} /> موقع التسليم على الخريطة
                         </a>
                       )}
+                  </div>
+                )}
+                {booking.returnRequested && booking.status === 'confirmed' && (
+                  <div className="text-xs space-y-2" data-testid="customer-return-status">
+                    <span className="inline-flex items-center gap-1 font-bold px-2 py-1 rounded-full bg-violet-50 text-violet-700">
+                      استرجاع: {deliveryLabel(booking.returnStatus)}
+                    </span>
+                    {(booking.returnCourierName || booking.courierName) && (
+                      <p className="flex items-center gap-1 text-slate-600" data-testid="customer-return-courier">
+                        <Phone size={10} />
+                        استرجاع: {booking.returnCourierName || booking.courierName}
+                        {(booking.returnCourierPhone || (!booking.returnCourierName && booking.courierPhone))
+                          ? ` · ${booking.returnCourierPhone || booking.courierPhone}`
+                          : ''}
+                      </p>
+                    )}
+                    {!booking.deliveryRequested && (
+                      <p className="text-[11px] text-slate-500">
+                        استلام ذاتي — الشريك/المندوب سيتواصل لاسترجاع المعدة. تأكد من جاهزية رقمك.
+                      </p>
+                    )}
                   </div>
                 )}
                 {booking.status === 'pending' && (

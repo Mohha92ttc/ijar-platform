@@ -174,6 +174,11 @@ export default function CourierDashboard({
       window.open(googleMapsDirectionsUrl(pickLat, pickLng), '_blank', 'noopener,noreferrer');
       return;
     }
+    const phone = String(b.customer_phone || b.customer_user_phone || '').trim();
+    if (leg === 'return' && phone) {
+      alert(`لا إحداثيات للزبون — اتصل به لتنسيق الاسترجاع: ${phone}`);
+      return;
+    }
     alert('لا توجد إحداثيات لهذا الطلب — اطلب من الشريك تحديد موقع الاستلام والزبون موقع التوصيل');
   };
 

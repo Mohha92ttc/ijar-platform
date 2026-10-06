@@ -143,7 +143,6 @@ export default function PaymentsTab() {
       case 'failed':
       case 'rejected': return 'فشل / مرفوض';
       case 'refunded': return 'بانتظار استرداد';
-      case 'completed': return 'استرداد مكتمل / مكتمل';
       default: return status;
     }
   };

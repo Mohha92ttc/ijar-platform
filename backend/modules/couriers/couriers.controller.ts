@@ -110,7 +110,7 @@ export class CouriersController {
 
       const own = await query(
         `
-        SELECT b.id, e.title AS equipment_title, b.status::text AS status
+        SELECT b.id, e.title AS equipment_title, b.status::text AS status, b.delivery_requested
         FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         WHERE b.id = $1 AND e.owner_id = $2
@@ -138,6 +138,9 @@ export class CouriersController {
           [courierId, bookingId]
         );
       } else {
+        if (!own.rows[0].delivery_requested) {
+          return res.status(400).json({ error: 'لا يوجد توصيل مطلوب لهذا الحجز — عيّن مندوب استرجاع إن لزم' });
+        }
         await query(
           `
           UPDATE bookings
@@ -182,7 +185,7 @@ export class CouriersController {
       const bookingId = req.params.bookingId;
       const own = await query(
         `
-        SELECT b.id, b.delivery_status, b.customer_id, e.title, b.status::text AS status
+        SELECT b.id, b.delivery_status, b.delivery_requested, b.customer_id, e.title, b.status::text AS status
         FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         WHERE b.id = $1 AND e.owner_id = $2
@@ -193,7 +196,8 @@ export class CouriersController {
       if (String(own.rows[0].status) !== 'confirmed') {
         return res.status(400).json({ error: 'اطلب الاسترجاع بعد تأكيد الحجز فقط' });
       }
-      if (String(own.rows[0].delivery_status) !== 'delivered') {
+      const wantsDelivery = Boolean(own.rows[0].delivery_requested);
+      if (wantsDelivery && String(own.rows[0].delivery_status) !== 'delivered') {
         return res.status(400).json({ error: 'فعّل الاسترجاع بعد إتمام تسليم التوصيل للزبون' });
       }
       await query(
@@ -211,7 +215,9 @@ export class CouriersController {
           user_id: String(own.rows[0].customer_id),
           type: 'system',
           title: 'طلب استرجاع المعدة',
-          message: `الشريك طلب استرجاع «${own.rows[0].title}». سيُعيَّن مندوب للاستلام من موقعك.`,
+          message: wantsDelivery
+            ? `الشريك طلب استرجاع «${own.rows[0].title}». سيُعيَّن مندوب للاستلام من موقعك.`
+            : `الشريك طلب استرجاع «${own.rows[0].title}» (استلام ذاتي). نسّقوا التسليم أو سيُعيَّن مندوب إن لزم.`,
           related_id: bookingId,
         });
       } catch {

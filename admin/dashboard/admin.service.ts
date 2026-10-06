@@ -152,10 +152,19 @@ export class AdminService {
   }
 
   async unbanUser(userId: string): Promise<void> {
-    const res = await query(`SELECT role FROM users WHERE id = $1`, [userId]);
+    const res = await query(
+      `SELECT role, subscription_end_date FROM users WHERE id = $1`,
+      [userId]
+    );
     if (res.rows.length === 0) throw new Error('User not found');
     const role = String(res.rows[0].role);
-    const next = role === 'owner' ? 'active' : 'none';
+    let next = 'none';
+    if (role === 'owner') {
+      const end = res.rows[0].subscription_end_date
+        ? new Date(res.rows[0].subscription_end_date).getTime()
+        : 0;
+      next = end > Date.now() ? 'active' : 'pending';
+    }
     await query(`UPDATE users SET subscription_status = $1 WHERE id = $2 AND subscription_status = 'banned'`, [
       next,
       userId,
@@ -444,17 +453,22 @@ export class AdminService {
     if (res.rows.length === 0) throw new Error('Request not found or already reviewed');
     const userId = String(res.rows[0].user_id);
     const email = String(res.rows[0].requested_email);
+    const appUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || '';
+    const mailOk = await mailService.send({
+      to: email,
+      subject: 'رمز تأكيد تغيير كلمة المرور — إيجار',
+      text: `تمت الموافقة على طلبك.\n\nرمز التأكيد لمرة واحدة:\n${completionToken}\n\nصالح لمدة 30 دقيقة.${
+        appUrl ? `\n\nأكمل من: ${appUrl}` : ''
+      }`,
+    });
     await this.notificationService.create({
       user_id: userId,
       type: 'system',
       title: 'تمت الموافقة على تغيير كلمة المرور',
-      message: 'تمت الموافقة. استخدم رمز التأكيد المرسل لإدخال كلمة المرور الجديدة خلال 30 دقيقة.',
+      message: mailOk
+        ? 'أرسلنا رمز التأكيد إلى بريدك. أدخله خلال 30 دقيقة لتعيين كلمة مرور جديدة.'
+        : `رمز التأكيد (صالح 30 دقيقة): ${completionToken}`,
       related_id: requestId,
-    });
-    await mailService.send({
-      to: email,
-      subject: 'رمز تأكيد تغيير كلمة المرور — إيجار',
-      text: `رمز التأكيد لمرة واحدة: ${completionToken}\nصالح لمدة 30 دقيقة.`,
     });
     // Return token so admin UI / tests can complete flow when SMTP is not configured
     return { completionToken };

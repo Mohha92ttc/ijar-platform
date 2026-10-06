@@ -102,6 +102,21 @@ export class CouriersService {
         `,
         [courierId]
       );
+      await query(
+        `
+        UPDATE bookings
+        SET return_courier_id = NULL,
+            return_status = CASE
+              WHEN COALESCE(return_requested, FALSE) AND return_status IS DISTINCT FROM 'delivered'
+              THEN 'pending_assign'
+              ELSE return_status
+            END,
+            updated_at = NOW()
+        WHERE return_courier_id = $1
+          AND COALESCE(return_status, '') <> 'delivered'
+        `,
+        [courierId]
+      );
     }
   }
 

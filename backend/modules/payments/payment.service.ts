@@ -147,7 +147,23 @@ export class PaymentService {
       created_at: new Date()
     };
 
-    return await this.repository.save(payment);
+    const saved = await this.repository.save(payment);
+
+    if (!isCod && proofPath && status === 'under_review' && effectiveOwnerId) {
+      try {
+        await this.notificationService.create({
+          user_id: effectiveOwnerId,
+          type: 'payment',
+          title: reuseId ? 'تم استبدال إثبات الدفع' : 'إثبات دفع جديد',
+          message: `الزبون رفع إثبات تحويل للحجز ${data.booking_id}. راجع الصورة من لوحة الطلبات.`,
+          related_id: String(data.booking_id),
+        });
+      } catch {
+        // non-blocking
+      }
+    }
+
+    return saved;
   }
 
   /**
@@ -391,16 +407,24 @@ export class PaymentService {
       const isCod = method === 'cash' || method === 'cash_on_delivery';
       if (!isCod) return;
       // COD with delivery: cash collected at handoff — leave pending until delivered
-      const bookingId = String(raw.booking_id || payment.booking_id || '');
-      if (bookingId) {
-        const b = await query(
-          `SELECT delivery_requested FROM bookings WHERE id = $1 LIMIT 1`,
-          [bookingId]
-        );
+      const bid = String(raw.booking_id || payment.booking_id || '');
+      if (bid) {
+        const b = await query(`SELECT delivery_requested FROM bookings WHERE id = $1 LIMIT 1`, [bid]);
         if (b.rows[0]?.delivery_requested) return;
       }
     }
-    await this.adminReview(String(raw.id || payment.id), approve, notes || (approve ? 'موافقة الشريك' : 'رفض الشريك'));
+
+    const paymentId = String(raw.id || payment.id);
+    if (approve) {
+      // الحجز مؤكد مسبقاً من BookingService — لا تعِد رسائل «بانتظار تأكيد الشريك»
+      await this.repository.updateStatus(paymentId, 'approved');
+      if (notes) {
+        await query(`UPDATE payments SET notes = COALESCE(notes,'') || $1 WHERE id = $2`, [` | ${notes}`, paymentId]);
+      }
+      return;
+    }
+
+    await this.adminReview(paymentId, false, notes || 'رفض الشريك', ownerId);
   }
 
   /** On cancel: reject open reviews; mark approved as refunded (manual settlement). */

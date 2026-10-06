@@ -147,8 +147,42 @@ export class BookingService {
     return newBooking;
   }
 
+  /** Cancel pending bookings older than 48h so they stop locking the calendar. */
+  private async expireStalePending(equipmentId?: string): Promise<void> {
+    try {
+      if (equipmentId) {
+        await query(
+          `
+          UPDATE bookings
+          SET status = 'cancelled'::booking_status,
+              cancel_reason = COALESCE(cancel_reason, 'انتهت مهلة الانتظار دون تأكيد (48 ساعة)'),
+              updated_at = NOW()
+          WHERE equipment_id = $1
+            AND status = 'pending'
+            AND created_at < NOW() - INTERVAL '48 hours'
+          `,
+          [equipmentId]
+        );
+      } else {
+        await query(
+          `
+          UPDATE bookings
+          SET status = 'cancelled'::booking_status,
+              cancel_reason = COALESCE(cancel_reason, 'انتهت مهلة الانتظار دون تأكيد (48 ساعة)'),
+              updated_at = NOW()
+          WHERE status = 'pending'
+            AND created_at < NOW() - INTERVAL '48 hours'
+          `
+        );
+      }
+    } catch (e) {
+      console.warn('[booking] expireStalePending failed', e instanceof Error ? e.message : e);
+    }
+  }
+
   /** true = no overlapping pending/confirmed booking */
   async checkAvailability(equipmentId: string, start: Date, end: Date): Promise<boolean> {
+    await this.expireStalePending(equipmentId);
     const res = await query(
       `
       SELECT 1 FROM bookings
@@ -168,6 +202,7 @@ export class BookingService {
     from?: Date,
     to?: Date
   ): Promise<{ start: string; end: string; status: string }[]> {
+    await this.expireStalePending(equipmentId);
     const params: unknown[] = [equipmentId];
     let sql = `
       SELECT start_date::date AS start, end_date::date AS end, status::text AS status
@@ -356,13 +391,7 @@ export class BookingService {
       } catch (e) {
         console.warn('[booking] cancel payment settle failed', e instanceof Error ? e.message : e);
       }
-      try {
-        await query(`UPDATE equipment SET status = 'available'::equipment_status WHERE id = $1`, [
-          booking.equipment_id,
-        ]);
-      } catch {
-        // ignore
-      }
+      await this.releaseEquipmentIfIdle(booking.equipment_id);
     } else if (status === 'completed') {
       await this.notificationService.create({
         user_id: booking.customer_id,
@@ -371,13 +400,7 @@ export class BookingService {
         message: `اكتمل إيجار «${equipment.title}». يمكنك تقييم تجربتك من لوحة الحجوزات.`,
         related_id: booking.id,
       });
-      try {
-        await query(`UPDATE equipment SET status = 'available'::equipment_status WHERE id = $1`, [
-          booking.equipment_id,
-        ]);
-      } catch {
-        // ignore
-      }
+      await this.releaseEquipmentIfIdle(booking.equipment_id);
     }
 
     // Partner confirm/reject also settles the booking payment review when applicable
@@ -397,6 +420,20 @@ export class BookingService {
     }
 
     return booking;
+  }
+
+  /** Mark equipment available only when no other confirmed booking still holds it. */
+  private async releaseEquipmentIfIdle(equipmentId: string): Promise<void> {
+    try {
+      const active = await query(
+        `SELECT 1 FROM bookings WHERE equipment_id = $1 AND status = 'confirmed' LIMIT 1`,
+        [equipmentId]
+      );
+      if (active.rows.length > 0) return;
+      await query(`UPDATE equipment SET status = 'available'::equipment_status WHERE id = $1`, [equipmentId]);
+    } catch {
+      // ignore enum / race
+    }
   }
 
   async getByCustomer(customerId: string): Promise<any[]> {
