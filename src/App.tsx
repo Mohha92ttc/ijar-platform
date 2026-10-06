@@ -295,18 +295,32 @@ export default function App() {
   // Deep-links: ?partner= / ?equipment=
   useEffect(() => {
     if (loadingList) return;
-    const params = new URLSearchParams(window.location.search);
-    const partnerId = params.get('partner');
-    const equipmentId = params.get('equipment');
-    if (partnerId && partnerId !== selectedOwnerId) {
-      setSelectedOwnerId(partnerId);
-      setActiveCategory('الكل');
-    }
-    if (equipmentId && (!selectedEquipment || selectedEquipment.id !== equipmentId)) {
-      const found = list.find((e) => e.id === equipmentId);
-      if (found) setSelectedEquipment(found);
-    }
-    // only on list load / first paint
+    let cancelled = false;
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const partnerId = params.get('partner');
+      const equipmentId = params.get('equipment');
+      if (partnerId && partnerId !== selectedOwnerId) {
+        setSelectedOwnerId(partnerId);
+        setActiveCategory('الكل');
+      }
+      if (equipmentId && (!selectedEquipment || selectedEquipment.id !== equipmentId)) {
+        const found = list.find((e) => e.id === equipmentId);
+        if (found) {
+          await openBooking(found);
+        } else {
+          try {
+            const e = await apiJson<Record<string, unknown>>(`/api/equipment/${equipmentId}`);
+            if (!cancelled) await openBooking(mapApiEquipment(e));
+          } catch {
+            // رابط منتهٍ أو معدة مخفية
+          }
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingList, list]);
 

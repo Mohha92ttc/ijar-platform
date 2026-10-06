@@ -141,12 +141,12 @@ export default function BookingModal({
     {
       id: 'zain_cash',
       icon: <CreditCard size={20} />,
-      hint: 'تحويل عبر زين كاش — يُراجع الشريك/الإدارة',
+      hint: 'تحويل عبر زين كاش — يراجعه الشريك',
     },
     {
       id: 'asia_hawala',
       icon: <Banknote size={20} />,
-      hint: 'حوالة محلية — يُراجع الشريك/الإدارة',
+      hint: 'حوالة محلية — يراجعها الشريك',
     },
     {
       id: 'manual',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Package, EyeOff, Wrench, CheckCircle, RefreshCw } from 'lucide-react';
+import { Package, EyeOff, Eye, RefreshCw } from 'lucide-react';
 import { apiJson, ApiError } from '../lib/api';
 
 type AdminEquipment = {
@@ -15,8 +15,8 @@ type AdminEquipment = {
 const statusAr: Record<string, string> = {
   available: 'متاحة',
   rented: 'مؤجرة',
-  maintenance: 'صيانة',
-  hidden: 'مخفية',
+  maintenance: 'صيانة (الشريك)',
+  hidden: 'مخفية (سياسة)',
 };
 
 export default function AdminEquipmentPanel() {
@@ -40,7 +40,12 @@ export default function AdminEquipmentPanel() {
     load();
   }, [load]);
 
-  const setStatus = async (id: string, status: string) => {
+  const setStatus = async (id: string, status: 'hidden' | 'available') => {
+    const note =
+      status === 'hidden'
+        ? 'إخفاء المعدة من السوق لمخالفة/سياسة؟ (الصيانة والتفعيل اليومي يبقى للشريك)'
+        : 'إلغاء الإخفاء الإداري وإعادة المعدة متاحة؟';
+    if (!confirm(note)) return;
     try {
       await apiJson(`/api/admin/equipment/${id}/status`, {
         method: 'PATCH',
@@ -61,7 +66,7 @@ export default function AdminEquipmentPanel() {
     <div className="space-y-4" data-testid="admin-equipment-panel">
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          <Package size={20} className="text-blue-600" /> إشراف المعدات
+          <Package size={20} className="text-blue-600" /> إشراف المعدات (سياسة)
         </h3>
         <div className="flex gap-2">
           <input
@@ -76,6 +81,9 @@ export default function AdminEquipmentPanel() {
           </button>
         </div>
       </div>
+      <p className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
+        الأدمن يخفي المعدات المخالفة فقط. التوفر والصيانة من لوحة الشريك.
+      </p>
       {loading && <p className="text-sm text-slate-500">جاري التحميل…</p>}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <table className="w-full text-right text-sm">
@@ -86,7 +94,7 @@ export default function AdminEquipmentPanel() {
               <th className="p-3">التصنيف</th>
               <th className="p-3">الحالة</th>
               <th className="p-3">السعر/يوم</th>
-              <th className="p-3">إجراءات</th>
+              <th className="p-3">سياسة</th>
             </tr>
           </thead>
           <tbody>
@@ -103,30 +111,27 @@ export default function AdminEquipmentPanel() {
                 <td className="p-3">{Number(e.price_per_day || 0).toLocaleString()} د.ع</td>
                 <td className="p-3">
                   <div className="flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      title="إظهار / متاح"
-                      className="p-1.5 text-green-700 hover:bg-green-50 rounded-lg"
-                      onClick={() => setStatus(e.id, 'available')}
-                    >
-                      <CheckCircle size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      title="صيانة"
-                      className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg"
-                      onClick={() => setStatus(e.id, 'maintenance')}
-                    >
-                      <Wrench size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      title="إخفاء"
-                      className="p-1.5 text-red-700 hover:bg-red-50 rounded-lg"
-                      onClick={() => setStatus(e.id, 'hidden')}
-                    >
-                      <EyeOff size={16} />
-                    </button>
+                    {e.status !== 'hidden' ? (
+                      <button
+                        type="button"
+                        data-testid="admin-equipment-hide"
+                        title="إخفاء من السوق"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-red-700 bg-red-50 rounded-lg"
+                        onClick={() => setStatus(e.id, 'hidden')}
+                      >
+                        <EyeOff size={14} /> إخفاء
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="admin-equipment-unhide"
+                        title="إلغاء الإخفاء"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-green-700 bg-green-50 rounded-lg"
+                        onClick={() => setStatus(e.id, 'available')}
+                      >
+                        <Eye size={14} /> إظهار
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

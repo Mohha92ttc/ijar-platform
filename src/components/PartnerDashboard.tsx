@@ -673,11 +673,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       return;
     }
 
+    if (!newEquipment.pickupPin) {
+      alert('حدد موقع الاستلام على الخريطة — يحتاجه الزبون عند الاستلام الذاتي.');
+      return;
+    }
+
     const governorate = newEquipment.governorate.trim();
     const area = newEquipment.area.trim() || null;
     const location = formatEquipmentLocation(governorate, area);
-    const pickup_lat = newEquipment.pickupPin?.lat ?? null;
-    const pickup_lng = newEquipment.pickupPin?.lng ?? null;
+    const pickup_lat = newEquipment.pickupPin.lat;
+    const pickup_lng = newEquipment.pickupPin.lng;
 
     try {
       if (editingEquipmentId) {
@@ -1711,7 +1716,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   <p className="text-[11px] text-slate-400">يمكنك إضافة صور إضافية للمعدة</p>
                 </div>
                 <div className="space-y-2 mb-4" data-testid="partner-equipment-pickup-map">
-                  <label className="text-sm font-medium text-slate-700">موقع الاستلام (للزبون عند الاستلام الذاتي)</label>
+                  <label className="text-sm font-medium text-slate-700">
+                    موقع الاستلام (إلزامي) — يظهر للزبون عند الاستلام الذاتي
+                  </label>
                   <MapPicker
                     value={newEquipment.pickupPin}
                     onChange={(pin) => setNewEquipment({ ...newEquipment, pickupPin: pin })}

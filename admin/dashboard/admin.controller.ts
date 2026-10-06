@@ -103,7 +103,8 @@ export class AdminController {
       if (!actor?.userId) return res.status(401).json({ error: 'Unauthorized' });
       const { id } = req.params;
       const status = String(req.body?.status || '');
-      await this.adminService.updateBookingStatus(id, status, actor.userId);
+      const reason = req.body?.reason != null ? String(req.body.reason) : undefined;
+      await this.adminService.updateBookingStatus(id, status, actor.userId, reason);
       res.status(200).json({ message: 'تم تحديث الحجز' });
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل تحديث الحجز') });
@@ -158,9 +159,11 @@ export class AdminController {
 
   reviewPayment = async (req: Request, res: Response) => {
     try {
+      const actor = (req as Request & { user?: { userId?: string } }).user;
+      if (!actor?.userId) return res.status(401).json({ error: 'Unauthorized' });
       const { id } = req.params;
       const { approve, notes } = req.body;
-      await this.adminService.reviewPayment(id, approve, notes);
+      await this.adminService.reviewPayment(id, approve, notes, actor.userId);
       res.status(200).json({ message: `Payment ${approve ? 'approved' : 'rejected'}` });
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل مراجعة الدفع') });

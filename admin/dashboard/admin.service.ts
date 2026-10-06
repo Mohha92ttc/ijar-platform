@@ -136,8 +136,15 @@ export class AdminService {
     return ins.rows[0];
   }
 
-  async updateEquipmentStatus(equipmentId: string, status: any): Promise<void> {
-    await query('UPDATE equipment SET status = $1 WHERE id = $2', [status, equipmentId]);
+  async updateEquipmentStatus(equipmentId: string, status: string): Promise<void> {
+    const allowed = ['hidden', 'available'];
+    if (!allowed.includes(status)) {
+      throw new Error('الأدمن يخفي المعدات أو يلغي الإخفاء فقط. التوفر والصيانة من عمل الشريك.');
+    }
+    await query('UPDATE equipment SET status = $1::equipment_status, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [
+      status,
+      equipmentId,
+    ]);
   }
 
   async banUser(userId: string): Promise<void> {
@@ -213,15 +220,27 @@ export class AdminService {
     return res.rows;
   }
 
-  async updateBookingStatus(bookingId: string, status: string, adminUserId: string): Promise<void> {
-    const allowed = ['pending', 'confirmed', 'cancelled', 'completed'];
-    if (!allowed.includes(status)) throw new Error('حالة غير صالحة');
+  async updateBookingStatus(
+    bookingId: string,
+    status: string,
+    adminUserId: string,
+    reason?: string
+  ): Promise<void> {
+    if (status !== 'cancelled') {
+      throw new Error(
+        'الأدمن يتدخل بالطوارئ فقط عبر إلغاء الحجز. تأكيد وإكمال الحجز من لوحة الشريك.'
+      );
+    }
+    const why = String(reason || '').trim();
+    if (!why) {
+      throw new Error('سبب الإلغاء الإداري مطلوب');
+    }
     const { BookingService } = await import('../../backend/modules/bookings/bookings.service');
     const bookingService = new BookingService();
-    await bookingService.updateStatus(bookingId, status as 'pending' | 'confirmed' | 'cancelled' | 'completed', {
+    await bookingService.updateStatus(bookingId, 'cancelled', {
       userId: adminUserId,
       role: 'admin',
-    });
+    }, { reason: why });
   }
 
   async listAllEquipment(): Promise<any[]> {
@@ -358,8 +377,13 @@ export class AdminService {
     await query('DELETE FROM users WHERE id = $1', [id]);
   }
 
-  async reviewPayment(paymentId: string, approve: boolean, notes?: string): Promise<void> {
-    await this.paymentService.adminReview(paymentId, approve, notes);
+  async reviewPayment(
+    paymentId: string,
+    approve: boolean,
+    notes?: string,
+    adminUserId?: string
+  ): Promise<void> {
+    await this.paymentService.adminReview(paymentId, approve, notes, adminUserId);
   }
 
   async settleRefund(paymentId: string, notes?: string): Promise<void> {

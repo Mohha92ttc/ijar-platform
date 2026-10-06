@@ -564,8 +564,8 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'partners' && 'إدارة الشركاء والمشتركين'}
             {activeTab === 'customers' && 'إدارة الزبائن'}
             {activeTab === 'couriers' && 'حسابات المندوبين'}
-            {activeTab === 'bookings' && 'إدارة الحجوزات'}
-            {activeTab === 'equipment' && 'إشراف المعدات'}
+            {activeTab === 'bookings' && 'متابعة الحجوزات'}
+            {activeTab === 'equipment' && 'إشراف المعدات (سياسة)'}
             {activeTab === 'payment-approval' && 'تجاوز إداري لمدفوعات الحجوزات (يُفضَّل مراجعة الشريك أولاً)'}
             {activeTab === 'featured-approval' && 'موافقات الإعلان المميز'}
             {activeTab === 'subscription-approval' && 'موافقات اشتراكات الشركاء'}
@@ -737,7 +737,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         {activeTab === 'payment-approval' && (
           <div className="space-y-3">
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3" data-testid="admin-booking-payment-hint">
-              المراجعة الأساسية لإثبات تحويل الحجز عند الشريك. موافقة الأدمن هنا تجاوز إداري: تؤكد الحجز المعلّق، والرفض يلغي الحجز.
+              إثبات تحويل الحجز يراجعه الشريك أولاً. مراجعة الأدمن هنا تجاوز عند نزاع فقط: الموافقة تقبل الإثبات دون تأكيد الحجز، والرفض يلغي الحجز مع سبب ويحسب الاسترداد إن لزم.
             </p>
             <PaymentApproval filterType="booking" />
           </div>

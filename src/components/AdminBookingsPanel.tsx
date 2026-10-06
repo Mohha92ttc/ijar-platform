@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Calendar, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Calendar, XCircle, RefreshCw } from 'lucide-react';
 import { apiJson, ApiError } from '../lib/api';
 
 type AdminBooking = {
@@ -14,11 +14,12 @@ type AdminBooking = {
   delivery_status?: string | null;
   return_requested?: boolean;
   return_status?: string | null;
+  cancel_reason?: string | null;
 };
 
 const statusLabel: Record<string, string> = {
-  pending: 'بانتظار',
-  confirmed: 'مؤكد',
+  pending: 'بانتظار الشريك',
+  confirmed: 'مؤكد (الشريك)',
   cancelled: 'ملغي',
   completed: 'مكتمل',
 };
@@ -52,16 +53,27 @@ export default function AdminBookingsPanel() {
     load();
   }, [load]);
 
-  const setStatus = async (id: string, status: string) => {
-    if (!confirm(`تغيير حالة الحجز إلى «${statusLabel[status] || status}»؟`)) return;
+  /** طوارئ فقط — تأكيد/إكمال الحجز عمل الشريك */
+  const emergencyCancel = async (id: string) => {
+    const reason = window.prompt(
+      'إلغاء طارئ (يتطلب تواصلاً مع الشريك/الزبون). اكتب السبب الذي سيظهر للزبون:',
+      'إلغاء إداري بعد تواصل مع الشريك'
+    );
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      alert('سبب الإلغاء مطلوب');
+      return;
+    }
+    if (!confirm('تأكيد الإلغاء الطارئ؟ لن يُؤكَّد أو يُكمَّل الحجز من هنا — ذلك من لوحة الشريك.')) return;
     try {
       await apiJson(`/api/admin/bookings/${id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: 'cancelled', reason: trimmed }),
       });
       await load();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر التحديث');
+      alert(e instanceof ApiError ? e.message : 'تعذر الإلغاء');
     }
   };
 
@@ -74,7 +86,7 @@ export default function AdminBookingsPanel() {
     <div className="space-y-4" data-testid="admin-bookings-panel">
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          <Calendar size={20} className="text-blue-600" /> حجوزات المنصة
+          <Calendar size={20} className="text-blue-600" /> متابعة الحجوزات
         </h3>
         <div className="flex gap-2">
           <input
@@ -94,6 +106,9 @@ export default function AdminBookingsPanel() {
           </button>
         </div>
       </div>
+      <p className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3" data-testid="admin-bookings-role-hint">
+        التأكيد والإكمال ورفض الحجز اليومي من عمل الشريك. الأدمن يتدخل فقط بإلغاء طارئ عند نزاع أو طلب صريح.
+      </p>
       {loading && <p className="text-sm text-slate-500">جاري التحميل…</p>}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
         <table className="w-full text-right text-sm">
@@ -104,7 +119,7 @@ export default function AdminBookingsPanel() {
               <th className="p-3">التواريخ</th>
               <th className="p-3">الحالة</th>
               <th className="p-3">التوصيل</th>
-              <th className="p-3">إجراءات</th>
+              <th className="p-3">طوارئ</th>
             </tr>
           </thead>
           <tbody>
@@ -120,6 +135,9 @@ export default function AdminBookingsPanel() {
                   <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100">
                     {statusLabel[b.status] || b.status}
                   </span>
+                  {b.cancel_reason && (
+                    <p className="text-[10px] text-red-600 mt-1 max-w-[160px]">{b.cancel_reason}</p>
+                  )}
                 </td>
                 <td className="p-3 text-xs space-y-1">
                   {b.delivery_requested ? (
@@ -134,37 +152,19 @@ export default function AdminBookingsPanel() {
                   )}
                 </td>
                 <td className="p-3">
-                  <div className="flex flex-wrap gap-1">
-                    {b.status === 'pending' && (
-                      <button
-                        type="button"
-                        className="p-1.5 text-green-700 hover:bg-green-50 rounded-lg"
-                        title="تأكيد"
-                        onClick={() => setStatus(b.id, 'confirmed')}
-                      >
-                        <CheckCircle size={16} />
-                      </button>
-                    )}
-                    {['pending', 'confirmed'].includes(b.status) && (
-                      <button
-                        type="button"
-                        className="p-1.5 text-red-700 hover:bg-red-50 rounded-lg"
-                        title="إلغاء"
-                        onClick={() => setStatus(b.id, 'cancelled')}
-                      >
-                        <XCircle size={16} />
-                      </button>
-                    )}
-                    {b.status === 'confirmed' && (
-                      <button
-                        type="button"
-                        className="px-2 py-1 text-[10px] font-bold bg-blue-50 text-blue-700 rounded-lg"
-                        onClick={() => setStatus(b.id, 'completed')}
-                      >
-                        إكمال
-                      </button>
-                    )}
-                  </div>
+                  {['pending', 'confirmed'].includes(b.status) ? (
+                    <button
+                      type="button"
+                      data-testid="admin-booking-emergency-cancel"
+                      className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100"
+                      title="إلغاء طارئ"
+                      onClick={() => emergencyCancel(b.id)}
+                    >
+                      <XCircle size={14} /> إلغاء طارئ
+                    </button>
+                  ) : (
+                    <span className="text-xs text-slate-400">—</span>
+                  )}
                 </td>
               </tr>
             ))}

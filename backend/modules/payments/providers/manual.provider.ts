@@ -16,7 +16,7 @@ export class ManualProvider implements IPaymentProvider {
       success: true,
       payment_id: `manual_${Math.random().toString(36).substr(2, 9)}`,
       status: status,
-      message: status === 'under_review' ? 'Payment is under review by admin' : 'Please upload proof of payment'
+      message: status === 'under_review' ? 'Payment is under review by the partner' : 'Please upload proof of payment'
     };
   }
 
