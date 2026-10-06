@@ -205,8 +205,8 @@ export class BookingService {
       if (equipment.owner_id !== actor.userId) {
         throw new Error('Not authorized to update this booking');
       }
-      const { assertOwnerSubscriptionActive } = await import('../subscriptions/subscription.policy');
-      await assertOwnerSubscriptionActive(actor.userId);
+      // Lifecycle on existing bookings stays allowed when sub expires;
+      // market visibility / new listings are gated elsewhere.
     } else if (actor.role !== 'admin') {
       throw new Error('Not authorized to update this booking');
     }
@@ -425,6 +425,8 @@ export class BookingService {
              p.method::text AS payment_db_method,
              p.status::text AS payment_status,
              p.notes AS payment_notes,
+             p.commission AS payment_commission,
+             p.owner_amount AS payment_owner_amount,
              c.name AS courier_name,
              c.phone AS courier_phone,
              rc.name AS return_courier_name
@@ -434,7 +436,7 @@ export class BookingService {
       LEFT JOIN couriers c ON c.id = b.assigned_courier_id
       LEFT JOIN couriers rc ON rc.id = b.return_courier_id
       LEFT JOIN LATERAL (
-        SELECT payment_proof, method, status, notes
+        SELECT payment_proof, method, status, notes, commission, owner_amount
         FROM payments
         WHERE booking_id = b.id
         ORDER BY created_at DESC

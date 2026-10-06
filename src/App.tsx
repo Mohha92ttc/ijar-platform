@@ -653,7 +653,12 @@ export default function App() {
         setCart((prev) => prev.filter((x) => !(x.id === item.id && x.startDate === item.startDate)));
       }
       clearCart();
-      setView('home');
+      try {
+        sessionStorage.setItem('ijar_focus_booking', '1');
+      } catch {
+        // ignore
+      }
+      setView('customer');
       alert(
         needsProof
           ? 'تم إرسال حجوزاتك مع إثبات الدفع. بانتظار مراجعة الشريك وموافقته.'
@@ -687,6 +692,14 @@ export default function App() {
         userEmail={user?.email}
         onBack={() => setView('home')}
         onLogout={handleLogout}
+        onOpenSupport={(bookingId) => {
+          try {
+            if (bookingId) sessionStorage.setItem('ijar_support_booking', bookingId);
+          } catch {
+            // ignore
+          }
+          setView('help');
+        }}
         onOpenEquipment={async (equipmentId) => {
           setView('home');
           const found = list.find((e) => e.id === equipmentId);
@@ -698,7 +711,7 @@ export default function App() {
             const e = await apiJson<Record<string, unknown>>(`/api/equipment/${equipmentId}`);
             await openBooking(mapApiEquipment(e));
           } catch {
-            // stay on home
+            alert('المعدة غير متاحة أو أُزيلت من السوق');
           }
         }}
       />

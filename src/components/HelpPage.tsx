@@ -41,6 +41,7 @@ const CATEGORY_OPTIONS = [
 export default function HelpPage({ onBack }: { onBack: () => void }) {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [bookingId, setBookingId] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -51,6 +52,23 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
   const [formMsg, setFormMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [contactPhone, setContactPhone] = useState('+964 7700 123 456');
   const [contactEmail, setContactEmail] = useState('support@ijar.iq');
+
+  useEffect(() => {
+    try {
+      const b = sessionStorage.getItem('ijar_support_booking');
+      if (b) {
+        setBookingId(b);
+        setForm((f) => ({
+          ...f,
+          category: 'complaint',
+          message: f.message || `شكوى بخصوص الحجز رقم: ${b}\n\n`,
+        }));
+        sessionStorage.removeItem('ijar_support_booking');
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,10 +98,11 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
     try {
       await apiJson('/api/support/contact', {
         method: 'POST',
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, booking_id: bookingId || undefined }),
       });
       setFormMsg({ type: 'ok', text: 'تم إرسال رسالتك بنجاح. سنرد خلال 24 ساعة.' });
       setForm({ name: '', email: '', category: 'general', message: '' });
+      setBookingId(null);
     } catch (err) {
       setFormMsg({
         type: 'err',
@@ -294,6 +313,11 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
                 className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
+            {bookingId && (
+              <p className="text-xs text-violet-800 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2" data-testid="help-linked-booking">
+                مرتبط بالحجز: <span className="font-mono font-bold">{bookingId}</span>
+              </p>
+            )}
             <select
               data-testid="help-contact-category"
               value={form.category}

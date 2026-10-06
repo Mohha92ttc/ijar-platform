@@ -100,12 +100,14 @@ export default function CustomerDashboard({
   onBack,
   onLogout,
   onOpenEquipment,
+  onOpenSupport,
 }: {
   userId?: string;
   userEmail?: string;
   onBack: () => void;
   onLogout?: () => void;
   onOpenEquipment?: (equipmentId: string) => void;
+  onOpenSupport?: (bookingId?: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState('rentals');
   const [bookings, setBookings] = useState<Row[]>([]);
@@ -710,8 +712,18 @@ export default function CustomerDashboard({
                 )}
                 {booking.status === 'confirmed' && (
                   <p className="text-[11px] text-slate-500" data-testid="customer-cancel-locked">
-                    بعد التأكيد لا يمكن الإلغاء من هنا — تواصل مع الشريك أو الدعم.
+                    بعد التأكيد لا يمكن الإلغاء من هنا — تواصل مع الشريك أو افتح شكوى للدعم.
                   </p>
+                )}
+                {onOpenSupport && ['pending', 'confirmed', 'cancelled', 'completed'].includes(booking.status) && (
+                  <button
+                    type="button"
+                    data-testid="customer-dispute-booking"
+                    onClick={() => onOpenSupport(booking.id)}
+                    className="text-xs font-bold text-violet-700 border border-violet-200 px-3 py-1.5 rounded-xl hover:bg-violet-50"
+                  >
+                    شكوى / دعم لهذا الحجز
+                  </button>
                 )}
                 {booking.status === 'completed' && !booking.reviewed && (
                   <div className="border-t border-slate-100 pt-3 space-y-2" data-testid="customer-review-box">

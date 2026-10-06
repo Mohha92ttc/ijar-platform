@@ -409,10 +409,13 @@ async function createTables() {
       message TEXT NOT NULL,
       status VARCHAR(30) DEFAULT 'open',
       admin_notes TEXT,
+      booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+    ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_support_messages_status ON support_messages (status);
+    CREATE INDEX IF NOT EXISTS idx_support_messages_booking ON support_messages (booking_id);
 
     CREATE TABLE IF NOT EXISTS favorites (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

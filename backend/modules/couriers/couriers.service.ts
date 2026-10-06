@@ -222,12 +222,15 @@ export class CouriersService {
         SELECT b.id, b.start_date, b.end_date, b.delivery_lat, b.delivery_lng, b.delivery_address,
                b.delivery_fee, b.customer_phone, b.status,
                e.title AS equipment_title, e.location AS equipment_location,
+               e.pickup_lat, e.pickup_lng,
                u.name AS customer_name, u.phone AS customer_user_phone,
+               ow.name AS owner_name, ow.phone AS owner_phone,
                b.delivery_status AS job_status,
                'outbound'::text AS delivery_leg
         FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         JOIN users u ON u.id = b.customer_id
+        JOIN users ow ON ow.id = e.owner_id
         WHERE b.assigned_courier_id = $1
           AND COALESCE(b.delivery_requested, FALSE) = TRUE
 
@@ -236,12 +239,15 @@ export class CouriersService {
         SELECT b.id, b.start_date, b.end_date, b.delivery_lat, b.delivery_lng, b.delivery_address,
                b.delivery_fee, b.customer_phone, b.status,
                e.title AS equipment_title, e.location AS equipment_location,
+               e.pickup_lat, e.pickup_lng,
                u.name AS customer_name, u.phone AS customer_user_phone,
+               ow.name AS owner_name, ow.phone AS owner_phone,
                b.return_status AS job_status,
                'return'::text AS delivery_leg
         FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         JOIN users u ON u.id = b.customer_id
+        JOIN users ow ON ow.id = e.owner_id
         WHERE b.return_courier_id = $1
           AND COALESCE(b.return_requested, FALSE) = TRUE
       ) jobs

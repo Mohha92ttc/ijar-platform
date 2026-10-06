@@ -10,6 +10,7 @@ type SupportMsg = {
   message: string;
   status: string;
   admin_notes?: string | null;
+  booking_id?: string | null;
   created_at: string;
 };
 
@@ -117,6 +118,11 @@ export default function AdminSupportPanel() {
               </span>
             </div>
             <p className="text-sm text-slate-700 whitespace-pre-wrap">{m.message}</p>
+            {m.booking_id && (
+              <p className="text-xs text-violet-800 bg-violet-50 rounded-xl px-3 py-2 font-mono" data-testid="admin-support-booking-id">
+                حجز مرتبط: {m.booking_id}
+              </p>
+            )}
             {m.admin_notes && (
               <p className="text-xs text-blue-800 bg-blue-50 rounded-xl px-3 py-2">ملاحظة: {m.admin_notes}</p>
             )}

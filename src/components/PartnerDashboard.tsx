@@ -50,6 +50,8 @@ type Bk = {
   returnStatus?: string | null;
   returnCourierId?: string | null;
   returnCourierName?: string | null;
+  ownerAmount?: number | null;
+  commission?: number | null;
 };
 
 type CourierRow = {
@@ -105,6 +107,8 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '' });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
 
   const [bookings, setBookings] = useState<Bk[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,6 +230,8 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           returnStatus: b.return_status ? String(b.return_status) : null,
           returnCourierId: b.return_courier_id ? String(b.return_courier_id) : null,
           returnCourierName: b.return_courier_name ? String(b.return_courier_name) : null,
+          ownerAmount: b.payment_owner_amount != null ? Number(b.payment_owner_amount) : null,
+          commission: b.payment_commission != null ? Number(b.payment_commission) : null,
         };
       });
       setBookings(mappedBookings);
@@ -253,16 +259,55 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   }, [loadData]);
 
   useEffect(() => {
+    if (!ownerId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await apiJson<{ is_read?: boolean }[]>(`/api/notifications/user/${ownerId}`);
+        if (!cancelled) setUnreadNotifs(rows.filter((n) => !n.is_read).length);
+      } catch {
+        if (!cancelled) setUnreadNotifs(0);
+      }
+    })();
+    try {
+      const focus = sessionStorage.getItem('ijar_focus_booking');
+      if (focus) {
+        setFocusBookingId(focus);
+        setActiveTab('bookings');
+        sessionStorage.removeItem('ijar_focus_booking');
+      }
+    } catch {
+      // ignore
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerId]);
+
+  useEffect(() => {
+    if (!focusBookingId || activeTab !== 'bookings') return;
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-booking-id="${focusBookingId}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [focusBookingId, activeTab, bookings]);
+
+  useEffect(() => {
     if (!profile) return;
-    if (!subscriptionActive && activeTab !== 'featured' && activeTab !== 'settings') {
+    // عند انتهاء الاشتراك: يبقى تبويب الحجوزات مفتوحاً لإكمال الطلبات الجارية
+    const allowedFrozen = ['featured', 'settings', 'bookings'];
+    if (!subscriptionActive && !allowedFrozen.includes(activeTab)) {
       setActiveTab('featured');
     }
   }, [profile, subscriptionActive, activeTab]);
 
-  const guardSub = (actionLabel: string) => {
+  /** يمنع أعمال السوق الجديدة عند التجميد؛ يسمح بإكمال الحجوزات الجارية */
+  const guardSub = (actionLabel: string, opts?: { allowLifecycle?: boolean }) => {
     if (subscriptionActive) return true;
+    if (opts?.allowLifecycle) return true;
     alert(
-      `الحساب مجمّد: ${actionLabel} تحتاج اشتراكاً مفعّلاً. ادفع من تبويب الاشتراك حتى تُعاد منشوراتك للعمل.`
+      `الحساب مجمّد: ${actionLabel} تحتاج اشتراكاً مفعّلاً. يمكنك إكمال الحجوزات الجارية من تبويب الطلبات، وجدّد الاشتراك لإضافة معدات جديدة.`
     );
     setActiveTab('featured');
     return false;
@@ -374,7 +419,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   };
 
   const requestReturn = async (bookingId: string) => {
-    if (!guardSub('طلب الاسترجاع')) return;
+    if (!guardSub('طلب الاسترجاع', { allowLifecycle: true })) return;
     if (!confirm('طلب استرجاع المعدة من الزبون؟')) return;
     try {
       await apiJson(`/api/couriers/request-return/${bookingId}`, {
@@ -392,7 +437,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     delivery_status: 'delivered' | 'failed',
     leg: 'outbound' | 'return' = 'outbound'
   ) => {
-    if (!guardSub('تحديث التوصيل')) return;
+    if (!guardSub('تحديث التوصيل', { allowLifecycle: true })) return;
     const label =
       delivery_status === 'delivered'
         ? leg === 'return'
@@ -576,7 +621,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   };
 
   const updateBookingStatus = async (id: string, newStatus: string, reason?: string) => {
-    if (!guardSub('تحديث الحجوزات')) return;
+    if (!guardSub('تحديث الحجوزات', { allowLifecycle: true })) return;
     const booking = bookings.find((b) => b.id === id);
     if (newStatus === 'completed' && booking?.deliveryRequested) {
       const ds = String(booking.deliveryStatus || '');
@@ -1000,10 +1045,15 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               type="button"
               data-testid="partner-notifications"
               onClick={() => setShowNotifications(true)}
-              className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50"
+              className="relative p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50"
               title="الإشعارات"
             >
               <Bell size={18} className="text-slate-600" />
+              {unreadNotifs > 0 && (
+                <span className="absolute -top-1 -left-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {unreadNotifs > 99 ? '99+' : unreadNotifs}
+                </span>
+              )}
             </button>
             {activeTab === 'equipment' && subscriptionActive && (
               <button 
@@ -1028,8 +1078,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               } catch {
                 // ignore
               }
+              setFocusBookingId(String(n.related_id));
               setActiveTab('bookings');
             }
+            setShowNotifications(false);
+            setUnreadNotifs(0);
           }}
         />
 
@@ -1039,6 +1092,17 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             <h3 className="text-lg font-bold flex items-center gap-2">
               <Clock className="text-blue-600" size={20} /> الطلبات الأخيرة
             </h3>
+            {!subscriptionActive && (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+                الاشتراك منتهٍ — يمكنك إكمال الحجوزات الجارية هنا. إضافة معدات جديدة والتسويق يحتاج تجديداً.
+              </p>
+            )}
+            {!loading && bookings.length === 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-2" data-testid="partner-bookings-empty">
+                <p className="font-bold text-slate-700">لا طلبات بعد</p>
+                <p className="text-sm text-slate-500">عندما يحجز زبون معدتك ستظهر الطلبات هنا للموافقة أو الرفض.</p>
+              </div>
+            )}
             
             <div className="grid gap-4">
               {bookings.map((booking) => (
@@ -1046,8 +1110,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                   key={booking.id}
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4"
+                  className={`bg-white p-6 rounded-2xl border shadow-sm flex flex-col gap-4 ${
+                    focusBookingId === booking.id ? 'border-blue-400 ring-2 ring-blue-100' : 'border-slate-200'
+                  }`}
                   data-testid="partner-booking-card"
+                  data-booking-id={booking.id}
                 >
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                   <div className="flex-1 space-y-1">
@@ -1096,6 +1163,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     <div className="text-left md:text-right">
                       <div className="text-xs text-slate-400">المبلغ الإجمالي</div>
                       <div className="text-lg font-bold text-blue-600">{booking.total.toLocaleString()} د.ع</div>
+                      {booking.ownerAmount != null && Number.isFinite(booking.ownerAmount) && (
+                        <div className="text-[11px] text-emerald-700 font-bold mt-0.5" data-testid="partner-booking-net">
+                          صافي تقديري: {Number(booking.ownerAmount).toLocaleString()} د.ع
+                          {booking.commission != null ? ` (عمولة ${Number(booking.commission).toLocaleString()})` : ''}
+                        </div>
+                      )}
                     </div>
                     
                     <div className="flex gap-2 flex-wrap">
@@ -1331,6 +1404,21 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                                   className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-800 border border-violet-100"
                                 >
                                   استرجعت بنفسي
+                                </button>
+                              )}
+                              {booking.returnStatus === 'failed' && (
+                                <p className="text-[11px] text-red-700 bg-red-50 border border-red-100 rounded-lg px-2 py-1.5" data-testid="partner-return-failed-hint">
+                                  فشل الاسترجاع عبر المندوب — أعد التعيين أو سجّل «استرجعت بنفسي» ثم أكمل الإيجار.
+                                </p>
+                              )}
+                              {booking.returnStatus !== 'delivered' && booking.returnStatus !== 'failed' && (
+                                <button
+                                  type="button"
+                                  data-testid="partner-self-return-failed"
+                                  onClick={() => ownerMarkDelivery(booking.id, 'failed', 'return')}
+                                  className="text-xs font-bold px-3 py-2 rounded-xl bg-red-50 text-red-800 border border-red-100"
+                                >
+                                  تعذّر الاسترجاع
                                 </button>
                               )}
                             </div>

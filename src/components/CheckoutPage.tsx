@@ -7,6 +7,7 @@ import { apiJson } from '../lib/api';
 import TransferAccountsPanel from './TransferAccountsPanel';
 import ImageUpload from './ImageUpload';
 import MapPicker, { type MapPin as DeliveryPin } from './MapPicker';
+import { iraqWaDigits } from '../lib/phone';
 
 export type CheckoutFormData = {
   phone: string;
@@ -140,6 +141,10 @@ export default function CheckoutPage({
     }
     if (needsDeliveryMap && !deliveryPin) {
       alert('حدد موقع التوصيل على الخريطة');
+      return;
+    }
+    if (!iraqWaDigits(formData.phone)) {
+      alert('أدخل رقم هاتف عراقي صالح (مثال: 07xx xxx xxxx)');
       return;
     }
     await onComplete({

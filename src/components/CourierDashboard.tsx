@@ -19,6 +19,10 @@ type CourierBooking = {
   start_date?: string;
   end_date?: string;
   status?: string;
+  pickup_lat?: number | null;
+  pickup_lng?: number | null;
+  owner_name?: string | null;
+  owner_phone?: string | null;
 };
 
 function statusLabel(s?: string | null) {
@@ -130,13 +134,47 @@ export default function CourierDashboard({
   };
 
   const openRoute = (b: CourierBooking) => {
-    const lat = Number(b.delivery_lat);
-    const lng = Number(b.delivery_lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      alert('لا توجد إحداثيات لهذا الطلب');
+    const custLat = Number(b.delivery_lat);
+    const custLng = Number(b.delivery_lng);
+    const pickLat = Number(b.pickup_lat);
+    const pickLng = Number(b.pickup_lng);
+    const hasCustomer = Number.isFinite(custLat) && Number.isFinite(custLng);
+    const hasPickup = Number.isFinite(pickLat) && Number.isFinite(pickLng);
+    const leg = String(b.delivery_leg || 'outbound');
+
+    if (leg === 'return') {
+      // استرجاع: من الزبون → إلى مخزن الشريك
+      if (hasCustomer && hasPickup) {
+        const url = googleMapsMultiStopUrl([
+          { lat: custLat, lng: custLng },
+          { lat: pickLat, lng: pickLng },
+        ]);
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer');
+          return;
+        }
+      }
+    } else if (hasPickup && hasCustomer) {
+      // توصيل: من الشريك → إلى الزبون
+      const url = googleMapsMultiStopUrl([
+        { lat: pickLat, lng: pickLng },
+        { lat: custLat, lng: custLng },
+      ]);
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+
+    if (hasCustomer) {
+      window.open(googleMapsDirectionsUrl(custLat, custLng), '_blank', 'noopener,noreferrer');
       return;
     }
-    window.open(googleMapsDirectionsUrl(lat, lng), '_blank', 'noopener,noreferrer');
+    if (hasPickup) {
+      window.open(googleMapsDirectionsUrl(pickLat, pickLng), '_blank', 'noopener,noreferrer');
+      return;
+    }
+    alert('لا توجد إحداثيات لهذا الطلب — اطلب من الشريك تحديد موقع الاستلام والزبون موقع التوصيل');
   };
 
   const pendingStops = useMemo(
@@ -309,6 +347,13 @@ export default function CourierDashboard({
                     <div>
                       <h3 className="font-bold text-slate-800">{b.equipment_title || 'طلب توصيل'}</h3>
                       <p className="text-xs text-slate-500 mt-1">{b.customer_name}</p>
+                      {b.owner_name && (
+                        <p className="text-[11px] text-slate-500 mt-0.5" data-testid="courier-owner-hint">
+                          الشريك: {b.owner_name}
+                          {b.owner_phone ? ` · ${b.owner_phone}` : ''}
+                          {String(b.delivery_leg) === 'return' ? ' (استرجاع إليه)' : ' (استلام منه)'}
+                        </p>
+                      )}
                       <span
                         className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
                           isReturn ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'

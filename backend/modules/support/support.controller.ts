@@ -11,6 +11,8 @@ export const supportController = {
       const email = String(req.body?.email || '').trim();
       const category = String(req.body?.category || 'general').trim();
       const message = String(req.body?.message || '').trim();
+      const bookingIdRaw = req.body?.booking_id != null ? String(req.body.booking_id).trim() : '';
+      const bookingId = bookingIdRaw && /^[0-9a-f-]{36}$/i.test(bookingIdRaw) ? bookingIdRaw : null;
 
       if (!name || name.length < 2) {
         return res.status(400).json({ error: 'الاسم مطلوب' });
@@ -24,11 +26,11 @@ export const supportController = {
 
       const inserted = await query(
         `
-        INSERT INTO support_messages (name, email, category, message)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO support_messages (name, email, category, message, booking_id)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING id
         `,
-        [name, email, category, message]
+        [name, email, category, message, bookingId]
       );
       const ticketId = String(inserted.rows[0]?.id || '');
 
@@ -38,8 +40,8 @@ export const supportController = {
         process.env.SMTP_USER ||
         'support@ijar.iq';
 
-      const subject = `[إيجار دعم] ${category} — ${name}`;
-      const text = `الاسم: ${name}\nالبريد: ${email}\nالنوع: ${category}\nرقم الطلب: ${ticketId}\n\n${message}`;
+      const subject = `[إيجار دعم] ${category} — ${name}${bookingId ? ` — حجز ${bookingId.slice(0, 8)}` : ''}`;
+      const text = `الاسم: ${name}\nالبريد: ${email}\nالنوع: ${category}\nرقم الطلب: ${ticketId}\nحجز مرتبط: ${bookingId || '—'}\n\n${message}`;
 
       let mailSent = false;
       if (mailService.isConfigured()) {
@@ -70,7 +72,7 @@ export const supportController = {
   async listMessages(_req: Request, res: Response) {
     try {
       const r = await query(
-        `SELECT id, name, email, category, message, status, admin_notes, created_at
+        `SELECT id, name, email, category, message, status, admin_notes, booking_id, created_at
          FROM support_messages ORDER BY created_at DESC LIMIT 100`
       );
       res.json(r.rows);
