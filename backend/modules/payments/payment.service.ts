@@ -304,14 +304,14 @@ export class PaymentService {
           type: 'system',
           title: 'تم التحقق من إثبات الدفع',
           message: `تم قبول إثبات دفع الحجز ${bookingId}. أكّد أو ارفض الحجز من لوحة الشريك.`,
-          related_id: payment.id,
+          related_id: bookingId,
         });
         await this.notificationService.create({
           user_id: payment.customer_id,
           type: 'system',
           title: 'تم التحقق من الدفع',
           message: `تم قبول إثبات الدفع للحجز ${bookingId}. بانتظار تأكيد الشريك للحجز.`,
-          related_id: payment.id,
+          related_id: bookingId,
         });
         return;
       }
@@ -373,7 +373,7 @@ export class PaymentService {
         type: 'system',
         title: 'تم رفض الدفع',
         message: `تم رفض دفعتك للحجز ${bookingId}. السبب: ${adminNotes || 'غير محدد'}`,
-        related_id: payment.id,
+        related_id: bookingId,
       });
       if (payment.owner_id) {
         await this.notificationService.create({
@@ -381,7 +381,7 @@ export class PaymentService {
           type: 'system',
           title: 'رُفضت دفعة حجز',
           message: `رُفضت دفعة الزبون للحجز ${bookingId}.`,
-          related_id: payment.id,
+          related_id: bookingId,
         });
       }
     }
@@ -520,13 +520,14 @@ export class PaymentService {
       ]
     );
     const customerId = String(raw.customer_id || payment.customer_id || '');
+    const bookingId = String(raw.booking_id || payment.booking_id || '');
     if (customerId) {
       await this.notificationService.create({
         user_id: customerId,
         type: 'payment',
         title: 'تم استرداد المبلغ',
         message: 'تم تأكيد إتمام استرداد دفعتك بعد إلغاء الحجز.',
-        related_id: paymentId,
+        related_id: bookingId || paymentId,
       });
     }
   }

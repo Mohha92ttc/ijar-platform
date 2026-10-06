@@ -43,8 +43,19 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [myTickets, setMyTickets] = useState<
-    { id: string; category: string; message: string; status: string; admin_notes?: string; booking_id?: string; created_at: string }[]
+    {
+      id: string;
+      category: string;
+      message: string;
+      status: string;
+      admin_notes?: string;
+      customer_reply?: string | null;
+      booking_id?: string;
+      created_at: string;
+    }[]
   >([]);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [replyBusy, setReplyBusy] = useState<string | null>(null);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -327,6 +338,53 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
                 {t.booking_id && <p className="text-[11px] font-mono text-violet-700">حجز: {t.booking_id}</p>}
                 {t.admin_notes && (
                   <p className="text-xs text-blue-800 bg-blue-50 rounded-lg px-2 py-1.5">رد الإدارة: {t.admin_notes}</p>
+                )}
+                {t.customer_reply && (
+                  <p className="text-xs text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5" data-testid="help-ticket-my-reply">
+                    ردك: {t.customer_reply}
+                  </p>
+                )}
+                {t.admin_notes && t.status !== 'resolved' && (
+                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                    <input
+                      type="text"
+                      data-testid="help-ticket-reply-input"
+                      value={replyDrafts[t.id] || ''}
+                      onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                      placeholder="اكتب رداً للإدارة…"
+                      className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                    />
+                    <button
+                      type="button"
+                      data-testid="help-ticket-reply-send"
+                      disabled={replyBusy === t.id}
+                      onClick={async () => {
+                        const reply = String(replyDrafts[t.id] || '').trim();
+                        if (reply.length < 5) {
+                          alert('الرد قصير جداً');
+                          return;
+                        }
+                        setReplyBusy(t.id);
+                        try {
+                          await apiJson(`/api/support/my-messages/${t.id}/reply`, {
+                            method: 'POST',
+                            body: JSON.stringify({ reply }),
+                          });
+                          setMyTickets((prev) =>
+                            prev.map((x) => (x.id === t.id ? { ...x, customer_reply: reply, status: 'open' } : x))
+                          );
+                          setReplyDrafts((prev) => ({ ...prev, [t.id]: '' }));
+                        } catch (e) {
+                          alert(e instanceof Error ? e.message : 'تعذر إرسال الرد');
+                        } finally {
+                          setReplyBusy(null);
+                        }
+                      }}
+                      className="text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 text-white disabled:opacity-50"
+                    >
+                      إرسال رد
+                    </button>
+                  </div>
                 )}
                 <p className="text-[10px] text-slate-400">{new Date(t.created_at).toLocaleString('ar-IQ')}</p>
               </div>

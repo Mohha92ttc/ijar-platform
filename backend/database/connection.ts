@@ -415,6 +415,7 @@ async function createTables() {
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
     ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL;
+    ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS customer_reply TEXT;
     CREATE INDEX IF NOT EXISTS idx_support_messages_status ON support_messages (status);
     CREATE INDEX IF NOT EXISTS idx_support_messages_booking ON support_messages (booking_id);
 

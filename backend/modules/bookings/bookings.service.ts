@@ -316,11 +316,11 @@ export class BookingService {
           throw new Error('لا يمكن إكمال الحجز قبل إتمام تسليم التوصيل للزبون');
         }
       }
-      if (row?.return_requested) {
-        const rs = String(row.return_status || '');
-        if (rs !== 'delivered') {
-          throw new Error('لا يمكن إكمال الحجز قبل إتمام استرجاع المعدة من الزبون');
-        }
+      // Always require return handoff so equipment is not freed while still with customer
+      if (!row?.return_requested || String(row.return_status || '') !== 'delivered') {
+        throw new Error(
+          'أكمل استرجاع المعدة قبل إكمال الإيجار: اطلب الاسترجاع ثم سجّل «استرجعت بنفسي» أو أكمل مندوب الاسترجاع'
+        );
       }
     }
 

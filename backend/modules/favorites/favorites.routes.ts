@@ -32,7 +32,20 @@ router.get('/', authenticateToken, requireRole(['customer']), async (req, res) =
 router.get('/ids', authenticateToken, requireRole(['customer']), async (req, res) => {
   try {
     const userId = (req as any).user.userId as string;
-    const r = await query(`SELECT equipment_id FROM favorites WHERE user_id = $1`, [userId]);
+    const r = await query(
+      `
+      SELECT f.equipment_id
+      FROM favorites f
+      JOIN equipment e ON e.id = f.equipment_id
+      JOIN users u ON u.id = e.owner_id
+      WHERE f.user_id = $1
+        AND e.status NOT IN ('hidden', 'maintenance')
+        AND u.subscription_status = 'active'
+        AND u.subscription_end_date IS NOT NULL
+        AND u.subscription_end_date > NOW()
+      `,
+      [userId]
+    );
     res.json(r.rows.map((x) => String(x.equipment_id)));
   } catch (e) {
     res.status(400).json({ error: publicError(e, 'تعذر جلب المفضلة') });

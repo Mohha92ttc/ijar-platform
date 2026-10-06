@@ -315,6 +315,7 @@ export default function CheckoutPage({
                   type="tel"
                   data-testid="checkout-phone"
                   required
+                  value={formData.phone}
                   placeholder="07xx xxx xxxx"
                   className="w-full bg-white border border-slate-200 rounded-xl py-3 pr-10 pl-4 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
@@ -332,6 +333,7 @@ export default function CheckoutPage({
                   type="text"
                   data-testid="checkout-location"
                   required={!needsDeliveryMap}
+                  value={formData.location}
                   placeholder="المحافظة، المنطقة، المعلم"
                   className="w-full bg-white border border-slate-200 rounded-xl py-3 pr-10 pl-4 text-sm outline-none focus:ring-2 focus:ring-blue-500"
                   onChange={(e) => setFormData({ ...formData, location: e.target.value })}
@@ -352,6 +354,7 @@ export default function CheckoutPage({
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 mr-2">ملاحظات إضافية</label>
               <textarea
+                value={formData.notes}
                 placeholder="أي تفاصيل أخرى تود إخبار الشركاء بها..."
                 className="w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}

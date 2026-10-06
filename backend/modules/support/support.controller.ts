@@ -72,7 +72,7 @@ export const supportController = {
   async listMessages(_req: Request, res: Response) {
     try {
       const r = await query(
-        `SELECT id, name, email, category, message, status, admin_notes, booking_id, created_at, updated_at
+        `SELECT id, name, email, category, message, status, admin_notes, customer_reply, booking_id, created_at, updated_at
          FROM support_messages ORDER BY created_at DESC LIMIT 100`
       );
       res.json(r.rows);
@@ -91,7 +91,7 @@ export const supportController = {
       if (!email) return res.status(400).json({ error: 'لا بريد على الحساب' });
       const r = await query(
         `
-        SELECT id, category, message, status, admin_notes, booking_id, created_at, updated_at
+        SELECT id, category, message, status, admin_notes, customer_reply, booking_id, created_at, updated_at
         FROM support_messages
         WHERE LOWER(email) = $1
         ORDER BY created_at DESC
@@ -102,6 +102,49 @@ export const supportController = {
       res.json(r.rows);
     } catch (error: unknown) {
       res.status(500).json({ error: publicError(error, 'فشل جلب تذاكرك') });
+    }
+  },
+
+  /** الزبون يرد على تذكرة بعد رد الإدارة */
+  async replyMyMessage(req: Request, res: Response) {
+    try {
+      const actor = (req as Request & { user?: { userId?: string } }).user;
+      if (!actor?.userId) return res.status(401).json({ error: 'Unauthorized' });
+      const id = req.params.id;
+      const reply = String(req.body?.reply || '').trim();
+      if (reply.length < 5) {
+        return res.status(400).json({ error: 'الرد قصير جداً (5 أحرف على الأقل)' });
+      }
+      const u = await query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [actor.userId]);
+      const email = String(u.rows[0]?.email || '').trim().toLowerCase();
+      if (!email) return res.status(400).json({ error: 'لا بريد على الحساب' });
+      const updated = await query(
+        `
+        UPDATE support_messages
+        SET customer_reply = $1,
+            status = CASE WHEN status = 'resolved' THEN 'open' ELSE status END,
+            updated_at = NOW()
+        WHERE id = $2 AND LOWER(email) = $3
+        RETURNING id, booking_id
+        `,
+        [reply.slice(0, 2000), id, email]
+      );
+      if (!updated.rows[0]) return res.status(404).json({ error: 'التذكرة غير موجودة' });
+      try {
+        const { NotificationService } = await import('../notifications/notification.service');
+        const ns = new NotificationService();
+        await ns.notifyAdmins({
+          type: 'system',
+          title: 'رد زبون على تذكرة دعم',
+          message: reply.slice(0, 180),
+          related_id: String(updated.rows[0].booking_id || updated.rows[0].id),
+        });
+      } catch {
+        // non-blocking
+      }
+      res.json({ ok: true });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل إرسال الرد') });
     }
   },
 

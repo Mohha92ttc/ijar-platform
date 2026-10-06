@@ -32,6 +32,7 @@ import { connectRealtime, disconnectRealtime, onRealtimeNotification } from './l
 import { loadCart, saveCart, clearCartStorage, switchCartUser, type CartLine, type CartPaymentMethod } from './lib/cartStorage';
 import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from './lib/iraqLocations';
 import InstallAppButtons from './components/InstallAppButtons';
+import { iraqWaDigits } from './lib/phone';
 
 type EquipmentRow = {
   id: string;
@@ -622,7 +623,23 @@ export default function App() {
     const remaining = [...cart];
     let done = 0;
     const deliveryFeeChargedForOwner = new Set<string>();
+    let lastBookingId: string | null = null;
     try {
+      // Preflight: refuse submit if any line is no longer available
+      for (const item of remaining) {
+        const qs = new URLSearchParams({
+          equipment_id: item.id,
+          start: item.startDate,
+          end: item.endDate,
+        });
+        const avail = await apiJson<{ available: boolean }>(`/api/bookings/availability?${qs}`);
+        if (!avail?.available) {
+          throw new Error(
+            `«${item.title}» لم تعد متاحة في التواريخ المختارة. احذفها من السلة أو غيّر التواريخ.`
+          );
+        }
+      }
+
       for (let i = 0; i < remaining.length; i++) {
         const item = remaining[i];
         const method = formData.paymentMethod || item.paymentMethod || 'manual';
@@ -661,6 +678,7 @@ export default function App() {
           method: 'POST',
           body: JSON.stringify(bookingBody),
         });
+        lastBookingId = String(booking.id || '');
 
         const paymentBody: Record<string, unknown> = {
           booking_id: booking.id,
@@ -693,7 +711,17 @@ export default function App() {
       }
       clearCart();
       try {
-        sessionStorage.setItem('ijar_focus_booking', '1');
+        if (iraqWaDigits(formData.phone)) {
+          await apiJson('/api/auth/me', {
+            method: 'PATCH',
+            body: JSON.stringify({ phone: formData.phone.trim() }),
+          });
+        }
+      } catch {
+        // non-blocking profile sync
+      }
+      try {
+        sessionStorage.setItem('ijar_focus_booking', lastBookingId || '1');
       } catch {
         // ignore
       }

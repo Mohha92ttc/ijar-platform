@@ -14,6 +14,12 @@ router.get(
   requireRole(['customer', 'owner', 'admin']),
   supportController.listMyMessages
 );
+router.post(
+  '/my-messages/:id/reply',
+  authenticateToken,
+  requireRole(['customer', 'owner', 'admin']),
+  supportController.replyMyMessage
+);
 
 // Admin inbox (persisted contact messages)
 router.get(

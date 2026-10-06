@@ -660,10 +660,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         return;
       }
     }
-    if (newStatus === 'completed' && booking?.returnRequested) {
-      const rs = String(booking.returnStatus || '');
-      if (rs !== 'delivered') {
-        alert('أكمل استرجاع المعدة من الزبون قبل إكمال الإيجار.');
+    if (newStatus === 'completed') {
+      if (!booking?.returnRequested || String(booking.returnStatus || '') !== 'delivered') {
+        alert('اطلب استرجاع المعدة وأكمل الاسترجاع (أو سجّل استرجعت بنفسي) قبل إكمال الإيجار.');
         return;
       }
     }
@@ -1244,8 +1243,8 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                             disabled={
                               (Boolean(booking.deliveryRequested) &&
                                 String(booking.deliveryStatus || '') !== 'delivered') ||
-                              (Boolean(booking.returnRequested) &&
-                                String(booking.returnStatus || '') !== 'delivered')
+                              !booking.returnRequested ||
+                              String(booking.returnStatus || '') !== 'delivered'
                             }
                             onClick={() => updateBookingStatus(booking.id, 'completed')}
                             className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1253,9 +1252,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                               booking.deliveryRequested &&
                               String(booking.deliveryStatus || '') !== 'delivered'
                                 ? 'بانتظار اكتمال التوصيل'
-                                : booking.returnRequested &&
+                                : !booking.returnRequested ||
                                     String(booking.returnStatus || '') !== 'delivered'
-                                  ? 'بانتظار اكتمال الاسترجاع'
+                                  ? 'أكمل استرجاع المعدة أولاً'
                                   : 'إكمال الإيجار'
                             }
                           >

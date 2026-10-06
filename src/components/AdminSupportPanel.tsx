@@ -10,6 +10,7 @@ type SupportMsg = {
   message: string;
   status: string;
   admin_notes?: string | null;
+  customer_reply?: string | null;
   booking_id?: string | null;
   created_at: string;
 };
@@ -125,6 +126,11 @@ export default function AdminSupportPanel() {
             )}
             {m.admin_notes && (
               <p className="text-xs text-blue-800 bg-blue-50 rounded-xl px-3 py-2">ملاحظة: {m.admin_notes}</p>
+            )}
+            {m.customer_reply && (
+              <p className="text-xs text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2" data-testid="admin-support-customer-reply">
+                رد الزبون: {m.customer_reply}
+              </p>
             )}
             <div className="flex flex-wrap gap-2 pt-1">
               <button
