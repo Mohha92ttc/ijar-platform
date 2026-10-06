@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Calendar, XCircle, RefreshCw } from 'lucide-react';
+import { Calendar, XCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { apiJson, ApiError } from '../lib/api';
 
 type AdminBooking = {
@@ -53,7 +53,7 @@ export default function AdminBookingsPanel() {
     load();
   }, [load]);
 
-  /** طوارئ فقط — تأكيد/إكمال الحجز عمل الشريك */
+  /** طوارئ فقط — تأكيد الحجز عمل الشريك؛ الإكمال القسري عند تعطل الشريك */
   const emergencyCancel = async (id: string) => {
     const reason = window.prompt(
       'إلغاء طارئ (يتطلب تواصلاً مع الشريك/الزبون). اكتب السبب الذي سيظهر للزبون:',
@@ -65,7 +65,7 @@ export default function AdminBookingsPanel() {
       alert('سبب الإلغاء مطلوب');
       return;
     }
-    if (!confirm('تأكيد الإلغاء الطارئ؟ لن يُؤكَّد أو يُكمَّل الحجز من هنا — ذلك من لوحة الشريك.')) return;
+    if (!confirm('تأكيد الإلغاء الطارئ؟')) return;
     try {
       await apiJson(`/api/admin/bookings/${id}/status`, {
         method: 'PATCH',
@@ -74,6 +74,29 @@ export default function AdminBookingsPanel() {
       await load();
     } catch (e) {
       alert(e instanceof ApiError ? e.message : 'تعذر الإلغاء');
+    }
+  };
+
+  const forceComplete = async (id: string) => {
+    const reason = window.prompt(
+      'إكمال قسري (شريك متعذر / نزاع محلول). السبب يُسجَّل للمتابعة:',
+      'إكمال إداري بعد تواصل مع الأطراف'
+    );
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      alert('سبب الإكمال مطلوب');
+      return;
+    }
+    if (!confirm('تأكيد الإكمال القسري؟ سيُحرَّر المعدة من حالة الإيجار.')) return;
+    try {
+      await apiJson(`/api/admin/bookings/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'completed', reason: trimmed }),
+      });
+      await load();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر الإكمال');
     }
   };
 
@@ -107,7 +130,7 @@ export default function AdminBookingsPanel() {
         </div>
       </div>
       <p className="text-xs text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3" data-testid="admin-bookings-role-hint">
-        التأكيد والإكمال ورفض الحجز اليومي من عمل الشريك. الأدمن يتدخل فقط بإلغاء طارئ عند نزاع أو طلب صريح.
+        التأكيد اليومي من عمل الشريك. الأدمن يتدخل بإلغاء طارئ أو إكمال قسري عند نزاع / شريك متعذر فقط.
       </p>
       {loading && <p className="text-sm text-slate-500">جاري التحميل…</p>}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -153,15 +176,28 @@ export default function AdminBookingsPanel() {
                 </td>
                 <td className="p-3">
                   {['pending', 'confirmed'].includes(b.status) ? (
-                    <button
-                      type="button"
-                      data-testid="admin-booking-emergency-cancel"
-                      className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100"
-                      title="إلغاء طارئ"
-                      onClick={() => emergencyCancel(b.id)}
-                    >
-                      <XCircle size={14} /> إلغاء طارئ
-                    </button>
+                    <div className="flex flex-col gap-1.5">
+                      <button
+                        type="button"
+                        data-testid="admin-booking-emergency-cancel"
+                        className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg hover:bg-red-100"
+                        title="إلغاء طارئ"
+                        onClick={() => emergencyCancel(b.id)}
+                      >
+                        <XCircle size={14} /> إلغاء طارئ
+                      </button>
+                      {b.status === 'confirmed' && (
+                        <button
+                          type="button"
+                          data-testid="admin-booking-force-complete"
+                          className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg hover:bg-emerald-100"
+                          title="إكمال قسري"
+                          onClick={() => forceComplete(b.id)}
+                        >
+                          <CheckCircle2 size={14} /> إكمال قسري
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-xs text-slate-400">—</span>
                   )}

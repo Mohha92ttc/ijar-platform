@@ -91,8 +91,22 @@ export default function CheckoutPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart]);
 
+  const lineDeliveryFee = (item: (typeof cart)[number]) => {
+    if (!item.wantsDelivery) return 0;
+    const hint = item.owner_id ? ownerHints[item.owner_id] : undefined;
+    if (hint != null && Number.isFinite(Number(hint.delivery_fee))) {
+      return Math.max(0, Number(hint.delivery_fee));
+    }
+    return Math.max(0, Number(item.deliveryFee || 0));
+  };
+
   const rentalSum = useMemo(() => cart.reduce((s, i) => s + Number(i.rentalTotal ?? i.total), 0), [cart]);
-  const deliverySum = useMemo(() => cart.reduce((s, i) => s + Number(i.deliveryFee || 0), 0), [cart]);
+  const deliverySum = useMemo(
+    () => cart.reduce((s, i) => s + lineDeliveryFee(i), 0),
+    // lineDeliveryFee depends on ownerHints
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cart, ownerHints]
+  );
   const total = rentalSum + deliverySum;
   const requireProof = needsPaymentProof(paymentMethod);
   const ownersMissingAccounts = useMemo(() => {
@@ -196,7 +210,10 @@ export default function CheckoutPage({
                 السلة فارغة
               </div>
             )}
-            {cart.map((item) => (
+            {cart.map((item) => {
+              const fee = lineDeliveryFee(item);
+              const lineTotal = Number(item.rentalTotal ?? item.total) + (item.wantsDelivery ? fee : 0);
+              return (
               <div key={`${item.id}-${item.startDate}`} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
                 <img src={item.image} className="w-20 h-20 rounded-xl object-cover" alt="" />
                 <div className="flex-1">
@@ -219,14 +236,15 @@ export default function CheckoutPage({
                     <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">{paymentMethodLabel(item.paymentMethod)}</span>
                     {item.wantsDelivery && (
                       <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded-lg flex items-center gap-1">
-                        <Truck size={10} /> توصيل {Number(item.deliveryFee || 0).toLocaleString()} د.ع
+                        <Truck size={10} /> توصيل {fee.toLocaleString()} د.ع
                       </span>
                     )}
                   </div>
-                  <div className="text-sm font-bold text-slate-800 mt-2 text-left">{item.total.toLocaleString()} د.ع</div>
+                  <div className="text-sm font-bold text-slate-800 mt-2 text-left">{lineTotal.toLocaleString()} د.ع</div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="mt-8 pt-6 border-t border-slate-100 space-y-2">

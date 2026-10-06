@@ -235,21 +235,32 @@ export class AdminService {
     adminUserId: string,
     reason?: string
   ): Promise<void> {
-    if (status !== 'cancelled') {
+    if (status !== 'cancelled' && status !== 'completed') {
       throw new Error(
-        'الأدمن يتدخل بالطوارئ فقط عبر إلغاء الحجز. تأكيد وإكمال الحجز من لوحة الشريك.'
+        'الأدمن يتدخل بالطوارئ فقط: إلغاء أو إكمال قسري. التأكيد اليومي من لوحة الشريك.'
       );
     }
     const why = String(reason || '').trim();
     if (!why) {
-      throw new Error('سبب الإلغاء الإداري مطلوب');
+      throw new Error(status === 'completed' ? 'سبب الإكمال الإداري مطلوب' : 'سبب الإلغاء الإداري مطلوب');
     }
     const { BookingService } = await import('../../backend/modules/bookings/bookings.service');
     const bookingService = new BookingService();
-    await bookingService.updateStatus(bookingId, 'cancelled', {
-      userId: adminUserId,
-      role: 'admin',
-    }, { reason: why });
+    if (status === 'cancelled') {
+      await bookingService.updateStatus(
+        bookingId,
+        'cancelled',
+        { userId: adminUserId, role: 'admin' },
+        { reason: why }
+      );
+      return;
+    }
+    await bookingService.updateStatus(
+      bookingId,
+      'completed',
+      { userId: adminUserId, role: 'admin' },
+      { reason: why }
+    );
   }
 
   async listAllEquipment(): Promise<any[]> {
