@@ -75,7 +75,7 @@ export class BookingService {
     const deliveryRequested = Boolean(data.delivery_requested);
 
     let deliveryFee = 0;
-    if (deliveryRequested) {
+    if (deliveryRequested && !data.waive_delivery_fee) {
       const feeRes = await query(
         `SELECT COALESCE(delivery_fee, 0) AS delivery_fee FROM owner_payment_settings WHERE owner_id = $1 LIMIT 1`,
         [equipment.owner_id]
@@ -414,23 +414,28 @@ export class BookingService {
         message: `اكتمل إيجار «${equipment.title}». يمكنك تقييم تجربتك من لوحة الحجوزات.`,
         related_id: booking.id,
       });
+      try {
+        await query(
+          `
+          UPDATE payments
+          SET status = 'approved'::payment_status,
+              notes = COALESCE(notes, '') || $1,
+              updated_at = NOW()
+          WHERE booking_id = $2
+            AND method = 'cash'::payment_method
+            AND status IN ('pending'::payment_status, 'under_review'::payment_status)
+          `,
+          [
+            actor.role === 'admin'
+              ? ' | اعتماد COD عند إكمال إداري'
+              : ' | اعتماد COD عند إكمال الإيجار / استلام النقد',
+            booking.id,
+          ]
+        );
+      } catch {
+        // non-blocking
+      }
       if (actor.role === 'admin') {
-        try {
-          await query(
-            `
-            UPDATE payments
-            SET status = 'approved'::payment_status,
-                notes = COALESCE(notes, '') || ' | اعتماد COD عند إكمال إداري',
-                updated_at = NOW()
-            WHERE booking_id = $1
-              AND method = 'cash'::payment_method
-              AND status IN ('pending'::payment_status, 'under_review'::payment_status)
-            `,
-            [booking.id]
-          );
-        } catch {
-          // non-blocking
-        }
         try {
           await this.notificationService.create({
             user_id: equipment.owner_id,

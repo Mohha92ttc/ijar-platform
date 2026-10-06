@@ -91,8 +91,33 @@ export default function CheckoutPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart]);
 
-  const lineDeliveryFee = (item: (typeof cart)[number]) => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await apiJson<{ phone?: string }>('/api/auth/me');
+        if (cancelled) return;
+        const phone = String(me?.phone || '').trim();
+        if (phone && !formData.phone) {
+          setFormData((prev) => ({ ...prev, phone }));
+        }
+      } catch {
+        // guest / ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const lineDeliveryFee = (item: (typeof cart)[number], indexInCart: number) => {
     if (!item.wantsDelivery) return 0;
+    // One delivery fee per owner per checkout (same trip)
+    const firstIdx = cart.findIndex(
+      (c) => c.wantsDelivery && String(c.owner_id || '') === String(item.owner_id || '')
+    );
+    if (firstIdx !== indexInCart && firstIdx >= 0) return 0;
     const hint = item.owner_id ? ownerHints[item.owner_id] : undefined;
     if (hint != null && Number.isFinite(Number(hint.delivery_fee))) {
       return Math.max(0, Number(hint.delivery_fee));
@@ -102,8 +127,7 @@ export default function CheckoutPage({
 
   const rentalSum = useMemo(() => cart.reduce((s, i) => s + Number(i.rentalTotal ?? i.total), 0), [cart]);
   const deliverySum = useMemo(
-    () => cart.reduce((s, i) => s + lineDeliveryFee(i), 0),
-    // lineDeliveryFee depends on ownerHints
+    () => cart.reduce((s, i, idx) => s + lineDeliveryFee(i, idx), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cart, ownerHints]
   );
@@ -210,9 +234,9 @@ export default function CheckoutPage({
                 السلة فارغة
               </div>
             )}
-            {cart.map((item) => {
-              const fee = lineDeliveryFee(item);
-              const lineTotal = Number(item.rentalTotal ?? item.total) + (item.wantsDelivery ? fee : 0);
+            {cart.map((item, idx) => {
+              const fee = lineDeliveryFee(item, idx);
+              const lineTotal = Number(item.rentalTotal ?? item.total) + fee;
               return (
               <div key={`${item.id}-${item.startDate}`} className="flex gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
                 <img src={item.image} className="w-20 h-20 rounded-xl object-cover" alt="" />
@@ -236,7 +260,10 @@ export default function CheckoutPage({
                     <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-lg">{paymentMethodLabel(item.paymentMethod)}</span>
                     {item.wantsDelivery && (
                       <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded-lg flex items-center gap-1">
-                        <Truck size={10} /> توصيل {fee.toLocaleString()} د.ع
+                        <Truck size={10} />{' '}
+                        {fee > 0
+                          ? `توصيل ${fee.toLocaleString()} د.ع`
+                          : 'توصيل (مشمول مع طلب سابق لنفس الشريك)'}
                       </span>
                     )}
                   </div>

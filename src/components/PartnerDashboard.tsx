@@ -1281,6 +1281,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     {booking.isCod ? (
                       <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
                         دفع عند التسليم — لا توجد صورة تحويل. وافق على الحجز إذا كانت التواريخ والمعدة مناسبة.
+                        {booking.paymentStatus === 'pending' || !booking.paymentStatus
+                          ? ' النقد يُعتمد عند تسليم التوصيل أو عند إكمال الإيجار بعد استلام المبلغ.'
+                          : ''}
                       </p>
                     ) : booking.paymentProof ? (
                       <div className="flex flex-col sm:flex-row gap-4 items-start">

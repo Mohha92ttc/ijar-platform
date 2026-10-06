@@ -374,7 +374,10 @@ export default function CustomerDashboard({
         body: JSON.stringify({
           booking_id: booking.id,
           amount: booking.total,
-          payment_method: 'manual',
+          payment_method:
+            booking.paymentMethod && booking.paymentMethod !== 'cash' && booking.paymentMethod !== 'cash_on_delivery'
+              ? booking.paymentMethod
+              : 'manual',
           proof_image,
           notes: 'تحديث/استبدال إثبات الدفع',
         }),

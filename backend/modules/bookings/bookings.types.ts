@@ -31,6 +31,8 @@ export interface CreateBookingDTO {
   customer_phone?: string;
   delivery_requested?: boolean;
   delivery_fee?: number;
+  /** Same-trip sibling lines: keep delivery_requested but charge fee once */
+  waive_delivery_fee?: boolean;
   delivery_lat?: number | null;
   delivery_lng?: number | null;
   delivery_address?: string | null;

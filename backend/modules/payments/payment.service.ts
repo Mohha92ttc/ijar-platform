@@ -405,13 +405,8 @@ export class PaymentService {
     if (status === 'pending' && approve) {
       const method = String(raw.method ?? payment.payment_method ?? '').toLowerCase();
       const isCod = method === 'cash' || method === 'cash_on_delivery';
-      if (!isCod) return;
-      // COD with delivery: cash collected at handoff — leave pending until delivered
-      const bid = String(raw.booking_id || payment.booking_id || '');
-      if (bid) {
-        const b = await query(`SELECT delivery_requested FROM bookings WHERE id = $1 LIMIT 1`, [bid]);
-        if (b.rows[0]?.delivery_requested) return;
-      }
+      // COD stays pending until delivery handoff or booking completion — never on confirm alone
+      if (isCod) return;
     }
 
     const paymentId = String(raw.id || payment.id);

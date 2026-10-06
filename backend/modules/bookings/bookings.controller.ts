@@ -28,6 +28,7 @@ export class BookingController {
         customer_phone: req.body.customer_phone,
         delivery_requested: Boolean(req.body.delivery_requested),
         delivery_fee: Number(req.body.delivery_fee) || 0,
+        waive_delivery_fee: Boolean(req.body.waive_delivery_fee),
         delivery_lat: req.body.delivery_lat != null ? Number(req.body.delivery_lat) : null,
         delivery_lng: req.body.delivery_lng != null ? Number(req.body.delivery_lng) : null,
         delivery_address: req.body.delivery_address ? String(req.body.delivery_address) : null,

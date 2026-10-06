@@ -449,7 +449,18 @@ export default function App() {
     } else if (userData?.role === 'admin') {
       setView('admin');
     } else {
-      setView('home');
+      let resumeCheckout = false;
+      try {
+        resumeCheckout = sessionStorage.getItem('ijar_resume_checkout') === '1';
+        if (resumeCheckout) sessionStorage.removeItem('ijar_resume_checkout');
+      } catch {
+        // ignore
+      }
+      if (resumeCheckout && cart.length > 0) {
+        setView('checkout');
+      } else {
+        setView('home');
+      }
     }
   };
 
@@ -528,6 +539,18 @@ export default function App() {
         );
         return prev;
       }
+      const startMs = new Date(line.startDate).setHours(12, 0, 0, 0);
+      const endMs = new Date(line.endDate).setHours(12, 0, 0, 0);
+      const overlap = prev.find((x) => {
+        if (x.id !== line.id) return false;
+        const xs = new Date(x.startDate).setHours(12, 0, 0, 0);
+        const xe = new Date(x.endDate).setHours(12, 0, 0, 0);
+        return startMs < xe && endMs > xs;
+      });
+      if (overlap) {
+        alert('هذه المعدة موجودة في السلة بتواريخ متداخلة. عدّل التواريخ أو احذف السطر السابق.');
+        return prev;
+      }
       return [...prev.filter((x) => !(x.id === line.id && x.startDate === line.startDate)), line];
     });
     closeEquipment();
@@ -560,6 +583,11 @@ export default function App() {
   }) => {
     if (!user?.id) {
       alert('يرجى تسجيل الدخول لإتمام الحجز');
+      try {
+        sessionStorage.setItem('ijar_resume_checkout', '1');
+      } catch {
+        // ignore
+      }
       setView('auth');
       return;
     }
@@ -593,6 +621,7 @@ export default function App() {
     setCheckoutSubmitting(true);
     const remaining = [...cart];
     let done = 0;
+    const deliveryFeeChargedForOwner = new Set<string>();
     try {
       for (let i = 0; i < remaining.length; i++) {
         const item = remaining[i];
@@ -601,6 +630,15 @@ export default function App() {
           const d = new Date(`${ymd}T12:00:00`);
           return d.toISOString();
         };
+        const oid = String(item.owner_id || '');
+        let waiveDeliveryFee = false;
+        if (item.wantsDelivery && oid) {
+          if (deliveryFeeChargedForOwner.has(oid)) {
+            waiveDeliveryFee = true;
+          } else {
+            deliveryFeeChargedForOwner.add(oid);
+          }
+        }
         const bookingBody: Record<string, unknown> = {
           equipment_id: item.id,
           start_date: toNoonIso(item.startDate),
@@ -610,7 +648,8 @@ export default function App() {
           location: formData.location,
           notes: formData.notes,
           delivery_requested: item.wantsDelivery,
-          delivery_fee: item.deliveryFee || 0,
+          delivery_fee: waiveDeliveryFee ? 0 : item.deliveryFee || 0,
+          waive_delivery_fee: waiveDeliveryFee,
           payment_preference: method,
         };
         if (item.wantsDelivery) {
