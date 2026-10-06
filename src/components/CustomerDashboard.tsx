@@ -26,6 +26,8 @@ type Row = {
   cancelReason?: string | null;
   courierName?: string | null;
   courierPhone?: string | null;
+  returnCourierName?: string | null;
+  returnCourierPhone?: string | null;
   reviewed?: boolean;
   paymentStatus?: string | null;
   paymentNotes?: string | null;
@@ -200,6 +202,8 @@ export default function CustomerDashboard({
           cancelReason: b.cancel_reason ? String(b.cancel_reason) : null,
           courierName: b.courier_name ? String(b.courier_name) : null,
           courierPhone: b.courier_phone ? String(b.courier_phone) : null,
+          returnCourierName: b.return_courier_name ? String(b.return_courier_name) : null,
+          returnCourierPhone: b.return_courier_phone ? String(b.return_courier_phone) : null,
           reviewed: Boolean(b.has_review),
           paymentStatus: b.payment_status ? String(b.payment_status) : null,
           paymentNotes: b.payment_notes ? String(b.payment_notes) : null,
@@ -677,10 +681,26 @@ export default function CustomerDashboard({
                         استرجاع: {deliveryLabel(booking.returnStatus)}
                       </span>
                     )}
-                    {booking.courierName && (
+                    {booking.courierName && !booking.returnRequested && (
                       <p className="flex items-center gap-1 text-slate-600">
                         <Phone size={10} />
                         {booking.courierName}
+                        {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
+                      </p>
+                    )}
+                    {booking.returnRequested && (booking.returnCourierName || booking.courierName) && (
+                      <p className="flex items-center gap-1 text-slate-600" data-testid="customer-return-courier">
+                        <Phone size={10} />
+                        استرجاع:{' '}
+                        {booking.returnCourierName || booking.courierName}
+                        {(booking.returnCourierPhone || booking.courierPhone)
+                          ? ` · ${booking.returnCourierPhone || booking.courierPhone}`
+                          : ''}
+                      </p>
+                    )}
+                    {booking.courierName && booking.returnRequested && (
+                      <p className="flex items-center gap-1 text-slate-500 text-[11px]">
+                        توصيل: {booking.courierName}
                         {booking.courierPhone ? ` · ${booking.courierPhone}` : ''}
                       </p>
                     )}

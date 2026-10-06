@@ -42,6 +42,9 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [bookingId, setBookingId] = useState<string | null>(null);
+  const [myTickets, setMyTickets] = useState<
+    { id: string; category: string; message: string; status: string; admin_notes?: string; booking_id?: string; created_at: string }[]
+  >([]);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -69,6 +72,23 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await apiJson<
+          { id: string; category: string; message: string; status: string; admin_notes?: string; booking_id?: string; created_at: string }[]
+        >('/api/support/my-messages');
+        if (!cancelled) setMyTickets(Array.isArray(rows) ? rows : []);
+      } catch {
+        if (!cancelled) setMyTickets([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [formMsg]);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,6 +303,36 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
             </ul>
           </div>
         </motion.div>
+
+        {myTickets.length > 0 && (
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 mb-8 space-y-3" data-testid="help-my-tickets">
+            <h3 className="text-lg font-bold">تذاكر الدعم الخاصة بك</h3>
+            {myTickets.map((t) => (
+              <div key={t.id} className="border border-slate-100 rounded-xl p-3 space-y-1">
+                <div className="flex flex-wrap justify-between gap-2 text-xs">
+                  <span className="font-bold text-slate-700">{CATEGORY_OPTIONS.find((c) => c.value === t.category)?.label || t.category}</span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full font-bold ${
+                      t.status === 'resolved'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : t.status === 'in_progress'
+                          ? 'bg-amber-50 text-amber-800'
+                          : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {t.status === 'resolved' ? 'محلولة' : t.status === 'in_progress' ? 'قيد المتابعة' : 'مفتوحة'}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-600 line-clamp-3 whitespace-pre-wrap">{t.message}</p>
+                {t.booking_id && <p className="text-[11px] font-mono text-violet-700">حجز: {t.booking_id}</p>}
+                {t.admin_notes && (
+                  <p className="text-xs text-blue-800 bg-blue-50 rounded-lg px-2 py-1.5">رد الإدارة: {t.admin_notes}</p>
+                )}
+                <p className="text-[10px] text-slate-400">{new Date(t.created_at).toLocaleString('ar-IQ')}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         <motion.div
           id="help-contact-form"

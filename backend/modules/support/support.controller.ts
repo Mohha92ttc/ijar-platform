@@ -72,12 +72,36 @@ export const supportController = {
   async listMessages(_req: Request, res: Response) {
     try {
       const r = await query(
-        `SELECT id, name, email, category, message, status, admin_notes, booking_id, created_at
+        `SELECT id, name, email, category, message, status, admin_notes, booking_id, created_at, updated_at
          FROM support_messages ORDER BY created_at DESC LIMIT 100`
       );
       res.json(r.rows);
     } catch (error: unknown) {
       res.status(500).json({ error: publicError(error, 'فشل جلب الرسائل') });
+    }
+  },
+
+  /** الزبون يرى تذاكره عبر بريده المسجّل */
+  async listMyMessages(req: Request, res: Response) {
+    try {
+      const actor = (req as Request & { user?: { userId?: string } }).user;
+      if (!actor?.userId) return res.status(401).json({ error: 'Unauthorized' });
+      const u = await query(`SELECT email FROM users WHERE id = $1 LIMIT 1`, [actor.userId]);
+      const email = String(u.rows[0]?.email || '').trim().toLowerCase();
+      if (!email) return res.status(400).json({ error: 'لا بريد على الحساب' });
+      const r = await query(
+        `
+        SELECT id, category, message, status, admin_notes, booking_id, created_at, updated_at
+        FROM support_messages
+        WHERE LOWER(email) = $1
+        ORDER BY created_at DESC
+        LIMIT 50
+        `,
+        [email]
+      );
+      res.json(r.rows);
+    } catch (error: unknown) {
+      res.status(500).json({ error: publicError(error, 'فشل جلب تذاكرك') });
     }
   },
 
@@ -87,16 +111,42 @@ export const supportController = {
       const status = String(req.body?.status || 'open');
       const admin_notes =
         req.body?.admin_notes != null ? String(req.body.admin_notes) : undefined;
-      await query(
+      const updated = await query(
         `
         UPDATE support_messages
         SET status = $1,
             admin_notes = COALESCE($2, admin_notes),
             updated_at = NOW()
         WHERE id = $3
+        RETURNING id, email, status, admin_notes, booking_id
         `,
         [status, admin_notes ?? null, id]
       );
+      const row = updated.rows[0];
+      if (row?.email) {
+        try {
+          const { NotificationService } = await import('../notifications/notification.service');
+          const ns = new NotificationService();
+          const userRes = await query(`SELECT id FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1`, [
+            String(row.email),
+          ]);
+          if (userRes.rows[0]?.id) {
+            const st =
+              status === 'resolved' ? 'تم حل طلب الدعم' : status === 'in_progress' ? 'طلب الدعم قيد المتابعة' : 'تحديث على طلب الدعم';
+            await ns.create({
+              user_id: String(userRes.rows[0].id),
+              type: 'system',
+              title: st,
+              message: row.admin_notes
+                ? `ملاحظة الإدارة: ${String(row.admin_notes).slice(0, 200)}`
+                : `حالة طلبك أصبحت: ${status}`,
+              related_id: row.booking_id ? String(row.booking_id) : String(row.id),
+            });
+          }
+        } catch {
+          // non-blocking
+        }
+      }
       res.json({ ok: true });
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل التحديث') });

@@ -110,7 +110,7 @@ export class CouriersController {
 
       const own = await query(
         `
-        SELECT b.id, e.title AS equipment_title
+        SELECT b.id, e.title AS equipment_title, b.status::text AS status
         FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         WHERE b.id = $1 AND e.owner_id = $2
@@ -118,6 +118,9 @@ export class CouriersController {
         [bookingId, actor.userId]
       );
       if (!own.rows[0]) return res.status(404).json({ error: 'الطلب غير موجود' });
+      if (String(own.rows[0].status) !== 'confirmed') {
+        return res.status(400).json({ error: 'عيّن المندوب بعد تأكيد الحجز فقط' });
+      }
 
       if (leg === 'return') {
         await query(
@@ -179,7 +182,7 @@ export class CouriersController {
       const bookingId = req.params.bookingId;
       const own = await query(
         `
-        SELECT b.id, b.delivery_status, b.customer_id, e.title
+        SELECT b.id, b.delivery_status, b.customer_id, e.title, b.status::text AS status
         FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         WHERE b.id = $1 AND e.owner_id = $2
@@ -187,6 +190,9 @@ export class CouriersController {
         [bookingId, actor.userId]
       );
       if (!own.rows[0]) return res.status(404).json({ error: 'الطلب غير موجود' });
+      if (String(own.rows[0].status) !== 'confirmed') {
+        return res.status(400).json({ error: 'اطلب الاسترجاع بعد تأكيد الحجز فقط' });
+      }
       if (String(own.rows[0].delivery_status) !== 'delivered') {
         return res.status(400).json({ error: 'فعّل الاسترجاع بعد إتمام تسليم التوصيل للزبون' });
       }
@@ -252,18 +258,18 @@ export class CouriersController {
           ? `
         UPDATE bookings
         SET return_status = $1, updated_at = NOW()
-        WHERE id = $2 AND return_courier_id = $3
+        WHERE id = $2 AND return_courier_id = $3 AND status = 'confirmed'::booking_status
         RETURNING id, customer_id, return_status AS delivery_status
         `
           : `
         UPDATE bookings
         SET delivery_status = $1, updated_at = NOW()
-        WHERE id = $2 AND assigned_courier_id = $3
+        WHERE id = $2 AND assigned_courier_id = $3 AND status = 'confirmed'::booking_status
         RETURNING id, customer_id, delivery_status
         `,
         [status, req.params.bookingId, me.id]
       );
-      if (!resu.rows[0]) return res.status(404).json({ error: 'الطلب غير معيّن لك' });
+      if (!resu.rows[0]) return res.status(404).json({ error: 'الطلب غير معيّن لك أو غير مؤكد' });
 
       const customerId = String(resu.rows[0].customer_id || '');
       if (customerId && (status === 'out_for_delivery' || status === 'delivered' || status === 'failed')) {
@@ -403,7 +409,7 @@ export class CouriersController {
 
       const own = await query(
         `
-        SELECT b.id, b.customer_id, b.delivery_requested, b.return_requested
+        SELECT b.id, b.customer_id, b.delivery_requested, b.return_requested, b.status::text AS status
         FROM bookings b
         JOIN equipment e ON e.id = b.equipment_id
         WHERE b.id = $1 AND e.owner_id = $2
@@ -411,6 +417,9 @@ export class CouriersController {
         [bookingId, actor.userId]
       );
       if (!own.rows[0]) return res.status(404).json({ error: 'الطلب غير موجود' });
+      if (String(own.rows[0].status) !== 'confirmed') {
+        return res.status(400).json({ error: 'سجّل التسليم بعد تأكيد الحجز فقط' });
+      }
 
       const isReturn = leg === 'return';
       if (isReturn && !own.rows[0].return_requested) {

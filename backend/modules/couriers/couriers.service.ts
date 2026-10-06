@@ -233,6 +233,7 @@ export class CouriersService {
         JOIN users ow ON ow.id = e.owner_id
         WHERE b.assigned_courier_id = $1
           AND COALESCE(b.delivery_requested, FALSE) = TRUE
+          AND b.status = 'confirmed'
 
         UNION ALL
 
@@ -250,6 +251,7 @@ export class CouriersService {
         JOIN users ow ON ow.id = e.owner_id
         WHERE b.return_courier_id = $1
           AND COALESCE(b.return_requested, FALSE) = TRUE
+          AND b.status = 'confirmed'
       ) jobs
       ORDER BY
         CASE jobs.job_status

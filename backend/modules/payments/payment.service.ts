@@ -32,10 +32,12 @@ export class PaymentService {
     return 0.1;
   }
 
-  private async resolveBookingParticipants(bookingId: string): Promise<{ customerId: string; ownerId: string }> {
+  private async resolveBookingParticipants(
+    bookingId: string
+  ): Promise<{ customerId: string; ownerId: string; totalAmount: number }> {
     const result = await query(
       `
-      SELECT b.customer_id, e.owner_id
+      SELECT b.customer_id, e.owner_id, b.total_amount
       FROM bookings b
       JOIN equipment e ON e.id = b.equipment_id
       WHERE b.id = $1
@@ -49,6 +51,7 @@ export class PaymentService {
     return {
       customerId: String(result.rows[0].customer_id),
       ownerId: String(result.rows[0].owner_id),
+      totalAmount: Number(result.rows[0].total_amount || 0),
     };
   }
 
@@ -90,10 +93,15 @@ export class PaymentService {
     const bookingParticipants = await this.resolveBookingParticipants(data.booking_id);
     const effectiveCustomerId = customerId || bookingParticipants.customerId;
     const effectiveOwnerId = ownerId || bookingParticipants.ownerId;
+    // Trust server booking total — ignore client-sent amount for underpay/overpay
+    const trustedAmount = Math.max(0, Number(bookingParticipants.totalAmount) || 0);
+    if (trustedAmount <= 0) {
+      throw new Error('مبلغ الحجز غير صالح');
+    }
 
     const commissionRate = await this.getCommissionRate();
-    const commission = data.amount * commissionRate;
-    const ownerAmount = data.amount - commission;
+    const commission = trustedAmount * commissionRate;
+    const ownerAmount = trustedAmount - commission;
 
     let proofPath = data.proof_image || (data as { payment_proof?: string }).payment_proof;
     if (proofPath && String(proofPath).startsWith('data:')) {
@@ -106,7 +114,11 @@ export class PaymentService {
       throw new Error('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
     }
 
-    const providerPayload = { ...data, payment_method: mapped.dbMethod as CreatePaymentDTO['payment_method'] };
+    const providerPayload = {
+      ...data,
+      amount: trustedAmount,
+      payment_method: mapped.dbMethod as CreatePaymentDTO['payment_method'],
+    };
     const providerResponse = await provider.processPayment({ ...providerPayload, proof_image: proofPath });
 
     // COD stays pending until delivery; transfer+proof → under_review for partner
@@ -123,7 +135,7 @@ export class PaymentService {
       customer_id: effectiveCustomerId,
       owner_id: effectiveOwnerId,
       transaction_id: providerResponse.payment_id,
-      amount: data.amount,
+      amount: trustedAmount,
       commission: commission,
       owner_amount: ownerAmount,
       payment_method: mapped.dbMethod,

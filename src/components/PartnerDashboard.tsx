@@ -858,14 +858,17 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const deleteEquipment = async (id: string) => {
     if (!guardSub('حذف المعدات')) return;
     if (!ownerId) return;
+    if (!confirm('حذف المعدة نهائياً؟ لا يمكن الحذف إن وُجدت حجوزات قائمة أو مؤكدة — استخدم الإخفاء بدلاً من ذلك.')) {
+      return;
+    }
     try {
       await apiJson(`/api/equipment/${id}`, {
         method: 'DELETE',
         body: JSON.stringify({ ownerId }),
       });
       await loadData();
-    } catch {
-      alert('تعذر حذف المعدة');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر حذف المعدة');
     }
   };
 
@@ -1204,29 +1207,40 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         </>
                       )}
                       {booking.status === 'confirmed' && (
-                        <button
-                          type="button"
-                          data-testid="partner-booking-complete"
-                          disabled={
-                            (Boolean(booking.deliveryRequested) &&
-                              String(booking.deliveryStatus || '') !== 'delivered') ||
-                            (Boolean(booking.returnRequested) &&
-                              String(booking.returnStatus || '') !== 'delivered')
-                          }
-                          onClick={() => updateBookingStatus(booking.id, 'completed')}
-                          className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
-                          title={
-                            booking.deliveryRequested &&
-                            String(booking.deliveryStatus || '') !== 'delivered'
-                              ? 'بانتظار اكتمال التوصيل'
-                              : booking.returnRequested &&
-                                  String(booking.returnStatus || '') !== 'delivered'
-                                ? 'بانتظار اكتمال الاسترجاع'
-                                : 'إكمال الإيجار'
-                          }
-                        >
-                          إكمال الإيجار
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            data-testid="partner-booking-complete"
+                            disabled={
+                              (Boolean(booking.deliveryRequested) &&
+                                String(booking.deliveryStatus || '') !== 'delivered') ||
+                              (Boolean(booking.returnRequested) &&
+                                String(booking.returnStatus || '') !== 'delivered')
+                            }
+                            onClick={() => updateBookingStatus(booking.id, 'completed')}
+                            className="px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={
+                              booking.deliveryRequested &&
+                              String(booking.deliveryStatus || '') !== 'delivered'
+                                ? 'بانتظار اكتمال التوصيل'
+                                : booking.returnRequested &&
+                                    String(booking.returnStatus || '') !== 'delivered'
+                                  ? 'بانتظار اكتمال الاسترجاع'
+                                  : 'إكمال الإيجار'
+                            }
+                          >
+                            إكمال الإيجار
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="partner-booking-cancel-confirmed"
+                            onClick={() => updateBookingStatus(booking.id, 'cancelled')}
+                            className="px-3 py-1.5 text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg"
+                            title="إلغاء بعد التأكيد (مع سبب)"
+                          >
+                            إلغاء
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1283,7 +1297,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     )}
                   </div>
 
-                  {booking.deliveryRequested && (
+                  {booking.deliveryRequested && booking.status === 'confirmed' && (
                     <div className="border-t border-slate-100 pt-4 space-y-3" data-testid="partner-booking-delivery">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="font-bold text-slate-700 flex items-center gap-1">
@@ -1426,6 +1440,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                         </div>
                       )}
                     </div>
+                  )}
+                  {booking.deliveryRequested && booking.status === 'pending' && (
+                    <p className="text-[11px] text-slate-500 border-t border-slate-100 pt-3" data-testid="partner-delivery-after-confirm">
+                      التوصيل يُفعَّل بعد تأكيد الحجز.
+                    </p>
                   )}
                 </motion.div>
               ))}

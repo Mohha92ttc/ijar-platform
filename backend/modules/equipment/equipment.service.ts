@@ -166,6 +166,17 @@ export class EquipmentService {
 
   async delete(id: string, ownerId: string): Promise<void> {
     await assertOwnerSubscriptionActive(ownerId);
+    const active = await query(
+      `
+      SELECT COUNT(*)::int AS n
+      FROM bookings
+      WHERE equipment_id = $1 AND status IN ('pending', 'confirmed')
+      `,
+      [id]
+    );
+    if (Number(active.rows[0]?.n || 0) > 0) {
+      throw new Error('لا يمكن حذف المعدة وفيها حجوزات قائمة أو مؤكدة. أكملها أو ألغِها أولاً، أو أخفِ المعدة.');
+    }
     const res = await query(`DELETE FROM equipment WHERE id = $1 AND owner_id = $2`, [id, ownerId]);
     if (res.rowCount === 0) {
       throw new Error('Equipment not found or unauthorized');

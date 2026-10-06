@@ -34,7 +34,10 @@ export class BookingService {
   }
 
   async create(customerId: string, data: CreateBookingDTO): Promise<Booking> {
-    const equipment = await this.equipmentService.getById(data.equipment_id);
+    const equipment = await this.equipmentService.getById(data.equipment_id, { requirePublicOwner: true });
+    if (String(equipment.status) === 'rented') {
+      // still allow if dates don't overlap — checkAvailability handles conflicts
+    }
 
     const start = new Date(data.start_date);
     const end = new Date(data.end_date);
@@ -70,7 +73,15 @@ export class BookingService {
     const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
     const rentalPrice = diffDays * equipment.price_per_day;
     const deliveryRequested = Boolean(data.delivery_requested);
-    const deliveryFee = deliveryRequested ? Math.max(0, Number(data.delivery_fee) || 0) : 0;
+
+    let deliveryFee = 0;
+    if (deliveryRequested) {
+      const feeRes = await query(
+        `SELECT COALESCE(delivery_fee, 0) AS delivery_fee FROM owner_payment_settings WHERE owner_id = $1 LIMIT 1`,
+        [equipment.owner_id]
+      );
+      deliveryFee = Math.max(0, Number(feeRes.rows[0]?.delivery_fee ?? 0) || 0);
+    }
     const totalPrice = rentalPrice + deliveryFee;
 
     let deliveryLat: number | null = null;
@@ -211,6 +222,26 @@ export class BookingService {
       throw new Error('Not authorized to update this booking');
     }
 
+    // Status transition matrix (admin emergency cancel already restricted upstream)
+    if (oldStatus === status) {
+      return existing;
+    }
+    if (oldStatus === 'cancelled' || oldStatus === 'completed') {
+      throw new Error('لا يمكن تغيير حالة حجز ملغي أو مكتمل');
+    }
+    if (status === 'confirmed' && oldStatus !== 'pending') {
+      throw new Error('لا يمكن تأكيد حجز إلا وهو بانتظار الموافقة');
+    }
+    if (status === 'completed' && oldStatus !== 'confirmed') {
+      throw new Error('لا يمكن إكمال حجز إلا بعد تأكيده');
+    }
+    if (status === 'pending') {
+      throw new Error('لا يمكن إعادة الحجز إلى حالة الانتظار');
+    }
+    if (status === 'cancelled' && !['pending', 'confirmed'].includes(oldStatus)) {
+      throw new Error('لا يمكن إلغاء هذا الحجز');
+    }
+
     if (status === 'confirmed' && actor.role === 'owner') {
       const pref = String(existing.payment_preference || '').toLowerCase();
       const isCod = pref === 'cash_on_delivery' || pref === 'cash';
@@ -282,7 +313,7 @@ export class BookingService {
 
     const equipment = await this.equipmentService.getById(booking.equipment_id);
 
-    if (status === 'confirmed' && oldStatus !== 'confirmed') {
+    if (status === 'confirmed') {
       await this.notificationService.create({
         user_id: booking.customer_id,
         type: 'booking_confirmed',
@@ -297,7 +328,7 @@ export class BookingService {
       } catch {
         // enum may not have rented in all envs — ignore
       }
-    } else if (status === 'cancelled' && oldStatus !== 'cancelled') {
+    } else if (status === 'cancelled') {
       const reasonSuffix = booking.cancel_reason
         ? ` السبب: ${booking.cancel_reason}`
         : cancelReason
@@ -332,7 +363,7 @@ export class BookingService {
       } catch {
         // ignore
       }
-    } else if (status === 'completed' && oldStatus !== 'completed') {
+    } else if (status === 'completed') {
       await this.notificationService.create({
         user_id: booking.customer_id,
         type: 'system',
@@ -374,6 +405,7 @@ export class BookingService {
       SELECT b.*, e.title as equipment_title, u.name as owner_name, u.phone as owner_phone, e.location as equipment_location,
              e.pickup_lat AS equipment_pickup_lat, e.pickup_lng AS equipment_pickup_lng,
              c.name AS courier_name, c.phone AS courier_phone,
+             rc.name AS return_courier_name, rc.phone AS return_courier_phone,
              p.status::text AS payment_status,
              p.notes AS payment_notes,
              p.payment_proof AS payment_proof,
@@ -386,6 +418,7 @@ export class BookingService {
       JOIN equipment e ON b.equipment_id = e.id
       JOIN users u ON e.owner_id = u.id
       LEFT JOIN couriers c ON c.id = b.assigned_courier_id
+      LEFT JOIN couriers rc ON rc.id = b.return_courier_id
       LEFT JOIN LATERAL (
         SELECT status, notes, payment_proof, method
         FROM payments
