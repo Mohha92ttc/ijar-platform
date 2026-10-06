@@ -7,6 +7,8 @@ export interface Equipment {
   description: string;
   category: string;
   price_per_day: number;
+  /** Identical units represented by this listing (default 1). */
+  quantity: number;
   location: string;
   governorate?: string | null;
   area?: string | null;
@@ -37,6 +39,7 @@ export interface CreateEquipmentDTO {
   description: string;
   category: string;
   price_per_day: number;
+  quantity?: number;
   location: string;
   governorate?: string;
   area?: string | null;
@@ -50,6 +53,7 @@ export interface UpdateEquipmentDTO {
   description?: string;
   category?: string;
   price_per_day?: number;
+  quantity?: number;
   location?: string;
   governorate?: string;
   area?: string | null;

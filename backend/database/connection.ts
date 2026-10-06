@@ -368,6 +368,8 @@ async function createTables() {
     ALTER TABLE equipment ADD COLUMN IF NOT EXISTS area VARCHAR(100);
     ALTER TABLE equipment ADD COLUMN IF NOT EXISTS pickup_lat DOUBLE PRECISION;
     ALTER TABLE equipment ADD COLUMN IF NOT EXISTS pickup_lng DOUBLE PRECISION;
+    ALTER TABLE equipment ADD COLUMN IF NOT EXISTS quantity INTEGER NOT NULL DEFAULT 1;
+    UPDATE equipment SET quantity = 1 WHERE quantity IS NULL OR quantity < 1;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
     ALTER TABLE bookings ADD COLUMN IF NOT EXISTS admin_notes TEXT;
     UPDATE equipment

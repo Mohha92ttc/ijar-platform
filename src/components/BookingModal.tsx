@@ -210,6 +210,11 @@ export default function BookingModal({
                     <MapPin size={12} /> {equipment.location}
                   </p>
                   <p className="text-blue-600 font-bold mt-1">{equipment.price.toLocaleString()} د.ع / يوم</p>
+                  {Number(equipment.quantity) > 1 && (
+                    <p className="text-xs font-bold text-emerald-700 mt-1" data-testid="booking-stock-qty">
+                      متوفر بالمخزن: {Number(equipment.quantity)} قطعة — يمكن حجز أكثر من زبون بنفس الفترة
+                    </p>
+                  )}
                   {(Number(equipment.rating) > 0 || Number(equipment.reviews) > 0) && (
                     <p className="text-xs text-amber-600 flex items-center gap-1 mt-1">
                       <Star size={12} className="fill-amber-400 text-amber-400" />
@@ -243,7 +248,11 @@ export default function BookingModal({
 
               {busyRanges.length > 0 && (
                 <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 space-y-1" data-testid="booking-busy-ranges">
-                  <p className="text-xs font-bold text-amber-900">تواريخ محجوزة (غير متاحة)</p>
+                  <p className="text-xs font-bold text-amber-900">
+                    {Number(equipment.quantity) > 1
+                      ? 'فترات نفد فيها المخزون بالكامل'
+                      : 'تواريخ محجوزة (غير متاحة)'}
+                  </p>
                   <ul className="text-[11px] text-amber-800 space-y-0.5 max-h-24 overflow-y-auto">
                     {busyRanges.slice(0, 12).map((r) => (
                       <li key={`${r.start}-${r.end}`}>
@@ -374,7 +383,11 @@ export default function BookingModal({
                 onClick={async () => {
                   setAvailError(null);
                   if (dateOverlapsBusy(effectiveStart, endDate)) {
-                    setAvailError('المعدة محجوزة في هذه التواريخ. راجع القائمة أعلاه وغيّر الموعد.');
+                    setAvailError(
+                      Number(equipment.quantity) > 1
+                        ? 'المخزون مكتمل في هذه التواريخ. غيّر الموعد.'
+                        : 'المعدة محجوزة في هذه التواريخ. راجع القائمة أعلاه وغيّر الموعد.'
+                    );
                     return;
                   }
                   setAvailChecking(true);
@@ -384,9 +397,17 @@ export default function BookingModal({
                       start: effectiveStart,
                       end: endDate,
                     });
-                    const res = await apiJson<{ available: boolean }>(`/api/bookings/availability?${q}`);
+                    const res = await apiJson<{
+                      available: boolean;
+                      remaining?: number;
+                      quantity?: number;
+                    }>(`/api/bookings/availability?${q}`);
                     if (!res.available) {
-                      setAvailError('المعدة محجوزة في هذه التواريخ. غيّر الموعد أو عدد الأيام.');
+                      setAvailError(
+                        Number(res.quantity) > 1
+                          ? `لا توجد قطع متبقية في هذه الفترة (المخزون ${res.quantity}).`
+                          : 'المعدة محجوزة في هذه التواريخ. غيّر الموعد أو عدد الأيام.'
+                      );
                       return;
                     }
                     setStep(2);

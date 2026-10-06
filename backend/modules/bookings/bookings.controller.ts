@@ -111,8 +111,8 @@ export class BookingController {
       if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
         return res.status(400).json({ message: 'تواريخ غير صالحة' });
       }
-      const available = await this.bookingService.checkAvailability(equipmentId, startDate, endDate);
-      res.status(200).json({ available });
+      const detail = await this.bookingService.getAvailabilityDetail(equipmentId, startDate, endDate);
+      res.status(200).json(detail);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }

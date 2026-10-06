@@ -183,29 +183,53 @@ export class BookingService {
     }
   }
 
-  /** true = no overlapping pending/confirmed booking */
+  /** true = still have stock for this date range (overlapping bookings < quantity) */
   async checkAvailability(equipmentId: string, start: Date, end: Date): Promise<boolean> {
+    const detail = await this.getAvailabilityDetail(equipmentId, start, end);
+    return detail.available;
+  }
+
+  async getAvailabilityDetail(
+    equipmentId: string,
+    start: Date,
+    end: Date
+  ): Promise<{ available: boolean; quantity: number; booked: number; remaining: number }> {
     await this.expireStalePending(equipmentId);
+    const qtyRes = await query(
+      `SELECT COALESCE(quantity, 1)::int AS quantity FROM equipment WHERE id = $1 LIMIT 1`,
+      [equipmentId]
+    );
+    if (!qtyRes.rows[0]) {
+      return { available: false, quantity: 0, booked: 0, remaining: 0 };
+    }
+    const quantity = Math.max(1, Number(qtyRes.rows[0].quantity) || 1);
     const res = await query(
       `
-      SELECT 1 FROM bookings
+      SELECT COUNT(*)::int AS cnt FROM bookings
       WHERE equipment_id = $1
         AND status IN ('pending', 'confirmed')
         AND start_date < $3 AND end_date > $2
-      LIMIT 1
     `,
       [equipmentId, start, end]
     );
-    return res.rows.length === 0;
+    const booked = Number(res.rows[0]?.cnt || 0);
+    const remaining = Math.max(0, quantity - booked);
+    return { available: remaining > 0, quantity, booked, remaining };
   }
 
-  /** Occupied ranges for calendar UX (pending + confirmed) */
+  /** Days/ranges fully sold out (booked count >= quantity). Partial stock days stay open. */
   async getBusyRanges(
     equipmentId: string,
     from?: Date,
     to?: Date
-  ): Promise<{ start: string; end: string; status: string }[]> {
+  ): Promise<{ start: string; end: string; status: string; booked?: number; quantity?: number }[]> {
     await this.expireStalePending(equipmentId);
+    const qtyRes = await query(
+      `SELECT COALESCE(quantity, 1)::int AS quantity FROM equipment WHERE id = $1 LIMIT 1`,
+      [equipmentId]
+    );
+    const quantity = Math.max(1, Number(qtyRes.rows[0]?.quantity) || 1);
+
     const params: unknown[] = [equipmentId];
     let sql = `
       SELECT start_date::date AS start, end_date::date AS end, status::text AS status
@@ -221,13 +245,57 @@ export class BookingService {
       params.push(to);
       sql += ` AND start_date <= $${params.length}`;
     }
-    sql += ` ORDER BY start_date ASC LIMIT 200`;
+    sql += ` ORDER BY start_date ASC LIMIT 500`;
     const res = await query(sql, params);
-    return res.rows.map((r: any) => ({
+    const bookings = res.rows.map((r: any) => ({
       start: String(r.start).slice(0, 10),
       end: String(r.end).slice(0, 10),
       status: String(r.status),
     }));
+
+    if (quantity <= 1) {
+      return bookings.map((b) => ({ ...b, booked: 1, quantity: 1 }));
+    }
+
+    // Sweep calendar days: only mark fully sold-out days
+    const dayCounts = new Map<string, number>();
+    const bump = (ymd: string) => dayCounts.set(ymd, (dayCounts.get(ymd) || 0) + 1);
+    for (const b of bookings) {
+      const s = new Date(`${b.start}T12:00:00`);
+      const e = new Date(`${b.end}T12:00:00`);
+      if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e <= s) continue;
+      for (let d = new Date(s); d < e; d.setDate(d.getDate() + 1)) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        bump(`${y}-${m}-${day}`);
+      }
+    }
+
+    const fullDays = [...dayCounts.entries()]
+      .filter(([, cnt]) => cnt >= quantity)
+      .map(([day, cnt]) => ({ day, cnt }))
+      .sort((a, b) => a.day.localeCompare(b.day));
+
+    const ranges: { start: string; end: string; status: string; booked?: number; quantity?: number }[] = [];
+    for (const { day, cnt } of fullDays) {
+      const nextDay = (() => {
+        const d = new Date(`${day}T12:00:00`);
+        d.setDate(d.getDate() + 1);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${dd}`;
+      })();
+      const last = ranges[ranges.length - 1];
+      if (last && last.end === day) {
+        last.end = nextDay;
+        last.booked = Math.max(Number(last.booked || 0), cnt);
+      } else {
+        ranges.push({ start: day, end: nextDay, status: 'confirmed', booked: cnt, quantity });
+      }
+    }
+    return ranges;
   }
 
   async updateStatus(
@@ -371,9 +439,14 @@ export class BookingService {
         related_id: booking.id,
       });
       try {
-        await query(`UPDATE equipment SET status = 'rented'::equipment_status WHERE id = $1 AND status = 'available'::equipment_status`, [
-          booking.equipment_id,
-        ]);
+        // Single-unit listings only: multi-stock stays "available" while any unit remains
+        const qty = Math.max(1, Number((equipment as { quantity?: number }).quantity ?? 1) || 1);
+        if (qty <= 1) {
+          await query(
+            `UPDATE equipment SET status = 'rented'::equipment_status WHERE id = $1 AND status = 'available'::equipment_status`,
+            [booking.equipment_id]
+          );
+        }
       } catch {
         // enum may not have rented in all envs — ignore
       }

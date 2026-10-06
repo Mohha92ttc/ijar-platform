@@ -16,6 +16,7 @@ type Eq = {
   category: string;
   status: string;
   price: number;
+  quantity: number;
   description: string;
   image: string;
   images: string[];
@@ -92,6 +93,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     title: '',
     category: '',
     price: '',
+    quantity: '1',
     description: '',
     governorate: 'بغداد',
     area: '',
@@ -191,6 +193,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           category: String(e.category),
           status: String(e.status),
           price: Number(e.price_per_day),
+          quantity: Math.max(1, Math.floor(Number(e.quantity ?? 1) || 1)),
           description: String(e.description || ''),
           image: imgs[0] || '',
           images: imgs,
@@ -695,6 +698,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     title: '',
     category: '',
     price: '',
+    quantity: '1',
     description: '',
     governorate: 'بغداد',
     area: '',
@@ -721,6 +725,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     const price = parseInt(newEquipment.price, 10);
     if (Number.isNaN(price)) {
       alert('السعر يجب أن يكون رقماً صحيحاً.');
+      return;
+    }
+    const quantity = Math.max(1, Math.min(100000, Math.floor(Number(newEquipment.quantity) || 1)));
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      alert('كمية المخزون يجب أن تكون 1 على الأقل.');
       return;
     }
 
@@ -767,6 +776,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             description: newEquipment.description || '—',
             category: newEquipment.category,
             price_per_day: price,
+            quantity,
             location,
             governorate,
             area,
@@ -784,6 +794,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             description: newEquipment.description || '—',
             category: newEquipment.category,
             price_per_day: price,
+            quantity,
             location,
             governorate,
             area,
@@ -809,6 +820,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       title: equipment.title,
       category: equipment.category,
       price: String(equipment.price),
+      quantity: String(equipment.quantity || 1),
       description: equipment.description || '',
       governorate: equipment.governorate || 'بغداد',
       area: equipment.area || '',
@@ -1801,6 +1813,20 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     className="px-4 py-3 border border-slate-200 rounded-xl text-sm"
                   />
                   <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500">الكمية بالمخزن *</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000}
+                      data-testid="partner-equipment-quantity"
+                      placeholder="كم قطعة متطابقة؟"
+                      value={newEquipment.quantity}
+                      onChange={(e) => setNewEquipment({ ...newEquipment, quantity: e.target.value })}
+                      className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm"
+                    />
+                    <p className="text-[10px] text-slate-400">إعلان واحد — عدة زبائن يحجزون بنفس الوقت حتى هذه الكمية.</p>
+                  </div>
+                  <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-500">المحافظة *</label>
                     <select
                       data-testid="partner-equipment-governorate"
@@ -2003,6 +2029,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                       <div>
                         <span className="text-lg font-bold text-blue-600">{equipment.price.toLocaleString()}</span>
                         <span className="text-xs text-slate-500 mr-1">د.ع / يوم</span>
+                        {equipment.quantity > 1 && (
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-0.5 mr-2">
+                            مخزون: {equipment.quantity}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

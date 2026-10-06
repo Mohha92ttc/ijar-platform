@@ -39,6 +39,7 @@ type EquipmentRow = {
   title: string;
   category: string;
   price: number;
+  quantity: number;
   location: string;
   governorate?: string;
   area?: string;
@@ -82,6 +83,7 @@ function mapApiEquipment(e: Record<string, unknown>): EquipmentRow {
     title: String(e.title),
     category: String(e.category),
     price: Number(e.price_per_day),
+    quantity: Math.max(1, Math.floor(Number(e.quantity ?? 1) || 1)),
     location: String(e.location) || formatEquipmentLocation(governorate, area),
     governorate,
     area,
@@ -542,14 +544,19 @@ export default function App() {
       }
       const startMs = new Date(line.startDate).setHours(12, 0, 0, 0);
       const endMs = new Date(line.endDate).setHours(12, 0, 0, 0);
-      const overlap = prev.find((x) => {
+      const stock = Math.max(1, Number(equipment.quantity) || 1);
+      const overlappingSame = prev.filter((x) => {
         if (x.id !== line.id) return false;
         const xs = new Date(x.startDate).setHours(12, 0, 0, 0);
         const xe = new Date(x.endDate).setHours(12, 0, 0, 0);
         return startMs < xe && endMs > xs;
       });
-      if (overlap) {
-        alert('هذه المعدة موجودة في السلة بتواريخ متداخلة. عدّل التواريخ أو احذف السطر السابق.');
+      if (overlappingSame.length >= stock) {
+        alert(
+          stock <= 1
+            ? 'هذه المعدة موجودة في السلة بتواريخ متداخلة. عدّل التواريخ أو احذف السطر السابق.'
+            : `الكمية المتاحة لهذه المعدة ${stock} — السلة فيها حجوزات متداخلة بعدد المخزون.`
+        );
         return prev;
       }
       return [...prev.filter((x) => !(x.id === line.id && x.startDate === line.startDate)), line];
@@ -1191,6 +1198,11 @@ export default function App() {
                     <div>
                       <span className="text-lg font-bold text-blue-600">{item.price.toLocaleString()}</span>
                       <span className="text-xs text-slate-500 mr-1">د.ع / يوم</span>
+                      {item.quantity > 1 && (
+                        <span className="block text-[10px] font-bold text-emerald-700 mt-0.5">
+                          متوفر: {item.quantity} قطعة
+                        </span>
+                      )}
                     </div>
                     <button
                       type="button"

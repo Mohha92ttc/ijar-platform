@@ -48,6 +48,10 @@ export class EquipmentController {
       governorate: governorate || locationFallback.split('-')[0].trim(),
       area: areaRaw || null,
       images: body.images as string[] | undefined,
+      quantity:
+        body.quantity != null && body.quantity !== ''
+          ? Math.max(1, Math.min(100000, Math.floor(Number(body.quantity) || 1)))
+          : 1,
       pickup_lat:
         body.pickup_lat != null && body.pickup_lat !== '' ? Number(body.pickup_lat) : null,
       pickup_lng:

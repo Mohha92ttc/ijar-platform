@@ -22,6 +22,7 @@ function rowToEquipment(row: Record<string, unknown>): Equipment {
     description: String(row.description),
     category: String(row.category),
     price_per_day: Number(row.price_per_day),
+    quantity: Math.max(1, Math.min(100000, Math.floor(Number(row.quantity ?? 1) || 1))),
     location: locationRaw || formatLoc(governorate, area),
     governorate,
     area,
@@ -67,9 +68,10 @@ export class EquipmentService {
       data.pickup_lat != null && Number.isFinite(Number(data.pickup_lat)) ? Number(data.pickup_lat) : null;
     const pickupLng =
       data.pickup_lng != null && Number.isFinite(Number(data.pickup_lng)) ? Number(data.pickup_lng) : null;
+    const quantity = Math.max(1, Math.min(100000, Math.floor(Number(data.quantity ?? 1) || 1)));
     const sql = `
-      INSERT INTO equipment (owner_id, title, description, category, price_per_day, location, governorate, area, pickup_lat, pickup_lng, images, status, average_rating, review_count)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'available', 0, 0)
+      INSERT INTO equipment (owner_id, title, description, category, price_per_day, quantity, location, governorate, area, pickup_lat, pickup_lng, images, status, average_rating, review_count)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'available', 0, 0)
       RETURNING *
     `;
     const res = await query(sql, [
@@ -78,6 +80,7 @@ export class EquipmentService {
       data.description,
       data.category,
       data.price_per_day,
+      quantity,
       location,
       governorate,
       area,
@@ -112,6 +115,10 @@ export class EquipmentService {
     if (data.price_per_day !== undefined) {
       fields.push(`price_per_day = $${i++}`);
       values.push(data.price_per_day);
+    }
+    if (data.quantity !== undefined) {
+      fields.push(`quantity = $${i++}`);
+      values.push(Math.max(1, Math.min(100000, Math.floor(Number(data.quantity) || 1))));
     }
     if (data.location !== undefined) {
       fields.push(`location = $${i++}`);
@@ -342,19 +349,23 @@ export class EquipmentService {
     return filtered;
   }
 
-  /** No overlap with pending/confirmed bookings */
+  /** Still has stock for the range (overlapping bookings < quantity) */
   private async isAvailableForRange(equipmentId: string, start: Date, end: Date): Promise<boolean> {
+    const qtyRes = await query(
+      `SELECT COALESCE(quantity, 1)::int AS quantity FROM equipment WHERE id = $1 LIMIT 1`,
+      [equipmentId]
+    );
+    const quantity = Math.max(1, Number(qtyRes.rows[0]?.quantity) || 1);
     const res = await query(
       `
-      SELECT 1 FROM bookings
+      SELECT COUNT(*)::int AS cnt FROM bookings
       WHERE equipment_id = $1
         AND status IN ('pending', 'confirmed')
         AND start_date < $3 AND end_date > $2
-      LIMIT 1
     `,
       [equipmentId, start, end]
     );
-    return res.rows.length === 0;
+    return Number(res.rows[0]?.cnt || 0) < quantity;
   }
 
   async getByOwner(ownerId: string): Promise<Equipment[]> {
