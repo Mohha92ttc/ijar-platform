@@ -39,8 +39,18 @@ export class EquipmentController {
           ? `${governorate} - ${areaRaw}`
           : governorate
         : locationFallback;
+    const rawQty = body.quantity;
+    let quantity = 1;
+    if (rawQty != null && rawQty !== '') {
+      const n = Number(rawQty);
+      if (!Number.isFinite(n) || n < 1 || Math.floor(n) !== n) {
+        quantity = NaN;
+      } else {
+        quantity = Math.min(100000, Math.floor(n));
+      }
+    }
     return {
-      title: String(body.title ?? body.name ?? ''),
+      title: String(body.title ?? body.name ?? '').trim(),
       description: String(body.description ?? ''),
       category: String(body.category ?? ''),
       price_per_day,
@@ -48,15 +58,39 @@ export class EquipmentController {
       governorate: governorate || locationFallback.split('-')[0].trim(),
       area: areaRaw || null,
       images: body.images as string[] | undefined,
-      quantity:
-        body.quantity != null && body.quantity !== ''
-          ? Math.max(1, Math.min(100000, Math.floor(Number(body.quantity) || 1)))
-          : 1,
+      quantity,
       pickup_lat:
         body.pickup_lat != null && body.pickup_lat !== '' ? Number(body.pickup_lat) : null,
       pickup_lng:
         body.pickup_lng != null && body.pickup_lng !== '' ? Number(body.pickup_lng) : null,
     };
+  }
+
+  /** Reject invalid create/update fields with Arabic errors before DB. */
+  private assertEquipmentFields(data: {
+    title?: string;
+    price_per_day?: number;
+    quantity?: number;
+  }, opts: { requireTitle?: boolean; requirePrice?: boolean } = {}) {
+    if (opts.requireTitle !== false && data.title !== undefined) {
+      if (!String(data.title || '').trim()) {
+        throw new Error('عنوان المعدة مطلوب');
+      }
+    }
+    if (data.price_per_day !== undefined) {
+      const p = Number(data.price_per_day);
+      if (!Number.isFinite(p) || p <= 0) {
+        throw new Error('سعر الإيجار اليومي يجب أن يكون رقماً أكبر من صفر');
+      }
+    } else if (opts.requirePrice) {
+      throw new Error('سعر الإيجار اليومي يجب أن يكون رقماً أكبر من صفر');
+    }
+    if (data.quantity !== undefined) {
+      const q = Number(data.quantity);
+      if (!Number.isFinite(q) || q < 1 || Math.floor(q) !== q) {
+        throw new Error('الكمية يجب أن تكون عدداً صحيحاً أكبر من أو يساوي 1');
+      }
+    }
   }
 
   list = async (req: Request, res: Response) => {
@@ -85,6 +119,7 @@ export class EquipmentController {
         return res.status(400).json({ error: 'يجب تسجيل الدخول كشريك لإضافة معدة' });
       }
       const dto = this.normalizeCreateBody(req.body);
+      this.assertEquipmentFields(dto, { requireTitle: true, requirePrice: true });
       const equipment = await this.equipmentService.create(ownerId, dto);
       res.status(201).json(equipment);
     } catch (error: any) {
@@ -100,7 +135,30 @@ export class EquipmentController {
       if (!ownerId) {
         return res.status(400).json({ error: 'ownerId required' });
       }
-      const equipment = await this.equipmentService.update(id, ownerId, req.body);
+      const body = req.body as Record<string, unknown>;
+      const title =
+        body.title !== undefined || body.name !== undefined
+          ? String(body.title ?? body.name ?? '').trim()
+          : undefined;
+      const rawPrice = body.price_per_day ?? body.price;
+      const price_per_day =
+        rawPrice !== undefined && rawPrice !== null && rawPrice !== ''
+          ? Number(rawPrice)
+          : body.price_per_day !== undefined || body.price !== undefined
+            ? NaN
+            : undefined;
+      let quantity: number | undefined;
+      if (body.quantity !== undefined && body.quantity !== null && body.quantity !== '') {
+        quantity = Number(body.quantity);
+      } else if (body.quantity === '' || body.quantity === null) {
+        quantity = NaN;
+      }
+      this.assertEquipmentFields({ title, price_per_day, quantity });
+      const patch: Record<string, unknown> = { ...body };
+      if (title !== undefined) patch.title = title;
+      if (price_per_day !== undefined) patch.price_per_day = price_per_day;
+      if (quantity !== undefined) patch.quantity = Math.floor(quantity);
+      const equipment = await this.equipmentService.update(id, ownerId, patch as any);
       res.status(200).json(equipment);
     } catch (error: any) {
       res.status(400).json({ error: error.message });

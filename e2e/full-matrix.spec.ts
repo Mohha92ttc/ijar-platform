@@ -243,7 +243,8 @@ test.describe('مصفوفة API — تغطية شاملة للمسارات', () 
     expect.soft(contractG.ok()).toBeTruthy();
 
     const mig = await request.get(`${base}/api/migrations/status`);
-    expect.soft([200, 404].includes(mig.status())).toBeTruthy();
+    // prod: 404; non-prod without admin: 401/403; with admin: 200
+    expect.soft([200, 401, 403, 404].includes(mig.status())).toBeTruthy();
 
     const refTx = await request.get(`${base}/api/referral/transactions`, { headers: adm });
     expect.soft(refTx.ok() || [500].includes(refTx.status())).toBeTruthy();

@@ -14,6 +14,6 @@ export interface Courier {
 export interface CreateCourierDTO {
   name: string;
   phone: string;
-  email?: string;
+  email: string;
   password?: string;
 }

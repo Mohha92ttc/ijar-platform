@@ -276,6 +276,7 @@ export class AuthService {
       currentPassword?: string;
       newPassword?: string;
       email_notifications?: boolean;
+      sms_notifications?: boolean;
     }
   ): Promise<void> {
     if (data.newPassword && data.currentPassword) {
@@ -289,9 +290,20 @@ export class AuthService {
       }
     }
 
+    let emailChanged = false;
+    let newEmail: string | null = null;
+    let verificationToken: string | null = null;
+    let customerRole = false;
+
     if (data.name || data.email || data.phone) {
+      const current = await query(`SELECT email, role FROM users WHERE id = $1`, [userId]);
+      if (current.rows.length === 0) throw new Error('User not found');
+      const prevEmail = String(current.rows[0].email || '').trim().toLowerCase();
+      const role = String(current.rows[0].role || '');
+      customerRole = role === 'customer';
+
       const updates: string[] = [];
-      const values: string[] = [];
+      const values: unknown[] = [];
       let i = 1;
 
       if (data.name) {
@@ -299,8 +311,26 @@ export class AuthService {
         values.push(data.name);
       }
       if (data.email) {
-        updates.push(`email = $${i++}`);
-        values.push(data.email);
+        newEmail = String(data.email).trim().toLowerCase();
+        if (newEmail && newEmail !== prevEmail) {
+          const dup = await query(`SELECT id FROM users WHERE email = $1 AND id <> $2`, [
+            newEmail,
+            userId,
+          ]);
+          if (dup.rows.length > 0) {
+            throw new Error('البريد مستخدم مسبقاً');
+          }
+          updates.push(`email = $${i++}`);
+          values.push(newEmail);
+          emailChanged = true;
+          // Customers must re-verify after email change
+          if (customerRole) {
+            verificationToken = this.generateSecureToken();
+            updates.push(`is_email_verified = FALSE`);
+            updates.push(`verification_token = $${i++}`);
+            values.push(verificationToken);
+          }
+        }
       }
       if (data.phone) {
         updates.push(`phone = $${i++}`);
@@ -311,18 +341,44 @@ export class AuthService {
         values.push(userId);
         await query(`UPDATE users SET ${updates.join(', ')} WHERE id = $${i}`, values);
       }
+
+      if (emailChanged && newEmail && customerRole && verificationToken) {
+        if (mailService.isConfigured()) {
+          const appUrl = process.env.APP_URL || process.env.RENDER_EXTERNAL_URL || 'http://127.0.0.1:5173';
+          const verifyLink = `${appUrl.replace(/\/$/, '')}/?verify=${encodeURIComponent(verificationToken)}`;
+          await mailService.send({
+            to: newEmail,
+            subject: 'تأكيد البريد الجديد — إيجار',
+            text: `تم تغيير بريدك. يرجى تأكيد البريد الجديد عبر الرابط: ${verifyLink}`,
+          });
+        } else {
+          console.warn('[auth] email changed — verification email skipped (SMTP not configured)');
+        }
+      }
     }
 
-    if (typeof data.email_notifications === 'boolean') {
+    if (
+      typeof data.email_notifications === 'boolean' ||
+      typeof data.sms_notifications === 'boolean'
+    ) {
       await query(
         `
-        INSERT INTO user_preferences (user_id, email_notifications)
-        VALUES ($1, $2)
+        INSERT INTO user_preferences (user_id, email_notifications, sms_notifications)
+        VALUES (
+          $1,
+          COALESCE($2, TRUE),
+          COALESCE($3, TRUE)
+        )
         ON CONFLICT (user_id) DO UPDATE SET
-          email_notifications = EXCLUDED.email_notifications,
+          email_notifications = COALESCE($2, user_preferences.email_notifications),
+          sms_notifications = COALESCE($3, user_preferences.sms_notifications),
           updated_at = CURRENT_TIMESTAMP
         `,
-        [userId, data.email_notifications]
+        [
+          userId,
+          typeof data.email_notifications === 'boolean' ? data.email_notifications : null,
+          typeof data.sms_notifications === 'boolean' ? data.sms_notifications : null,
+        ]
       );
     }
   }

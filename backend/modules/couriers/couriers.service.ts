@@ -48,8 +48,16 @@ export class CouriersService {
 
     let email = (data.email || '').trim().toLowerCase();
     if (!email) {
-      const slug = phone.replace(/\D/g, '').slice(-8) || Date.now().toString().slice(-8);
-      email = `courier.${slug}@ijar.local`;
+      throw new Error('بريد المندوب مطلوب');
+    }
+    if (!email.includes('@') || email.endsWith('@') || email.startsWith('@')) {
+      throw new Error('بريد المندوب غير صالح');
+    }
+    if (email.endsWith('.local') || email.includes('@ijar.local')) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('لا يُسمح ببريد @ijar.local في الإنتاج — أدخل بريداً حقيقياً');
+      }
+      throw new Error('أدخل بريداً حقيقياً (ليس .local)');
     }
 
     const dup = await query(`SELECT id FROM users WHERE email = $1`, [email]);

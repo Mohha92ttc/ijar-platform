@@ -353,6 +353,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       alert('الاسم ورقم الهاتف مطلوبان');
       return;
     }
+    const email = newCourier.email.trim().toLowerCase();
+    if (!email || !email.includes('@') || email.endsWith('.local') || email.includes('@ijar.local')) {
+      alert('بريد حقيقي مطلوب للمندوب (يحتوي @ وليس .local)');
+      return;
+    }
     setCourierCreating(true);
     try {
       const created = await apiJson<CourierRow & { temp_password?: string; email?: string }>('/api/couriers', {
@@ -360,7 +365,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         body: JSON.stringify({
           name: newCourier.name.trim(),
           phone: newCourier.phone.trim(),
-          email: newCourier.email.trim() || undefined,
+          email,
           password: newCourier.password.trim() || undefined,
         }),
       });
@@ -1675,7 +1680,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                 />
                 <input
                   data-testid="partner-courier-email"
-                  placeholder="بريد اختياري (وإلا يُولَّد تلقائياً)"
+                  type="email"
+                  required
+                  placeholder="بريد المندوب (مطلوب)"
                   className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm"
                   value={newCourier.email}
                   onChange={(e) => setNewCourier({ ...newCourier, email: e.target.value })}

@@ -74,11 +74,16 @@ export class StripeProvider implements IPaymentProvider {
     if (!this.stripe) {
       throw new Error('Stripe غير مُعدّ');
     }
-    const session = await this.stripe.checkout.sessions.retrieve(paymentId);
-    const pi =
-      typeof session.payment_intent === 'string'
-        ? session.payment_intent
-        : session.payment_intent?.id;
+    let pi: string | undefined;
+    if (paymentId.startsWith('pi_')) {
+      pi = paymentId;
+    } else {
+      const session = await this.stripe.checkout.sessions.retrieve(paymentId);
+      pi =
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id || undefined;
+    }
     if (!pi) return false;
     await this.stripe.refunds.create({ payment_intent: pi });
     return true;

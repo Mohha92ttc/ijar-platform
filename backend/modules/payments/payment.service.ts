@@ -484,6 +484,20 @@ export class PaymentService {
     }
   }
 
+  /** Best-effort Stripe refund when transaction_id is a Checkout Session / PaymentIntent. */
+  private async tryStripeRefund(transactionId?: string | null): Promise<boolean> {
+    const tid = String(transactionId || '').trim();
+    if (!tid || !/^(cs_|pi_)/.test(tid)) return false;
+    try {
+      const stripe = this.providers.get('stripe');
+      if (!stripe) return false;
+      return await stripe.refundPayment(tid);
+    } catch (e) {
+      console.warn('[payment] stripe refund failed, continuing manual path', e instanceof Error ? e.message : e);
+      return false;
+    }
+  }
+
   /** On cancel: reject open reviews; mark approved as refunded (manual settlement). */
   async settleOnBookingCancel(bookingId: string, note?: string): Promise<void> {
     const payment = await this.repository.findByBookingId(bookingId);
@@ -501,9 +515,14 @@ export class PaymentService {
     }
     if (['approved', 'paid', 'completed'].includes(st)) {
       try {
+        const txId = String(raw.transaction_id || payment.transaction_id || '');
+        const stripeOk = await this.tryStripeRefund(txId);
         await query(
           `UPDATE payments SET status = 'refunded'::payment_status, notes = COALESCE(notes,'') || $1, updated_at = NOW() WHERE id = $2`,
-          [` | ${note || 'بانتظار استرداد بعد إلغاء الحجز'}`, id]
+          [
+            ` | ${note || 'بانتظار استرداد بعد إلغاء الحجز'}${stripeOk ? ' | Stripe refund OK' : ''}`,
+            id,
+          ]
         );
         const ownerId = String(raw.owner_id || payment.owner_id || '');
         const customerId = String(raw.customer_id || payment.customer_id || '');
@@ -568,6 +587,8 @@ export class PaymentService {
         throw new Error('غير مصرح بتأكيد استرداد هذه الدفعة');
       }
     }
+    const txId = String(raw.transaction_id || payment.transaction_id || '');
+    const stripeOk = await this.tryStripeRefund(txId);
     await query(
       `
       UPDATE payments
@@ -577,7 +598,7 @@ export class PaymentService {
       WHERE id = $2
       `,
       [
-        ` | تم تأكيد الاسترداد${actor?.role === 'owner' ? ' (الشريك)' : ''}${notes ? `: ${notes}` : ''}`,
+        ` | تم تأكيد الاسترداد${actor?.role === 'owner' ? ' (الشريك)' : ''}${notes ? `: ${notes}` : ''}${stripeOk ? ' | Stripe refund OK' : ''}`,
         paymentId,
       ]
     );

@@ -214,38 +214,58 @@ async function startServer() {
     }
   );
 
-  if (!isProd) {
-    app.post('/api/migrations/run', async (_req, res) => {
-      try {
-        const migrationService = new MigrationService();
-        await migrationService.runMigrations();
-        res.json({ message: 'Migrations completed successfully' });
-      } catch (error) {
-        res.status(500).json({ error: 'Migration failed', details: errMsg(error) });
-      }
+  // Production: hide migrations entirely (404). Non-prod: admin auth required.
+  if (isProd) {
+    app.use('/api/migrations', (_req, res) => {
+      res.status(404).json({ error: 'Not found' });
     });
+  } else {
+    app.post(
+      '/api/migrations/run',
+      authenticateToken,
+      requireRole(['admin']),
+      async (_req: AuthenticatedRequest, res) => {
+        try {
+          const migrationService = new MigrationService();
+          await migrationService.runMigrations();
+          res.json({ message: 'Migrations completed successfully' });
+        } catch (error) {
+          res.status(500).json({ error: 'Migration failed', details: errMsg(error) });
+        }
+      }
+    );
 
-    app.post('/api/migrations/reset', async (_req, res) => {
-      try {
-        const migrationService = new MigrationService();
-        await migrationService.resetDatabase();
-        await migrationService.runMigrations();
-        await migrationService.seedDatabase();
-        res.json({ message: 'Database reset and seeded successfully' });
-      } catch (error) {
-        res.status(500).json({ error: 'Database reset failed', details: errMsg(error) });
+    app.post(
+      '/api/migrations/reset',
+      authenticateToken,
+      requireRole(['admin']),
+      async (_req: AuthenticatedRequest, res) => {
+        try {
+          const migrationService = new MigrationService();
+          await migrationService.resetDatabase();
+          await migrationService.runMigrations();
+          await migrationService.seedDatabase();
+          res.json({ message: 'Database reset and seeded successfully' });
+        } catch (error) {
+          res.status(500).json({ error: 'Database reset failed', details: errMsg(error) });
+        }
       }
-    });
+    );
 
-    app.get('/api/migrations/status', async (_req, res) => {
-      try {
-        const migrationService = new MigrationService();
-        const status = await migrationService.getMigrationStatus();
-        res.json(status);
-      } catch {
-        res.status(500).json({ error: 'Failed to get migration status' });
+    app.get(
+      '/api/migrations/status',
+      authenticateToken,
+      requireRole(['admin']),
+      async (_req: AuthenticatedRequest, res) => {
+        try {
+          const migrationService = new MigrationService();
+          const status = await migrationService.getMigrationStatus();
+          res.json(status);
+        } catch {
+          res.status(500).json({ error: 'Failed to get migration status' });
+        }
       }
-    });
+    );
   }
 
   if (!isProd) {

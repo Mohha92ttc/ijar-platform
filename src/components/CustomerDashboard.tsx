@@ -118,6 +118,7 @@ export default function CustomerDashboard({
   const [profileForm, setProfileForm] = useState({ name: '', phone: '', email: '' });
   const [savingProfile, setSavingProfile] = useState(false);
   const [notifyOn, setNotifyOn] = useState(true);
+  const [smsOn, setSmsOn] = useState(true);
   const [lang, setLang] = useState('ar');
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '' });
   const [passwordSaving, setPasswordSaving] = useState(false);
@@ -186,24 +187,30 @@ export default function CustomerDashboard({
       if (!raw) return;
       const p = JSON.parse(raw);
       if (typeof p.notifyOn === 'boolean') setNotifyOn(p.notifyOn);
+      if (typeof p.smsOn === 'boolean') setSmsOn(p.smsOn);
       if (p.lang) setLang(String(p.lang));
     } catch {
       // ignore
     }
   }, [userId]);
 
-  const savePrefs = (next: { notifyOn?: boolean; lang?: string }) => {
+  const savePrefs = (next: { notifyOn?: boolean; smsOn?: boolean; lang?: string }) => {
     const merged = {
       notifyOn: next.notifyOn ?? notifyOn,
+      smsOn: next.smsOn ?? smsOn,
       lang: next.lang ?? lang,
     };
     if (next.notifyOn != null) setNotifyOn(next.notifyOn);
+    if (next.smsOn != null) setSmsOn(next.smsOn);
     if (next.lang != null) setLang(next.lang);
     localStorage.setItem(PREFS_KEY(userId), JSON.stringify(merged));
-    if (next.notifyOn != null && userId) {
+    if ((next.notifyOn != null || next.smsOn != null) && userId) {
+      const body: Record<string, boolean> = {};
+      if (next.notifyOn != null) body.email_notifications = next.notifyOn;
+      if (next.smsOn != null) body.sms_notifications = next.smsOn;
       apiJson('/api/auth/me', {
         method: 'PATCH',
-        body: JSON.stringify({ email_notifications: next.notifyOn }),
+        body: JSON.stringify(body),
       }).catch(() => {});
     }
   };
@@ -1140,9 +1147,9 @@ export default function CustomerDashboard({
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
                 <div>
-                  <div className="font-bold">تذكير الإشعارات</div>
+                  <div className="font-bold">إشعارات البريد</div>
                   <div className="text-sm text-slate-500">
-                    تفضيل محلي على هذا الجهاز فقط — الإشعارات داخل المنصة تبقى متاحة من الجرس
+                    تفعيل/تعطيل رسائل البريد المرتبطة بالحجوزات والدفع
                   </div>
                 </div>
                 <button
@@ -1154,6 +1161,24 @@ export default function CustomerDashboard({
                   }`}
                 >
                   {notifyOn ? 'مفعّلة' : 'معطّلة'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
+                <div>
+                  <div className="font-bold">إشعارات SMS</div>
+                  <div className="text-sm text-slate-500">
+                    تفضيل استلام تنبيهات الرسائل النصية عند توفر خدمة SMS
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-testid="customer-settings-sms"
+                  onClick={() => savePrefs({ smsOn: !smsOn })}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold ${
+                    smsOn ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  {smsOn ? 'مفعّلة' : 'معطّلة'}
                 </button>
               </div>
               {canUseWebPush() && (

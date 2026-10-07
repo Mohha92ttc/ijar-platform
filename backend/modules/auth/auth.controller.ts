@@ -90,7 +90,15 @@ export class AuthController {
       if (!req.user || !req.user.userId) {
         return res.status(401).json({ error: 'Unauthorized' });
       }
-      const { name, email, phone, currentPassword, newPassword, email_notifications } = req.body;
+      const {
+        name,
+        email,
+        phone,
+        currentPassword,
+        newPassword,
+        email_notifications,
+        sms_notifications,
+      } = req.body;
       await this.authService.updateMe(req.user.userId, {
         name,
         email,
@@ -98,6 +106,7 @@ export class AuthController {
         currentPassword,
         newPassword,
         email_notifications: typeof email_notifications === 'boolean' ? email_notifications : undefined,
+        sms_notifications: typeof sms_notifications === 'boolean' ? sms_notifications : undefined,
       });
       res.status(200).json({ message: 'Profile updated successfully' });
     } catch (error: unknown) {

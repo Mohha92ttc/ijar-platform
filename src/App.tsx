@@ -122,6 +122,9 @@ export default function App() {
   const [list, setList] = useState<EquipmentRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  /** Server search results when query has 2+ chars; null = use client list */
+  const [searchApiList, setSearchApiList] = useState<EquipmentRow[] | null>(null);
+  const [searchApiFailed, setSearchApiFailed] = useState(false);
   const [checkoutSubmitting, setCheckoutSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
@@ -395,8 +398,44 @@ export default function App() {
     return partners.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
   }, [partners, searchQ, selectedOwnerId]);
 
+  // Debounced server search when query has 2+ chars; fall back to client filter on failure
+  useEffect(() => {
+    const q = searchQ.trim();
+    if (q.length < 2) {
+      setSearchApiList(null);
+      setSearchApiFailed(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ query: q });
+        if (activeCategory && activeCategory !== 'الكل') params.set('category', activeCategory);
+        if (filterGovernorate) params.set('governorate', filterGovernorate);
+        if (filterArea.trim()) params.set('area', filterArea.trim());
+        if (priceMin) params.set('minPrice', priceMin);
+        if (priceMax) params.set('maxPrice', priceMax);
+        const raw = await apiJson<Record<string, unknown>[]>(`/api/equipment/search?${params}`);
+        if (cancelled) return;
+        setSearchApiList((Array.isArray(raw) ? raw : []).map(mapApiEquipment));
+        setSearchApiFailed(false);
+      } catch {
+        if (cancelled) return;
+        setSearchApiList(null);
+        setSearchApiFailed(true);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQ, activeCategory, filterGovernorate, filterArea, priceMin, priceMax]);
+
   const filteredEquipment = useMemo(() => {
-    return list.filter((item) => {
+    const q = searchQ.trim().toLowerCase();
+    const useServer = q.length >= 2 && searchApiList != null && !searchApiFailed;
+    const source = useServer ? searchApiList : list;
+    return source.filter((item) => {
       if (selectedOwnerId && item.owner_id !== selectedOwnerId) return false;
       if (activeCategory !== 'الكل' && item.category !== activeCategory) return false;
       if (filterGovernorate) {
@@ -409,11 +448,9 @@ export default function App() {
         const qa = filterArea.trim().toLowerCase();
         if (!a.includes(qa) && !loc.includes(qa)) return false;
       }
-      const q = searchQ.trim().toLowerCase();
-      if (q) {
+      // Client-side text filter when not using server results (short query or API failure)
+      if (q && !useServer) {
         const hay = `${item.title} ${item.category} ${item.location} ${item.owner_name || ''}`.toLowerCase();
-        // إذا البحث يطابق اسم شريك فقط — لا نخفي معدات شركاء آخرين هنا؛ بطاقات الشركاء تظهر فوق
-        // لكن نظهر المعدات المطابقة للاسم/التصنيف/الموقع أو اسم مالكها
         if (!hay.includes(q)) return false;
       }
       const min = priceMin ? Number(priceMin) : NaN;
@@ -422,7 +459,18 @@ export default function App() {
       if (!Number.isNaN(max) && item.price > max) return false;
       return true;
     });
-  }, [list, selectedOwnerId, activeCategory, searchQ, priceMin, priceMax, filterGovernorate, filterArea]);
+  }, [
+    list,
+    searchApiList,
+    searchApiFailed,
+    selectedOwnerId,
+    activeCategory,
+    searchQ,
+    priceMin,
+    priceMax,
+    filterGovernorate,
+    filterArea,
+  ]);
 
   const openPartnerStore = (partnerId: string) => {
     setSelectedOwnerId(partnerId);
