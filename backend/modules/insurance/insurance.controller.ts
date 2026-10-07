@@ -476,6 +476,31 @@ export const insuranceController = {
       );
       const claim = mapClaim(enriched.rows[0] || updated.rows[0]);
 
+      let settlement: Record<string, unknown> | null = null;
+      if (status === 'approved') {
+        const payoutAmount =
+          body.amount != null && Number.isFinite(Number(body.amount))
+            ? Number(body.amount)
+            : claim.amount;
+        const existingSettle = await query(
+          `SELECT * FROM insurance_settlements WHERE claim_id = $1 AND status = 'settled' LIMIT 1`,
+          [claim.id]
+        );
+        if (existingSettle.rows.length > 0) {
+          settlement = existingSettle.rows[0];
+        } else {
+          const inserted = await query(
+            `
+            INSERT INTO insurance_settlements (claim_id, amount, status)
+            VALUES ($1, $2, 'settled')
+            RETURNING *
+            `,
+            [claim.id, payoutAmount]
+          );
+          settlement = inserted.rows[0] || null;
+        }
+      }
+
       const label =
         status === 'approved' ? 'مقبولة' : status === 'rejected' ? 'مرفوضة' : 'قيد المراجعة';
       const customerMsg =
@@ -507,10 +532,63 @@ export const insuranceController = {
         }
       }
 
-      return res.json(claim);
+      return res.json({
+        ...claim,
+        settlement: settlement
+          ? {
+              id: String(settlement.id),
+              claim_id: String(settlement.claim_id),
+              amount: Number(settlement.amount || 0),
+              status: String(settlement.status),
+              created_at: settlement.created_at,
+            }
+          : null,
+      });
     } catch (error) {
       console.error('reviewClaim', error);
       return res.status(500).json({ error: 'فشل مراجعة المطالبة' });
+    }
+  },
+
+  async getSettlements(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'سجل التسويات للإدارة فقط' });
+      }
+      const result = await query(
+        `
+        SELECT s.*,
+               c.booking_id, c.customer_id, c.description AS claim_description, c.status AS claim_status,
+               u.name AS customer_name, e.title AS equipment_title
+        FROM insurance_settlements s
+        JOIN insurance_claims c ON c.id = s.claim_id
+        JOIN users u ON u.id = c.customer_id
+        JOIN bookings b ON b.id = c.booking_id
+        LEFT JOIN equipment e ON e.id = b.equipment_id
+        ORDER BY s.created_at DESC
+        LIMIT 200
+        `
+      );
+      return res.json(
+        result.rows.map((row) => ({
+          id: String(row.id),
+          claim_id: String(row.claim_id),
+          claimId: String(row.claim_id),
+          amount: Number(row.amount || 0),
+          status: String(row.status),
+          created_at: row.created_at,
+          createdAt: row.created_at,
+          booking_id: String(row.booking_id),
+          bookingId: String(row.booking_id),
+          customer_name: row.customer_name ? String(row.customer_name) : undefined,
+          equipment_title: row.equipment_title ? String(row.equipment_title) : undefined,
+          claim_description: row.claim_description ? String(row.claim_description) : undefined,
+          claim_status: row.claim_status ? String(row.claim_status) : undefined,
+        }))
+      );
+    } catch (error) {
+      console.error('getSettlements', error);
+      return res.status(500).json({ error: 'فشل جلب سجل التسويات' });
     }
   },
 

@@ -17,7 +17,7 @@ function formatDate(d: unknown): string {
   }
 }
 
-function buildArabicTerms(booking: {
+type BookingForTerms = {
   id: string;
   equipment_title: string;
   customer_name: string;
@@ -25,7 +25,9 @@ function buildArabicTerms(booking: {
   start_date: unknown;
   end_date: unknown;
   total_amount: number | string;
-}): string {
+};
+
+function buildArabicTerms(booking: BookingForTerms): string {
   return [
     'عقد إيجار معدات — منصة إيجار',
     '================================',
@@ -46,6 +48,64 @@ function buildArabicTerms(booking: {
     'بالتوقيع الإلكتروني يقرّ المستأجر بموافقته على هذه الشروط.',
   ].join('\n');
 }
+
+function fillTemplateBody(bodyText: string, booking: BookingForTerms): string {
+  const filled = bodyText
+    .replace(/\{\{equipment\}\}|\{equipment\}/gi, booking.equipment_title)
+    .replace(/\{\{customer\}\}|\{customer\}/gi, booking.customer_name)
+    .replace(/\{\{owner\}\}|\{owner\}/gi, booking.owner_name)
+    .replace(/\{\{booking_id\}\}|\{booking_id\}/gi, booking.id)
+    .replace(/\{\{start_date\}\}|\{start_date\}/gi, formatDate(booking.start_date))
+    .replace(/\{\{end_date\}\}|\{end_date\}/gi, formatDate(booking.end_date))
+    .replace(
+      /\{\{amount\}\}|\{amount\}/gi,
+      Number(booking.total_amount || 0).toLocaleString('ar-IQ')
+    );
+  return [
+    filled.trim(),
+    '',
+    '--- بيانات الحجز ---',
+    `رقم الحجز: ${booking.id}`,
+    `المعدة: ${booking.equipment_title}`,
+    `المستأجر: ${booking.customer_name}`,
+    `المالك/الشريك: ${booking.owner_name}`,
+    `فترة الإيجار: من ${formatDate(booking.start_date)} إلى ${formatDate(booking.end_date)}`,
+    `المبلغ الإجمالي: ${Number(booking.total_amount || 0).toLocaleString('ar-IQ')} دينار عراقي`,
+  ].join('\n');
+}
+
+function mapTemplate(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    owner_id: row.owner_id != null ? String(row.owner_id) : null,
+    ownerId: row.owner_id != null ? String(row.owner_id) : null,
+    title: String(row.title || ''),
+    name: String(row.title || ''),
+    body_text: String(row.body_text || ''),
+    bodyText: String(row.body_text || ''),
+    terms: String(row.body_text || ''),
+    is_active: Boolean(row.is_active !== false),
+    isActive: Boolean(row.is_active !== false),
+    is_builtin: false,
+    created_at: row.created_at,
+    createdAt: row.created_at,
+  };
+}
+
+const BUILTIN_TEMPLATE = {
+  id: 'rental_ar_v1',
+  owner_id: null as string | null,
+  ownerId: null as string | null,
+  title: 'عقد إيجار معدات',
+  name: 'عقد إيجار معدات',
+  body_text: null as string | null,
+  bodyText: null as string | null,
+  terms: 'قالب عربي قياسي يُملأ من بيانات الحجز تلقائياً',
+  is_active: true,
+  isActive: true,
+  is_builtin: true,
+  type: 'rental',
+};
 
 function mapContract(row: Record<string, unknown>) {
   return {
@@ -130,7 +190,24 @@ export const contractsController = {
         return res.status(200).json(mapContract(existing.rows[0]));
       }
 
-      const terms = buildArabicTerms(booking);
+      const templateId = String(req.body?.template_id || req.body?.templateId || '').trim();
+      let terms = buildArabicTerms(booking);
+      if (templateId && templateId !== 'rental_ar_v1') {
+        const tpl = await query(
+          `
+          SELECT * FROM contract_templates
+          WHERE id = $1 AND is_active = true
+            AND (owner_id IS NULL OR owner_id = $2 OR $3::boolean)
+          LIMIT 1
+          `,
+          [templateId, booking.owner_id, req.user?.role === 'admin']
+        );
+        if (tpl.rows.length === 0) {
+          return res.status(404).json({ error: 'قالب العقد غير موجود أو غير متاح' });
+        }
+        terms = fillTemplateBody(String(tpl.rows[0].body_text || ''), booking);
+      }
+
       const inserted = await query(
         `
         INSERT INTO digital_contracts (booking_id, customer_id, owner_id, status, terms_text)
@@ -337,19 +414,73 @@ export const contractsController = {
     }
   },
 
-  async getContractTemplates(_req: AuthenticatedRequest, res: Response) {
-    return res.json([
-      {
-        id: 'rental_ar_v1',
-        name: 'عقد إيجار معدات',
-        type: 'rental',
-        terms: 'قالب عربي قياسي يُملأ من بيانات الحجز تلقائياً',
-      },
-    ]);
+  async getContractTemplates(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = uid(req);
+      if (!userId) return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
+      const role = req.user?.role;
+
+      let result;
+      if (role === 'admin') {
+        result = await query(
+          `SELECT * FROM contract_templates WHERE is_active = true ORDER BY created_at DESC`
+        );
+      } else {
+        result = await query(
+          `
+          SELECT * FROM contract_templates
+          WHERE is_active = true AND (owner_id IS NULL OR owner_id = $1)
+          ORDER BY created_at DESC
+          `,
+          [userId]
+        );
+      }
+
+      return res.json([BUILTIN_TEMPLATE, ...result.rows.map((r) => mapTemplate(r))]);
+    } catch (error) {
+      console.error('getContractTemplates', error);
+      return res.status(500).json({ error: 'فشل جلب قوالب العقود' });
+    }
   },
 
-  async createContractTemplate(_req: AuthenticatedRequest, res: Response) {
-    return res.status(501).json({ error: 'القوالب المخصصة غير مفعّلة في الإصدار الحالي' });
+  async createContractTemplate(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = uid(req);
+      const role = req.user?.role;
+      if (!userId) return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
+      if (role !== 'admin' && role !== 'owner') {
+        return res.status(403).json({ error: 'إنشاء القوالب للإدارة أو الشريك فقط' });
+      }
+
+      const title = String(req.body?.title || req.body?.name || '')
+        .trim()
+        .slice(0, 200);
+      const bodyText = String(
+        req.body?.body_text || req.body?.bodyText || req.body?.body || req.body?.terms || ''
+      )
+        .trim()
+        .slice(0, 50000);
+      if (!title || !bodyText) {
+        return res.status(400).json({ error: 'العنوان ونص القالب مطلوبان' });
+      }
+
+      // Admin → platform template (owner_id null); owner → own template
+      const ownerId = role === 'admin' ? null : userId;
+
+      const inserted = await query(
+        `
+        INSERT INTO contract_templates (owner_id, title, body_text, is_active)
+        VALUES ($1, $2, $3, true)
+        RETURNING *
+        `,
+        [ownerId, title, bodyText]
+      );
+
+      return res.status(201).json(mapTemplate(inserted.rows[0]));
+    } catch (error) {
+      console.error('createContractTemplate', error);
+      return res.status(500).json({ error: 'فشل إنشاء قالب العقد' });
+    }
   },
 
   async getContractAnalytics(_req: AuthenticatedRequest, res: Response) {

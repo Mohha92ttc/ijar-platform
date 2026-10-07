@@ -533,6 +533,18 @@ async function createTables() {
     CREATE INDEX IF NOT EXISTS idx_digital_contracts_customer ON digital_contracts (customer_id);
     CREATE INDEX IF NOT EXISTS idx_digital_contracts_owner ON digital_contracts (owner_id);
 
+    -- Custom contract templates (owner_id NULL = platform template)
+    CREATE TABLE IF NOT EXISTS contract_templates (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      owner_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      body_text TEXT NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_contract_templates_owner ON contract_templates (owner_id);
+    CREATE INDEX IF NOT EXISTS idx_contract_templates_active ON contract_templates (is_active);
+
     -- Insurance claims (minimal)
     CREATE TABLE IF NOT EXISTS insurance_claims (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -645,6 +657,19 @@ async function createTables() {
     ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS admin_notes TEXT;
     ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
     ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users(id);
+
+    -- Payout ledger when claims are approved
+    CREATE TABLE IF NOT EXISTS insurance_settlements (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      claim_id UUID NOT NULL REFERENCES insurance_claims(id) ON DELETE CASCADE,
+      amount NUMERIC NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'settled'
+        CHECK (status IN ('settled', 'pending', 'cancelled')),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_insurance_settlements_claim ON insurance_settlements (claim_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_insurance_settlements_claim_unique
+      ON insurance_settlements (claim_id) WHERE status = 'settled';
 
     -- Create indexes for better performance
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

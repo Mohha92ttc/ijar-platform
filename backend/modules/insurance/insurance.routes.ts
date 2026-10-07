@@ -20,6 +20,13 @@ router.put('/claims/:id', authenticateToken, requireRole(['admin']), insuranceCo
 router.post('/claims/:id/approve', authenticateToken, requireRole(['admin']), insuranceController.approveClaim);
 router.post('/claims/:id/reject', authenticateToken, requireRole(['admin']), insuranceController.rejectClaim);
 
+router.get(
+  '/settlements',
+  authenticateToken,
+  requireRole(['admin']),
+  insuranceController.getSettlements
+);
+
 router.get('/analytics', authenticateToken, requireRole(['admin']), insuranceController.getInsuranceAnalytics);
 
 export default router;

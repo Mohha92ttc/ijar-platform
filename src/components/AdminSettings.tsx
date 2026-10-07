@@ -69,6 +69,11 @@ export default function AdminSettings() {
     subscription_duration_months: 1,
     commission_rate: 0.1,
   });
+  const [contractTemplates, setContractTemplates] = useState<
+    { id: string; title: string; is_builtin?: boolean }[]
+  >([]);
+  const [templateForm, setTemplateForm] = useState({ title: '', body_text: '' });
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   const loadReadiness = React.useCallback(async () => {
     setReadinessLoading(true);
@@ -104,7 +109,47 @@ export default function AdminSettings() {
       }
     })();
     loadReadiness();
+    (async () => {
+      try {
+        const tpls = await apiJson<any[]>('/api/contracts/templates');
+        setContractTemplates(
+          (Array.isArray(tpls) ? tpls : []).map((t) => ({
+            id: String(t.id),
+            title: String(t.title || t.name || 'قالب'),
+            is_builtin: Boolean(t.is_builtin),
+          }))
+        );
+      } catch {
+        setContractTemplates([]);
+      }
+    })();
   }, [loadReadiness]);
+
+  const saveContractTemplate = async () => {
+    const title = templateForm.title.trim();
+    const body_text = templateForm.body_text.trim();
+    if (!title || !body_text) {
+      toast('أدخل عنواناً ونص القالب');
+      return;
+    }
+    setTemplateSaving(true);
+    try {
+      const created = await apiJson<any>('/api/contracts/templates', {
+        method: 'POST',
+        body: JSON.stringify({ title, body_text }),
+      });
+      setContractTemplates((prev) => [
+        { id: String(created.id), title: String(created.title || title), is_builtin: false },
+        ...prev,
+      ]);
+      setTemplateForm({ title: '', body_text: '' });
+      toast('تم حفظ قالب المنصة');
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'فشل حفظ القالب');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
 
   React.useEffect(() => {
     (async () => {
@@ -297,6 +342,57 @@ export default function AdminSettings() {
               <p className="text-sm text-slate-500 col-span-full">لا توجد نتائج بعد</p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Platform contract templates */}
+      <div
+        className="bg-white rounded-2xl border border-slate-200 shadow-sm"
+        data-testid="admin-contract-templates"
+      >
+        <div className="p-6 border-b border-slate-200">
+          <h3 className="text-lg font-bold text-slate-800">قوالب العقود</h3>
+          <p className="text-sm text-slate-500 mt-1">قوالب المنصة الافتراضية (بدون مالك)</p>
+        </div>
+        <div className="p-6 space-y-4">
+          {contractTemplates.length > 0 && (
+            <ul className="space-y-2 text-sm">
+              {contractTemplates.map((t) => (
+                <li
+                  key={t.id}
+                  className="flex justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100"
+                >
+                  <span className="font-bold">{t.title}</span>
+                  <span className="text-xs text-slate-400">{t.is_builtin ? 'قياسي' : 'منصة'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <input
+            type="text"
+            data-testid="admin-template-title"
+            value={templateForm.title}
+            onChange={(e) => setTemplateForm({ ...templateForm, title: e.target.value })}
+            placeholder="عنوان القالب"
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+          />
+          <textarea
+            data-testid="admin-template-body"
+            value={templateForm.body_text}
+            onChange={(e) => setTemplateForm({ ...templateForm, body_text: e.target.value })}
+            placeholder="نص الشروط…"
+            rows={4}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+          />
+          <button
+            type="button"
+            data-testid="admin-template-save"
+            disabled={templateSaving}
+            onClick={saveContractTemplate}
+            className="bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+          >
+            {templateSaving ? 'جاري الحفظ…' : 'حفظ قالب منصة'}
+          </button>
         </div>
       </div>
 

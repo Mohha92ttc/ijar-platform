@@ -103,6 +103,18 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       createdAt?: string;
     }[]
   >([]);
+  const [insuranceSettlements, setInsuranceSettlements] = useState<
+    {
+      id: string;
+      claimId: string;
+      bookingId: string;
+      amount: number;
+      status: string;
+      customerName?: string;
+      equipmentTitle?: string;
+      createdAt?: string;
+    }[]
+  >([]);
   const [insuranceLoading, setInsuranceLoading] = useState(false);
   const [discountCodes, setDiscountCodes] = useState<
     {
@@ -283,7 +295,10 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const loadInsuranceClaims = async () => {
     setInsuranceLoading(true);
     try {
-      const rows = await apiJson<any[]>('/api/insurance/claims');
+      const [rows, settlements] = await Promise.all([
+        apiJson<any[]>('/api/insurance/claims'),
+        apiJson<any[]>('/api/insurance/settlements').catch(() => []),
+      ]);
       setInsuranceClaims(
         rows.map((c) => ({
           id: String(c.id),
@@ -296,8 +311,21 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           createdAt: c.created_at || c.createdAt ? String(c.created_at || c.createdAt) : undefined,
         }))
       );
+      setInsuranceSettlements(
+        (Array.isArray(settlements) ? settlements : []).map((s) => ({
+          id: String(s.id),
+          claimId: String(s.claim_id || s.claimId || ''),
+          bookingId: String(s.booking_id || s.bookingId || ''),
+          amount: Number(s.amount || 0),
+          status: String(s.status || 'settled'),
+          customerName: s.customer_name ? String(s.customer_name) : undefined,
+          equipmentTitle: s.equipment_title ? String(s.equipment_title) : undefined,
+          createdAt: s.created_at || s.createdAt ? String(s.created_at || s.createdAt) : undefined,
+        }))
+      );
     } catch {
       setInsuranceClaims([]);
+      setInsuranceSettlements([]);
     } finally {
       setInsuranceLoading(false);
     }
@@ -1488,6 +1516,44 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   )}
                 </div>
               ))}
+            </div>
+
+            <div className="pt-4" data-testid="admin-insurance-settlements">
+              <h4 className="text-base font-bold text-slate-800 mb-3">سجل تسويات التأمين</h4>
+              {insuranceSettlements.length === 0 && !insuranceLoading && (
+                <p className="text-sm text-slate-500 bg-white rounded-2xl border border-slate-200 p-4">
+                  لا توجد تسويات مسجّلة بعد
+                </p>
+              )}
+              <div className="space-y-2">
+                {insuranceSettlements.map((s) => (
+                  <div
+                    key={s.id}
+                    className="bg-white rounded-xl border border-slate-200 px-4 py-3 flex flex-wrap justify-between gap-2 text-sm"
+                    data-testid="admin-insurance-settlement-row"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-800">
+                        {s.equipmentTitle || 'معدة'} · {s.customerName || 'زبون'}
+                      </span>
+                      <span className="text-xs text-slate-500 block mt-0.5">
+                        مطالبة {s.claimId.slice(0, 8)}… · حجز {s.bookingId.slice(0, 8)}…
+                      </span>
+                    </div>
+                    <div className="text-left">
+                      <div className="font-bold text-emerald-700">
+                        {s.amount.toLocaleString()} د.ع
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        {s.status === 'settled' ? 'مسوّاة' : s.status}
+                        {s.createdAt
+                          ? ` · ${new Date(s.createdAt).toLocaleDateString('ar-IQ')}`
+                          : ''}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

@@ -170,6 +170,11 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     delivery_fee: '0',
   });
   const [paySettingsSaving, setPaySettingsSaving] = useState(false);
+  const [contractTemplates, setContractTemplates] = useState<
+    { id: string; title: string; body_text?: string | null; is_builtin?: boolean }[]
+  >([]);
+  const [templateForm, setTemplateForm] = useState({ title: '', body_text: '' });
+  const [templateSaving, setTemplateSaving] = useState(false);
 
   const subscriptionActive = Boolean(
     profile?.subscription_active === true ||
@@ -597,12 +602,56 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             account_holder_name: String(s.account_holder_name || ''),
             delivery_fee: String(s.delivery_fee ?? 0),
           });
+          try {
+            const tpls = await apiJson<any[]>('/api/contracts/templates');
+            setContractTemplates(
+              (Array.isArray(tpls) ? tpls : []).map((t) => ({
+                id: String(t.id),
+                title: String(t.title || t.name || 'قالب'),
+                body_text: t.body_text != null ? String(t.body_text) : null,
+                is_builtin: Boolean(t.is_builtin),
+              }))
+            );
+          } catch {
+            setContractTemplates([]);
+          }
         }
       } catch {
         if (activeTab === 'featured' || activeTab === 'settings') setTransferInfo(null);
       }
     })();
   }, [activeTab, ownerId]);
+
+  const saveContractTemplate = async () => {
+    const title = templateForm.title.trim();
+    const body_text = templateForm.body_text.trim();
+    if (!title || !body_text) {
+      toast('أدخل عنواناً ونص القالب');
+      return;
+    }
+    setTemplateSaving(true);
+    try {
+      const created = await apiJson<any>('/api/contracts/templates', {
+        method: 'POST',
+        body: JSON.stringify({ title, body_text }),
+      });
+      setContractTemplates((prev) => [
+        {
+          id: String(created.id),
+          title: String(created.title || title),
+          body_text: String(created.body_text || body_text),
+          is_builtin: false,
+        },
+        ...prev,
+      ]);
+      setTemplateForm({ title: '', body_text: '' });
+      toast('تم حفظ قالب العقد');
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'فشل حفظ القالب');
+    } finally {
+      setTemplateSaving(false);
+    }
+  };
 
   const savePaySettings = async () => {
     if (!ownerId) return;
@@ -2489,6 +2538,59 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               >
                 {paySettingsSaving ? 'جاري الحفظ…' : 'حفظ حسابات استلام الزبائن'}
               </button>
+            </div>
+
+            <div
+              className="max-w-4xl mx-auto mt-10 p-6 border border-slate-200 rounded-2xl bg-white"
+              data-testid="partner-contract-templates"
+            >
+              <h4 className="text-lg font-bold text-slate-800 mb-1">قوالب العقود</h4>
+              <p className="text-xs text-slate-500 mb-4">
+                أنشئ نص عقد مخصص يُستخدم عند إنشاء عقد للحجز (placeholders:{' '}
+                {'{equipment}'} {'{customer}'} {'{owner}'} {'{amount}'}).
+              </p>
+              {contractTemplates.length > 0 && (
+                <ul className="mb-4 space-y-2 text-sm">
+                  {contractTemplates.map((t) => (
+                    <li
+                      key={t.id}
+                      className="flex justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-100"
+                    >
+                      <span className="font-bold text-slate-800">{t.title}</span>
+                      <span className="text-xs text-slate-400">
+                        {t.is_builtin ? 'قياسي' : 'مخصص'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  data-testid="partner-template-title"
+                  value={templateForm.title}
+                  onChange={(e) => setTemplateForm({ ...templateForm, title: e.target.value })}
+                  placeholder="عنوان القالب"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm text-right"
+                />
+                <textarea
+                  data-testid="partner-template-body"
+                  value={templateForm.body_text}
+                  onChange={(e) => setTemplateForm({ ...templateForm, body_text: e.target.value })}
+                  placeholder="نص الشروط…"
+                  rows={5}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm text-right"
+                />
+                <button
+                  type="button"
+                  data-testid="partner-template-save"
+                  disabled={templateSaving}
+                  onClick={saveContractTemplate}
+                  className="bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+                >
+                  {templateSaving ? 'جاري الحفظ…' : 'حفظ قالب جديد'}
+                </button>
+              </div>
             </div>
           </div>
         )}

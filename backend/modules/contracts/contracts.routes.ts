@@ -8,7 +8,12 @@ const router = Router();
 router.post('/create', authenticateToken, contractsController.createContract);
 router.get('/booking/:bookingId', authenticateToken, contractsController.getByBooking);
 router.get('/templates', authenticateToken, contractsController.getContractTemplates);
-router.post('/templates', authenticateToken, requireRole(['admin']), contractsController.createContractTemplate);
+router.post(
+  '/templates',
+  authenticateToken,
+  requireRole(['admin', 'owner']),
+  contractsController.createContractTemplate
+);
 router.get('/analytics', authenticateToken, requireRole(['admin']), contractsController.getContractAnalytics);
 
 router.get('/:id', authenticateToken, contractsController.getContract);

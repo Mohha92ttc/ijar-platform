@@ -142,6 +142,17 @@ export default function CustomerDashboard({
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralCopied, setReferralCopied] = useState(false);
+  const [loyalty, setLoyalty] = useState<{
+    availablePoints: number;
+    totalPoints: number;
+    minRedeem: number;
+    redeemIqdPerPoint: number;
+  } | null>(null);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+  const [redeemPoints, setRedeemPoints] = useState('');
+  const [redeemBusy, setRedeemBusy] = useState(false);
+  const [redeemedCode, setRedeemedCode] = useState<string | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const loadReferralCode = useCallback(async () => {
     setReferralLoading(true);
@@ -155,6 +166,66 @@ export default function CustomerDashboard({
       setReferralLoading(false);
     }
   }, []);
+
+  const loadLoyalty = useCallback(async () => {
+    setLoyaltyLoading(true);
+    try {
+      const data = await apiJson<{
+        availablePoints?: number;
+        totalPoints?: number;
+        program?: { minRedeemPoints?: number; redeemIqdPerPoint?: number };
+      }>('/api/discounts/loyalty/points/me');
+      setLoyalty({
+        availablePoints: Number(data.availablePoints || 0),
+        totalPoints: Number(data.totalPoints || 0),
+        minRedeem: Number(data.program?.minRedeemPoints || 10),
+        redeemIqdPerPoint: Number(data.program?.redeemIqdPerPoint || 1000),
+      });
+    } catch {
+      setLoyalty(null);
+    } finally {
+      setLoyaltyLoading(false);
+    }
+  }, []);
+
+  const redeemLoyalty = async () => {
+    const points = Math.floor(Number(redeemPoints));
+    if (!Number.isFinite(points) || points <= 0) {
+      toast('أدخل عدد نقاط صالحاً');
+      return;
+    }
+    setRedeemBusy(true);
+    try {
+      const res = await apiJson<{ code?: string; discountValue?: number }>(
+        '/api/discounts/loyalty/redeem',
+        { method: 'POST', body: JSON.stringify({ points }) }
+      );
+      const code = res?.code ? String(res.code) : null;
+      setRedeemedCode(code);
+      setRedeemPoints('');
+      toast(
+        code
+          ? `تم الاستبدال — كود الخصم: ${code}${res.discountValue != null ? ` (${Number(res.discountValue).toLocaleString()} د.ع)` : ''}`
+          : 'تم استبدال النقاط'
+      );
+      await loadLoyalty();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'فشل استبدال النقاط');
+    } finally {
+      setRedeemBusy(false);
+    }
+  };
+
+  const copyRedeemedCode = async () => {
+    if (!redeemedCode) return;
+    try {
+      await navigator.clipboard.writeText(redeemedCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      toast(redeemedCode);
+    }
+  };
 
   const ensureReferralCode = async () => {
     setReferralLoading(true);
@@ -294,8 +365,9 @@ export default function CustomerDashboard({
     if (!userId) return;
     if (activeTab === 'profile' || activeTab === 'settings') {
       loadReferralCode();
+      loadLoyalty();
     }
-  }, [userId, activeTab, loadReferralCode]);
+  }, [userId, activeTab, loadReferralCode, loadLoyalty]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1149,6 +1221,89 @@ export default function CustomerDashboard({
             >
               <Save size={16} /> {savingProfile ? 'جاري الحفظ…' : 'حفظ التعديلات'}
             </button>
+
+            <div
+              className="mt-6 pt-6 border-t border-slate-100 space-y-3"
+              data-testid="customer-loyalty-panel"
+            >
+              <h4 className="font-bold text-slate-800">نقاط الولاء</h4>
+              <p className="text-sm text-slate-500">
+                اكسب نقاطاً من الحجوزات المكتملة واستبدلها بكود خصم لمرة واحدة.
+              </p>
+              {loyaltyLoading && <p className="text-sm text-slate-400">جاري تحميل الرصيد…</p>}
+              {!loyaltyLoading && loyalty && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-100">
+                      <div className="text-xs text-emerald-700">الرصيد المتاح</div>
+                      <div
+                        className="text-xl font-bold text-emerald-800"
+                        data-testid="customer-loyalty-available"
+                      >
+                        {loyalty.availablePoints.toLocaleString('ar-IQ')} نقطة
+                      </div>
+                    </div>
+                    <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-xs text-slate-500">إجمالي النقاط</div>
+                      <div className="text-lg font-bold text-slate-800">
+                        {loyalty.totalPoints.toLocaleString('ar-IQ')}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    الحد الأدنى للاستبدال {loyalty.minRedeem} نقطة · كل نقطة ={' '}
+                    {loyalty.redeemIqdPerPoint.toLocaleString('ar-IQ')} د.ع خصم
+                  </p>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">
+                        عدد النقاط للاستبدال
+                      </label>
+                      <input
+                        type="number"
+                        min={loyalty.minRedeem}
+                        data-testid="customer-loyalty-redeem-amount"
+                        value={redeemPoints}
+                        onChange={(e) => setRedeemPoints(e.target.value)}
+                        placeholder={String(loyalty.minRedeem)}
+                        className="w-36 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="customer-loyalty-redeem"
+                      disabled={redeemBusy || loyalty.availablePoints < loyalty.minRedeem}
+                      onClick={redeemLoyalty}
+                      className="px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 text-white disabled:opacity-60"
+                    >
+                      {redeemBusy ? 'جاري الاستبدال…' : 'استبدال بنقاط'}
+                    </button>
+                  </div>
+                  {redeemedCode && (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <span className="text-sm text-slate-600">كود الخصم:</span>
+                      <code
+                        className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm font-bold"
+                        data-testid="customer-loyalty-code"
+                      >
+                        {redeemedCode}
+                      </code>
+                      <button
+                        type="button"
+                        data-testid="customer-loyalty-code-copy"
+                        onClick={copyRedeemedCode}
+                        className="px-3 py-2 rounded-xl text-sm font-bold bg-slate-800 text-white"
+                      >
+                        {codeCopied ? 'تم النسخ' : 'نسخ'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {!loyaltyLoading && !loyalty && (
+                <p className="text-sm text-slate-400">تعذر تحميل نقاط الولاء حالياً</p>
+              )}
+            </div>
 
             <div
               className="mt-6 pt-6 border-t border-slate-100 space-y-3"
