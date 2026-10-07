@@ -1,227 +1,226 @@
 import { Request, Response } from 'express';
+import { query } from '../../database/connection';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
+
+function normalizeCode(raw: unknown): string {
+  return String(raw || '')
+    .trim()
+    .toUpperCase();
+}
+
+function generateReferralCode(userId: string): string {
+  const suffix = userId.replace(/-/g, '').slice(0, 6).toUpperCase();
+  const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return `REF${suffix}${rand}`.slice(0, 16);
+}
+
+/**
+ * Apply referral on register (optional).
+ * Call from auth.register when body.referral_code is present —
+ * wiring may live in auth.service separately; this helper is the DB apply path.
+ */
+export async function applyReferralOnRegister(
+  referralCodeRaw: string,
+  newUserId: string
+): Promise<{ ok: boolean; message?: string }> {
+  const code = normalizeCode(referralCodeRaw);
+  if (!code) return { ok: false, message: 'كود الإحالة فارغ' };
+
+  const result = await query(
+    `SELECT * FROM referral_codes WHERE UPPER(code) = $1 AND is_active = true LIMIT 1`,
+    [code]
+  );
+  if (result.rows.length === 0) {
+    return { ok: false, message: 'كود الإحالة غير صالح' };
+  }
+  const row = result.rows[0] as { id: string; user_id: string };
+  if (String(row.user_id) === String(newUserId)) {
+    return { ok: false, message: 'لا يمكن استخدام كود الإحالة الخاص بك' };
+  }
+
+  await query(
+    `UPDATE referral_codes SET uses_count = COALESCE(uses_count, 0) + 1 WHERE id = $1`,
+    [row.id]
+  );
+  return { ok: true };
+}
 
 export const referralController = {
-  // Referral program management
-  async createReferralProgram(req: Request, res: Response) {
+  /** Get or create the authenticated user's referral code */
+  async getReferralCodes(req: AuthenticatedRequest, res: Response) {
     try {
-      const { name, description, rewardType, rewardValue, conditions } = req.body;
-      // Mock implementation - would integrate with referralService
-      const program = {
-        id: 'program_001',
-        name,
-        description,
-        rewardType,
-        rewardValue,
-        conditions,
-        status: 'active',
-        createdAt: new Date().toISOString()
-      };
-      res.status(201).json(program);
+      const userId = req.user?.userId || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
+      }
+
+      let result = await query(
+        `SELECT * FROM referral_codes WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [userId]
+      );
+
+      if (result.rows.length === 0) {
+        const code = generateReferralCode(userId);
+        result = await query(
+          `
+          INSERT INTO referral_codes (user_id, code, uses_count, reward_amount, is_active)
+          VALUES ($1, $2, 0, 0, true)
+          RETURNING *
+          `,
+          [userId, code]
+        );
+      }
+
+      res.json(result.rows);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to create referral program' });
+      console.error('getReferralCodes', error);
+      res.status(500).json({ error: 'فشل جلب كود الإحالة' });
     }
   },
 
-  async getReferralPrograms(req: Request, res: Response) {
+  async createReferralCode(req: AuthenticatedRequest, res: Response) {
     try {
-      // Mock implementation
-      const programs = [
-        {
-          id: 'program_001',
-          name: 'برنامج إحالة الأصدقاء',
-          description: 'احصل على مكافأة عند إحالة صديق',
-          rewardType: 'discount_percentage',
-          rewardValue: 10,
-          conditions: ['first_booking_only', 'minimum_booking_value_100'],
-          status: 'active'
-        }
-      ];
-      res.json(programs);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to get referral programs' });
-    }
-  },
+      const userId = req.user?.userId || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
+      }
 
-  async getReferralProgram(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      // Mock implementation
-      const program = {
-        id: 'program_001',
-        name: 'برنامج إحالة الأصدقاء',
-        description: 'احصل على مكافأة عند إحالة صديق',
-        rewardType: 'discount_percentage',
-        rewardValue: 10,
-        conditions: ['first_booking_only', 'minimum_booking_value_100'],
-        status: 'active'
-      };
-      res.json(program);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to get referral program' });
-    }
-  },
+      const existing = await query(
+        `SELECT * FROM referral_codes WHERE user_id = $1 LIMIT 1`,
+        [userId]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(200).json(existing.rows[0]);
+      }
 
-  async updateReferralProgram(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const updates = req.body;
-      // Mock implementation
-      const updatedProgram = {
-        ...updates,
-        updatedAt: new Date().toISOString()
-      };
-      res.json(updatedProgram);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to update referral program' });
-    }
-  },
+      const custom = normalizeCode(req.body?.code);
+      const code = custom || generateReferralCode(userId);
+      const rewardAmount = Number(req.body?.reward_amount ?? 0) || 0;
 
-  async deleteReferralProgram(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      // Mock implementation
-      res.json({ message: 'Referral program deleted successfully' });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to delete referral program' });
-    }
-  },
-
-  // Referral codes
-  async createReferralCode(req: Request, res: Response) {
-    try {
-      const { programId, code, expiryDate, usageLimit } = req.body;
-      // Mock implementation - would integrate with referralService
-      const referralCode = {
-        id: 'code_001',
-        programId,
-        code,
-        expiryDate,
-        usageLimit,
-        used: 0,
-        status: 'active',
-        createdAt: new Date().toISOString()
-      };
-      res.status(201).json(referralCode);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to create referral code' });
-    }
-  },
-
-  async getReferralCodes(req: Request, res: Response) {
-    try {
-      // Mock implementation
-      const codes = [
-        {
-          id: 'code_001',
-          programId: 'program_001',
-          code: 'FRIEND10',
-          expiryDate: '2024-12-31',
-          usageLimit: 100,
-          used: 25,
-          status: 'active'
-        }
-      ];
-      res.json(codes);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to get referral codes' });
+      const result = await query(
+        `
+        INSERT INTO referral_codes (user_id, code, uses_count, reward_amount, is_active)
+        VALUES ($1, $2, 0, $3, true)
+        RETURNING *
+        `,
+        [userId, code, rewardAmount]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'كود الإحالة موجود مسبقاً' });
+      }
+      console.error('createReferralCode', error);
+      res.status(500).json({ error: 'فشل إنشاء كود الإحالة' });
     }
   },
 
   async validateReferralCode(req: Request, res: Response) {
     try {
-      const { code } = req.body;
-      // Mock implementation
-      const validation = {
+      const code = normalizeCode(req.body?.code);
+      if (!code) {
+        return res.status(200).json({
+          valid: false,
+          isValid: false,
+          message: 'يرجى إدخال كود الإحالة',
+        });
+      }
+
+      const result = await query(
+        `SELECT id, code, uses_count, reward_amount, is_active, user_id
+         FROM referral_codes WHERE UPPER(code) = $1 LIMIT 1`,
+        [code]
+      );
+
+      if (result.rows.length === 0 || !result.rows[0].is_active) {
+        return res.status(200).json({
+          valid: false,
+          isValid: false,
+          message: 'كود الإحالة غير صالح أو غير نشط',
+        });
+      }
+
+      const row = result.rows[0];
+      res.json({
+        valid: true,
         isValid: true,
-        code: 'FRIEND10',
-        programId: 'program_001',
-        remainingUses: 75
-      };
-      res.json(validation);
+        code: row.code,
+        reward_amount: Number(row.reward_amount || 0),
+        uses_count: Number(row.uses_count || 0),
+      });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to validate referral code' });
+      console.error('validateReferralCode', error);
+      res.status(500).json({ error: 'فشل التحقق من كود الإحالة' });
     }
   },
 
-  async useReferralCode(req: Request, res: Response) {
+  async useReferralCode(req: AuthenticatedRequest, res: Response) {
     try {
-      const { code, userId } = req.body;
-      // Mock implementation
-      const usage = {
+      const code = normalizeCode(req.body?.code || req.params.code);
+      const userId = req.user?.userId || req.user?.id || req.body?.userId;
+
+      const result = await query(
+        `SELECT * FROM referral_codes WHERE UPPER(code) = $1 AND is_active = true LIMIT 1`,
+        [code]
+      );
+      if (result.rows.length === 0) {
+        return res.status(400).json({ error: 'كود الإحالة غير صالح' });
+      }
+      const row = result.rows[0];
+      if (userId && String(row.user_id) === String(userId)) {
+        return res.status(400).json({ error: 'لا يمكن استخدام كود الإحالة الخاص بك' });
+      }
+
+      await query(
+        `UPDATE referral_codes SET uses_count = COALESCE(uses_count, 0) + 1 WHERE id = $1`,
+        [row.id]
+      );
+
+      res.json({
         success: true,
-        discountApplied: 10,
-        referralCode: code,
-        userId
-      };
-      res.json(usage);
+        referralCode: row.code,
+        reward_amount: Number(row.reward_amount || 0),
+        userId: userId || null,
+      });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to use referral code' });
+      console.error('useReferralCode', error);
+      res.status(500).json({ error: 'فشل استخدام كود الإحالة' });
     }
   },
 
-  // Referral transactions
-  async getReferralTransactions(req: Request, res: Response) {
-    try {
-      // Mock implementation
-      const transactions = [
-        {
-          id: 'transaction_001',
-          referralCode: 'FRIEND10',
-          referrerId: 'user_001',
-          refereeId: 'user_002',
-          discountAmount: 15,
-          bookingId: 'booking_001',
-          status: 'completed'
-        }
-      ];
-      res.json(transactions);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to get referral transactions' });
-    }
+  // Program / analytics stubs for existing routes
+  async createReferralProgram(_req: Request, res: Response) {
+    res.status(501).json({ error: 'برامج الإحالة المتقدمة غير مفعّلة؛ استخدم أكواد الإحالة' });
   },
-
+  async getReferralPrograms(_req: Request, res: Response) {
+    res.json([]);
+  },
+  async getReferralProgram(_req: Request, res: Response) {
+    res.status(404).json({ error: 'البرنامج غير موجود' });
+  },
+  async updateReferralProgram(_req: Request, res: Response) {
+    res.status(501).json({ error: 'برامج الإحالة المتقدمة غير مفعّلة' });
+  },
+  async deleteReferralProgram(_req: Request, res: Response) {
+    res.status(501).json({ error: 'برامج الإحالة المتقدمة غير مفعّلة' });
+  },
+  async getReferralTransactions(_req: Request, res: Response) {
+    res.json([]);
+  },
   async getUserReferralTransactions(req: Request, res: Response) {
     try {
       const { userId } = req.params;
-      // Mock implementation
-      const userTransactions = [
-        {
-          id: 'transaction_001',
-          referralCode: 'FRIEND10',
-          referrerId: 'user_001',
-          refereeId: userId,
-          discountAmount: 15,
-          bookingId: 'booking_001',
-          status: 'completed'
-        }
-      ];
-      res.json(userTransactions);
+      const result = await query(
+        `SELECT * FROM referral_codes WHERE user_id = $1 ORDER BY created_at DESC`,
+        [userId]
+      );
+      res.json(result.rows);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to get user referral transactions' });
+      console.error('getUserReferralTransactions', error);
+      res.status(500).json({ error: 'فشل جلب بيانات الإحالة' });
     }
   },
-
-  // Recommendations
-  async getPersonalizedRecommendations(req: Request, res: Response) {
-    try {
-      const { userId } = req.body;
-      // Mock implementation
-      const recommendations = {
-        referrals: [
-          {
-            type: 'equipment',
-            title: 'معدات موصى بها',
-            items: ['حفار كهربائية', 'مولد بناء']
-          }
-        ],
-        userProfile: {
-          preferences: ['construction_equipment', 'budget_conscious'],
-          behavior: ['frequent_renter', 'long_term_customer']
-        }
-      };
-      res.json(recommendations);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to get personalized recommendations' });
-    }
-  }
+  async getPersonalizedRecommendations(_req: Request, res: Response) {
+    res.json({ referrals: [], userProfile: {} });
+  },
 };

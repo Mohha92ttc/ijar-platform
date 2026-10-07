@@ -79,6 +79,21 @@ export class PaymentController {
     }
   };
 
+  ownerRejectProof = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { userId?: string; role?: string } }).user;
+      if (!actor?.userId || actor.role !== 'owner') {
+        return res.status(403).json({ error: 'للشركاء فقط' });
+      }
+      const bookingId = String(req.params.bookingId || '');
+      const notes = req.body?.notes != null ? String(req.body.notes) : undefined;
+      await this.service.rejectProofOnly(bookingId, actor.userId, notes);
+      res.status(200).json({ message: 'تم رفض الإثبات — الزبون يمكنه إعادة الرفع' });
+    } catch (error: unknown) {
+      res.status(400).json({ error: publicError(error, 'فشل رفض الإثبات') });
+    }
+  };
+
   review = async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

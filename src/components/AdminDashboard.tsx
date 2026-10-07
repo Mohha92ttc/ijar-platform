@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, Package, Calendar, Clock, BarChart3, TrendingUp, Settings, LogOut, Search, Filter, Plus, 
   MapPin, Phone, Mail, Globe, Save, X, Edit2, CheckCircle, CreditCard, Bell, Trash2, ArrowRight, Eye, Download, Info,
-  FileText, Home, Sparkles, Truck, Headphones
+  FileText, Home, Sparkles, Truck, Headphones, Shield
 } from 'lucide-react';
 import { apiJson, ApiError, clearSession, getStoredUser } from '../lib/api';
 import AdminSettings from './AdminSettings';
@@ -79,6 +79,51 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [tokenCopied, setTokenCopied] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const adminUserId = getStoredUser()?.id;
+  const [insuranceClaims, setInsuranceClaims] = useState<
+    {
+      id: string;
+      bookingId: string;
+      customerName?: string;
+      equipmentTitle?: string;
+      description: string;
+      amount: number;
+      status: string;
+      createdAt?: string;
+    }[]
+  >([]);
+  const [insuranceLoading, setInsuranceLoading] = useState(false);
+
+  const loadInsuranceClaims = async () => {
+    setInsuranceLoading(true);
+    try {
+      const rows = await apiJson<any[]>('/api/insurance/claims');
+      setInsuranceClaims(
+        rows.map((c) => ({
+          id: String(c.id),
+          bookingId: String(c.booking_id || c.bookingId || ''),
+          customerName: c.customer_name ? String(c.customer_name) : undefined,
+          equipmentTitle: c.equipment_title ? String(c.equipment_title) : undefined,
+          description: String(c.description || ''),
+          amount: Number(c.amount || 0),
+          status: String(c.status || 'pending'),
+          createdAt: c.created_at || c.createdAt ? String(c.created_at || c.createdAt) : undefined,
+        }))
+      );
+    } catch {
+      setInsuranceClaims([]);
+    } finally {
+      setInsuranceLoading(false);
+    }
+  };
+
+  const reviewInsuranceClaim = async (id: string, action: 'approve' | 'reject') => {
+    try {
+      await apiJson(`/api/insurance/claims/${id}/${action}`, { method: 'POST', body: JSON.stringify({}) });
+      await loadInsuranceClaims();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر مراجعة المطالبة');
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -162,6 +207,12 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'insurance') {
+      loadInsuranceClaims();
+    }
+  }, [activeTab]);
 
   const handleApprove = async (id: string) => {
     try {
@@ -470,6 +521,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           >
             <Headphones size={18} /> رسائل الدعم
           </button>
+          <button
+            type="button"
+            data-testid="admin-nav-insurance"
+            onClick={() => setActiveTab('insurance')}
+            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+              activeTab === 'insurance' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Shield size={18} /> مطالبات التأمين
+          </button>
           <button 
             type="button"
             data-testid="admin-nav-content"
@@ -539,6 +600,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               { id: 'subscription-approval', label: 'اشتراك', testId: 'admin-nav-subscription-approval-m' },
               { id: 'categories', label: 'تصنيفات', testId: 'admin-nav-categories-m' },
               { id: 'support', label: 'دعم', testId: 'admin-nav-support-m' },
+              { id: 'insurance', label: 'تأمين', testId: 'admin-nav-insurance-m' },
               { id: 'settings', label: 'إعدادات', testId: 'admin-nav-settings-m' },
               { id: 'stats', label: 'إحصاء', testId: 'admin-nav-stats-m' },
             ] as const
@@ -574,6 +636,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'categories' && 'إدارة التصنيفات'}
             {activeTab === 'content' && 'إدارة محتوى المنصة'}
             {activeTab === 'support' && 'رسائل الدعم من صفحة المساعدة'}
+            {activeTab === 'insurance' && 'مطالبات التأمين'}
             {activeTab === 'payments' && 'إدارة المدفوعات'}
             {activeTab === 'settings' && 'إعدادات النظام'}
             {activeTab === 'stats' && 'الإحصائيات والتقارير'}
@@ -1144,6 +1207,87 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         {activeTab === 'equipment' && <AdminEquipmentPanel />}
 
         {activeTab === 'support' && <AdminSupportPanel />}
+
+        {activeTab === 'insurance' && (
+          <div className="space-y-4" data-testid="admin-insurance-panel">
+            <div className="flex justify-between items-center gap-3">
+              <h3 className="text-lg font-bold text-slate-800">مطالبات التأمين</h3>
+              <button
+                type="button"
+                onClick={loadInsuranceClaims}
+                disabled={insuranceLoading}
+                className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {insuranceLoading ? 'جاري التحميل…' : 'تحديث'}
+              </button>
+            </div>
+            {insuranceClaims.length === 0 && !insuranceLoading && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
+                لا توجد مطالبات حالياً
+              </div>
+            )}
+            <div className="space-y-3">
+              {insuranceClaims.map((claim) => (
+                <div
+                  key={claim.id}
+                  className="bg-white rounded-2xl border border-slate-200 p-4 space-y-2"
+                  data-testid="admin-insurance-claim"
+                >
+                  <div className="flex flex-wrap justify-between gap-2 items-start">
+                    <div>
+                      <p className="font-bold text-slate-800">
+                        {claim.equipmentTitle || 'معدة'} · {claim.customerName || 'زبون'}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-1">حجز: {claim.bookingId}</p>
+                    </div>
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                        claim.status === 'approved'
+                          ? 'bg-green-50 text-green-700'
+                          : claim.status === 'rejected'
+                            ? 'bg-red-50 text-red-700'
+                            : 'bg-amber-50 text-amber-800'
+                      }`}
+                    >
+                      {claim.status === 'approved'
+                        ? 'مقبولة'
+                        : claim.status === 'rejected'
+                          ? 'مرفوضة'
+                          : 'قيد المراجعة'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-700">{claim.description}</p>
+                  <p className="text-sm font-bold text-slate-800">
+                    {claim.amount.toLocaleString()} د.ع
+                    {claim.createdAt
+                      ? ` · ${new Date(claim.createdAt).toLocaleDateString('ar-IQ')}`
+                      : ''}
+                  </p>
+                  {claim.status === 'pending' && (
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        data-testid="admin-insurance-approve"
+                        onClick={() => reviewInsuranceClaim(claim.id, 'approve')}
+                        className="text-xs font-bold bg-green-600 text-white px-3 py-1.5 rounded-xl"
+                      >
+                        قبول
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="admin-insurance-reject"
+                        onClick={() => reviewInsuranceClaim(claim.id, 'reject')}
+                        className="text-xs font-bold bg-red-600 text-white px-3 py-1.5 rounded-xl"
+                      >
+                        رفض
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Content Tab */}
         {activeTab === 'content' && (

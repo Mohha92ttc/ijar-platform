@@ -117,8 +117,24 @@ export class EquipmentService {
       values.push(data.price_per_day);
     }
     if (data.quantity !== undefined) {
+      const nextQty = Math.max(1, Math.min(100000, Math.floor(Number(data.quantity) || 1)));
+      // Floor: active bookings count (conservative — never below committed rentals)
+      const activeRes = await query(
+        `
+        SELECT COUNT(*)::int AS cnt
+        FROM bookings
+        WHERE equipment_id = $1 AND status IN ('pending', 'confirmed')
+        `,
+        [id]
+      );
+      const active = Number(activeRes.rows[0]?.cnt || 0);
+      if (active > 0 && nextQty < active) {
+        throw new Error(
+          `لا يمكن تقليل الكمية إلى ${nextQty}: لديك ${active} حجوزات نشطة على هذه المعدة`
+        );
+      }
       fields.push(`quantity = $${i++}`);
-      values.push(Math.max(1, Math.min(100000, Math.floor(Number(data.quantity) || 1))));
+      values.push(nextQty);
     }
     if (data.location !== undefined) {
       fields.push(`location = $${i++}`);

@@ -126,6 +126,7 @@ export default function App() {
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [verifyBanner, setVerifyBanner] = useState<string | null>(null);
+  const [authPref, setAuthPref] = useState<{ mode?: 'login' | 'register'; role?: 'customer' | 'owner' } | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
@@ -588,6 +589,7 @@ export default function App() {
     deliveryLat?: number | null;
     deliveryLng?: number | null;
     deliveryAddress?: string | null;
+    discount_code?: string;
   }) => {
     if (!user?.id) {
       alert('يرجى تسجيل الدخول لإتمام الحجز');
@@ -676,6 +678,10 @@ export default function App() {
           waive_delivery_fee: waiveDeliveryFee,
           payment_preference: method,
         };
+        // Apply promo once on the first line — server re-validates and trusts its own amount
+        if (i === 0 && formData.discount_code) {
+          bookingBody.discount_code = formData.discount_code;
+        }
         if (item.wantsDelivery) {
           bookingBody.delivery_lat = formData.deliveryLat;
           bookingBody.delivery_lng = formData.deliveryLng;
@@ -687,11 +693,19 @@ export default function App() {
         });
         lastBookingId = String(booking.id || '');
 
+        const paidAmount =
+          booking.total_price != null
+            ? Number(booking.total_price)
+            : booking.total_amount != null
+              ? Number(booking.total_amount)
+              : Number(item.total);
         const paymentBody: Record<string, unknown> = {
           booking_id: booking.id,
-          amount: item.total,
+          amount: paidAmount,
           payment_method: method,
-          notes: `بواسطة العميل: ${formData.phone} | ${method}${item.wantsDelivery ? ' | توصيل' : ''}`,
+          notes: `بواسطة العميل: ${formData.phone} | ${method}${item.wantsDelivery ? ' | توصيل' : ''}${
+            formData.discount_code && i === 0 ? ` | خصم ${formData.discount_code}` : ''
+          }`,
         };
         if (method !== 'cash_on_delivery' && formData.proofImage) {
           paymentBody.proof_image = formData.proofImage;
@@ -755,7 +769,14 @@ export default function App() {
     }
   };
 
-  if (view === 'auth') return <AuthPage onLogin={handleLogin} />;
+  if (view === 'auth')
+    return (
+      <AuthPage
+        onLogin={handleLogin}
+        initialMode={authPref?.mode}
+        initialRole={authPref?.role}
+      />
+    );
   if (view === 'admin') return <AdminDashboard onBack={() => setView('home')} />;
   if (view === 'partner') return <PartnerDashboard ownerId={user?.id} onBack={() => setView('home')} />;
   if (view === 'courier') return <CourierDashboard onBack={() => setView('home')} onLogout={handleLogout} />;
@@ -890,7 +911,10 @@ export default function App() {
               <button
                 type="button"
                 data-testid="header-auth"
-                onClick={() => setView('auth')}
+                onClick={() => {
+                  setAuthPref({ mode: 'login', role: 'customer' });
+                  setView('auth');
+                }}
                 className="bg-blue-600 text-white px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold hover:bg-blue-700 transition-all whitespace-nowrap"
               >
                 <span className="sm:hidden">دخول</span>
@@ -1068,7 +1092,15 @@ export default function App() {
           <div className="relative z-10 max-w-lg">
             <h2 className="text-xl sm:text-3xl font-bold mb-2 sm:mb-3 leading-snug">أجر معداتك وابدأ بالربح اليوم</h2>
             <p className="text-blue-100 mb-4 sm:mb-6 text-sm sm:text-base leading-relaxed">حوّل معداتك غير المستخدمة إلى دخل إضافي في العراق.</p>
-            <button type="button" data-testid="home-hero-register" onClick={() => setView('auth')} className="bg-white text-blue-600 px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 min-h-11">
+            <button
+              type="button"
+              data-testid="home-hero-register"
+              onClick={() => {
+                setAuthPref({ mode: 'register', role: 'owner' });
+                setView('auth');
+              }}
+              className="bg-white text-blue-600 px-5 py-3 rounded-xl font-bold text-sm flex items-center gap-2 min-h-11"
+            >
               <Plus size={18} />
               أضف معداتك الآن
             </button>
@@ -1140,10 +1172,40 @@ export default function App() {
             </button>
           </div>
 
-          {listError && <div className="p-4 bg-red-50 text-red-800 rounded-xl text-sm">{listError}</div>}
+          {listError && (
+            <div className="p-4 bg-red-50 text-red-800 rounded-xl text-sm flex flex-wrap items-center justify-between gap-3">
+              <span>{listError}</span>
+              <button
+                type="button"
+                onClick={() => refreshEquipment()}
+                className="text-sm font-bold text-red-700 underline"
+              >
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
           {loadingList && <div className="text-slate-500 text-sm">جاري تحميل المعدات…</div>}
 
-          {!loadingList && !listError && filteredEquipment.length === 0 && <div className="text-slate-500 text-center py-12">لا توجد نتائج مطابقة.</div>}
+          {!loadingList && !listError && filteredEquipment.length === 0 && (
+            <div className="text-slate-500 text-center py-12 space-y-3">
+              <p>لا توجد نتائج مطابقة.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQ('');
+                  setActiveCategory('الكل');
+                  setSelectedOwnerId(null);
+                  setPriceMin('');
+                  setPriceMax('');
+                  setFilterGovernorate('');
+                  setFilterArea('');
+                }}
+                className="text-sm font-bold text-blue-600 underline"
+              >
+                مسح الفلاتر وعرض الكل
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {filteredEquipment.map((item) => (

@@ -2,6 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { syncPushSubscriptionIfGranted } from './lib/webPush';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -9,10 +10,21 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 );
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      // ignore SW registration failures
-    });
+    // Register SW in prod always; in other envs only when push may already be granted
+    const shouldRegister =
+      import.meta.env.PROD ||
+      (typeof Notification !== 'undefined' && Notification.permission === 'granted');
+    if (!shouldRegister) return;
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then(() => {
+        // Quiet sync only — never prompt for permission here
+        void syncPushSubscriptionIfGranted();
+      })
+      .catch(() => {
+        // ignore SW registration failures
+      });
   });
 }

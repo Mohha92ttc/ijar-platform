@@ -1,8 +1,9 @@
-import { query } from '../../database/connection';
+import { query, withTransaction } from '../../database/connection';
 import { Booking, CreateBookingDTO, BookingStatus } from './bookings.types';
 import { EquipmentService } from '../equipment/equipment.service';
 import { NotificationService } from '../notifications/notification.service';
 import { PaymentService } from '../payments/payment.service';
+import { validateDiscountAgainstAmount } from '../discounts/discount.controller';
 
 function rowToBooking(row: Record<string, unknown>): Booking {
   return {
@@ -35,9 +36,6 @@ export class BookingService {
 
   async create(customerId: string, data: CreateBookingDTO): Promise<Booking> {
     const equipment = await this.equipmentService.getById(data.equipment_id, { requirePublicOwner: true });
-    if (String(equipment.status) === 'rented') {
-      // still allow if dates don't overlap — checkAvailability handles conflicts
-    }
 
     const start = new Date(data.start_date);
     const end = new Date(data.end_date);
@@ -64,14 +62,6 @@ export class BookingService {
       throw new Error('تاريخ النهاية يجب أن يكون بعد تاريخ البداية');
     }
 
-    const available = await this.checkAvailability(data.equipment_id, startNorm, endNorm);
-    if (!available) {
-      throw new Error('المعدة محجوزة مسبقاً في هذه التواريخ. اختر تواريخ أخرى.');
-    }
-
-    const diffTime = Math.abs(endNorm.getTime() - startNorm.getTime());
-    const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
-    const rentalPrice = diffDays * equipment.price_per_day;
     const deliveryRequested = Boolean(data.delivery_requested);
 
     let deliveryFee = 0;
@@ -82,7 +72,6 @@ export class BookingService {
       );
       deliveryFee = Math.max(0, Number(feeRes.rows[0]?.delivery_fee ?? 0) || 0);
     }
-    const totalPrice = rentalPrice + deliveryFee;
 
     let deliveryLat: number | null = null;
     let deliveryLng: number | null = null;
@@ -105,36 +94,89 @@ export class BookingService {
         : null;
     const deliveryStatus = deliveryRequested ? 'pending_assign' : null;
 
-    const ins = await query(
-      `
-      INSERT INTO bookings (
-        equipment_id, customer_id, start_date, end_date, total_amount, status,
-        location, notes, customer_phone, delivery_requested, delivery_fee, payment_preference,
-        delivery_lat, delivery_lng, delivery_address, delivery_status
-      )
-      VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-      RETURNING *
-    `,
-      [
-        data.equipment_id,
-        customerId,
-        startNorm.toISOString(),
-        endNorm.toISOString(),
-        totalPrice,
-        data.location ?? null,
-        data.notes ?? null,
-        data.customer_phone ?? null,
-        deliveryRequested,
-        deliveryFee,
-        data.payment_preference ?? null,
-        deliveryLat,
-        deliveryLng,
-        deliveryAddress,
-        deliveryStatus,
-      ]
-    );
+    // Expire stale pendings before lock (uses own connections); then lock + re-check stock
+    await this.expireStalePending(data.equipment_id);
 
-    const newBooking = rowToBooking(ins.rows[0]);
+    // Lock equipment row so concurrent creates cannot oversell quantity
+    const newBooking = await withTransaction(async (client) => {
+      await client.query(`SELECT id FROM equipment WHERE id = $1 FOR UPDATE`, [data.equipment_id]);
+
+      const qtyRes = await client.query(
+        `SELECT COALESCE(quantity, 1)::int AS quantity FROM equipment WHERE id = $1 LIMIT 1`,
+        [data.equipment_id]
+      );
+      const quantity = Math.max(1, Number(qtyRes.rows[0]?.quantity) || 1);
+      const cntRes = await client.query(
+        `
+        SELECT COUNT(*)::int AS cnt FROM bookings
+        WHERE equipment_id = $1
+          AND status IN ('pending', 'confirmed')
+          AND start_date < $3 AND end_date > $2
+        `,
+        [data.equipment_id, startNorm, endNorm]
+      );
+      const booked = Number(cntRes.rows[0]?.cnt || 0);
+      if (booked >= quantity) {
+        throw new Error('المعدة محجوزة مسبقاً في هذه التواريخ. اختر تواريخ أخرى.');
+      }
+
+      const diffTime = Math.abs(endNorm.getTime() - startNorm.getTime());
+      const diffDays = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+      const rentalPrice = diffDays * equipment.price_per_day;
+      let totalPrice = rentalPrice + deliveryFee;
+      let discountCode: string | null = null;
+      let discountAmount = 0;
+
+      if (data.discount_code) {
+        const validated = await validateDiscountAgainstAmount(data.discount_code, totalPrice);
+        if (!validated.valid) {
+          throw new Error(validated.message || 'كود الخصم غير صالح');
+        }
+        discountCode = validated.code || null;
+        discountAmount = Number(validated.discount_amount || 0);
+        totalPrice = Number(validated.final_amount ?? totalPrice - discountAmount);
+        const codeId = validated.row?.id ? String(validated.row.id) : null;
+        if (codeId) {
+          await client.query(
+            `UPDATE discount_codes SET used_count = COALESCE(used_count, 0) + 1 WHERE id = $1`,
+            [codeId]
+          );
+        }
+      }
+
+      const ins = await client.query(
+        `
+        INSERT INTO bookings (
+          equipment_id, customer_id, start_date, end_date, total_amount, status,
+          location, notes, customer_phone, delivery_requested, delivery_fee, payment_preference,
+          delivery_lat, delivery_lng, delivery_address, delivery_status,
+          discount_code, discount_amount
+        )
+        VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        RETURNING *
+      `,
+        [
+          data.equipment_id,
+          customerId,
+          startNorm.toISOString(),
+          endNorm.toISOString(),
+          totalPrice,
+          data.location ?? null,
+          data.notes ?? null,
+          data.customer_phone ?? null,
+          deliveryRequested,
+          deliveryFee,
+          data.payment_preference ?? null,
+          deliveryLat,
+          deliveryLng,
+          deliveryAddress,
+          deliveryStatus,
+          discountCode,
+          discountAmount,
+        ]
+      );
+      return rowToBooking(ins.rows[0]);
+    });
 
     await this.notificationService.create({
       user_id: equipment.owner_id,
@@ -145,6 +187,14 @@ export class BookingService {
     });
 
     return newBooking;
+  }
+
+  async ownerOwnsEquipment(ownerId: string, equipmentId: string): Promise<boolean> {
+    const res = await query(
+      `SELECT 1 FROM equipment WHERE id = $1 AND owner_id = $2 LIMIT 1`,
+      [equipmentId, ownerId]
+    );
+    return res.rows.length > 0;
   }
 
   /** Cancel pending bookings older than 48h via full cancel path (settle + notifs). */
@@ -302,7 +352,7 @@ export class BookingService {
     id: string,
     status: BookingStatus,
     actor: { userId: string; role: string },
-    opts?: { reason?: string }
+    opts?: { reason?: string; forceOverride?: boolean }
   ): Promise<Booking> {
     const existing = await this.getById(id);
     const oldStatus = existing.status;
@@ -371,24 +421,35 @@ export class BookingService {
       }
     }
 
-    if (status === 'completed' && actor.role === 'owner') {
-      const full = await query(
-        `SELECT delivery_requested, delivery_status, return_requested, return_status
-         FROM bookings WHERE id = $1 LIMIT 1`,
-        [id]
-      );
-      const row = full.rows[0];
-      if (row?.delivery_requested) {
-        const ds = String(row.delivery_status || '');
-        if (ds !== 'delivered') {
-          throw new Error('لا يمكن إكمال الحجز قبل إتمام تسليم التوصيل للزبون');
-        }
-      }
-      // Always require return handoff so equipment is not freed while still with customer
-      if (!row?.return_requested || String(row.return_status || '') !== 'delivered') {
-        throw new Error(
-          'أكمل استرجاع المعدة قبل إكمال الإيجار: اطلب الاسترجاع ثم سجّل «استرجعت بنفسي» أو أكمل مندوب الاسترجاع'
+    if (status === 'completed') {
+      const skipHandoffGates = actor.role === 'admin' && Boolean(opts?.forceOverride);
+      if (!skipHandoffGates) {
+        const full = await query(
+          `SELECT delivery_requested, delivery_status, return_requested, return_status
+           FROM bookings WHERE id = $1 LIMIT 1`,
+          [id]
         );
+        const row = full.rows[0];
+        if (row?.delivery_requested) {
+          const ds = String(row.delivery_status || '');
+          if (ds !== 'delivered') {
+            throw new Error(
+              actor.role === 'admin'
+                ? 'التوصيل لم يكتمل. للإكمال القسري أرسل force_override: true مع السبب'
+                : 'لا يمكن إكمال الحجز قبل إتمام تسليم التوصيل للزبون'
+            );
+          }
+        }
+        // Always require return handoff so equipment is not freed while still with customer
+        if (!row?.return_requested || String(row.return_status || '') !== 'delivered') {
+          throw new Error(
+            actor.role === 'admin'
+              ? 'الاسترجاع لم يكتمل. للإكمال القسري أرسل force_override: true مع السبب'
+              : 'أكمل استرجاع المعدة قبل إكمال الإيجار: اطلب الاسترجاع ثم سجّل «استرجعت بنفسي» أو أكمل مندوب الاسترجاع'
+          );
+        }
+      } else if (!String(opts?.reason || '').trim()) {
+        throw new Error('سبب الإكمال القسري مطلوب');
       }
     }
 

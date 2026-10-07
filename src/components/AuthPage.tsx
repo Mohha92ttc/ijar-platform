@@ -5,9 +5,17 @@ import { apiJson, setSession, ApiError, apiLogout, clearSession } from '../lib/a
 
 import { UserRole } from '../types';
 
-export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) {
-  const [isLogin, setIsLogin] = useState(true);
-  const [role, setRole] = useState<UserRole>('customer');
+export default function AuthPage({
+  onLogin,
+  initialMode,
+  initialRole,
+}: {
+  onLogin: (user: any) => void;
+  initialMode?: 'login' | 'register';
+  initialRole?: UserRole;
+}) {
+  const [isLogin, setIsLogin] = useState(initialMode !== 'register');
+  const [role, setRole] = useState<UserRole>(initialRole || 'customer');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -17,10 +25,12 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
     password: '',
   });
   const [forgotMode, setForgotMode] = useState(false);
+  const [forgotChannel, setForgotChannel] = useState<'admin' | 'email'>('admin');
   const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotStatus, setForgotStatus] = useState<'idle' | 'pending' | 'approved' | 'rejected'>('idle');
+  const [forgotStatus, setForgotStatus] = useState<'idle' | 'pending' | 'approved' | 'rejected' | 'email_sent'>('idle');
   const [newForgotPassword, setNewForgotPassword] = useState('');
   const [completionToken, setCompletionToken] = useState('');
+  const [emailResetToken, setEmailResetToken] = useState('');
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const [ownerSubPrice, setOwnerSubPrice] = useState<number | null>(null);
@@ -110,11 +120,20 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
     setError(null);
     setLoading(true);
     try {
-      await apiJson('/api/auth/forgot-password-approval', {
-        method: 'POST',
-        body: JSON.stringify({ email: forgotEmail }),
-      });
-      setForgotStatus('pending');
+      if (forgotChannel === 'email') {
+        await apiJson('/api/auth/forgot-password', {
+          method: 'POST',
+          body: JSON.stringify({ email: forgotEmail }),
+        });
+        setForgotStatus('email_sent');
+        setInfoMessage('إن وُجد الحساب، أُرسل رابط/رمز إعادة التعيين إلى بريدك. أدخله أدناه مع كلمة المرور الجديدة.');
+      } else {
+        await apiJson('/api/auth/forgot-password-approval', {
+          method: 'POST',
+          body: JSON.stringify({ email: forgotEmail }),
+        });
+        setForgotStatus('pending');
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'فشل إرسال الطلب';
       setError(msg);
@@ -161,6 +180,40 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
       setForgotStatus('idle');
       setNewForgotPassword('');
       setCompletionToken('');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'فشل تحديث كلمة المرور';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const completeEmailReset = async () => {
+    if (newForgotPassword.length < 8) {
+      setError('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+      return;
+    }
+    if (!emailResetToken || emailResetToken.length < 20) {
+      setError('أدخل رمز إعادة التعيين المرسل إلى بريدك');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await apiJson('/api/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          token: emailResetToken,
+          newPassword: newForgotPassword,
+        }),
+      });
+      alert('تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
+      setForgotMode(false);
+      setForgotStatus('idle');
+      setForgotChannel('admin');
+      setNewForgotPassword('');
+      setEmailResetToken('');
+      setInfoMessage(null);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'فشل تحديث كلمة المرور';
       setError(msg);
@@ -335,6 +388,34 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
           </form>
           ) : (
             <div className="space-y-4">
+              <div className="flex p-1 bg-slate-100 rounded-xl" data-testid="forgot-channel-toggle">
+                <button
+                  type="button"
+                  data-testid="forgot-channel-admin"
+                  onClick={() => {
+                    setForgotChannel('admin');
+                    setForgotStatus('idle');
+                    setError(null);
+                    setInfoMessage(null);
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${forgotChannel === 'admin' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}
+                >
+                  موافقة الإدارة
+                </button>
+                <button
+                  type="button"
+                  data-testid="forgot-channel-email"
+                  onClick={() => {
+                    setForgotChannel('email');
+                    setForgotStatus('idle');
+                    setError(null);
+                    setInfoMessage(null);
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${forgotChannel === 'email' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}
+                >
+                  رابط البريد
+                </button>
+              </div>
               <div className="relative">
                 <Mail className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input
@@ -346,7 +427,50 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
                   onChange={(e) => setForgotEmail(e.target.value)}
                 />
               </div>
-              {forgotStatus === 'approved' ? (
+              {forgotChannel === 'email' ? (
+                forgotStatus === 'email_sent' ? (
+                  <>
+                    <p className="text-xs text-slate-600 leading-relaxed" data-testid="forgot-email-hint">
+                      تحقق من بريدك ثم الصق الرمز هنا مع كلمة المرور الجديدة.
+                    </p>
+                    <input
+                      type="text"
+                      data-testid="forgot-email-token"
+                      placeholder="رمز إعادة التعيين من البريد"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm font-mono"
+                      value={emailResetToken}
+                      onChange={(e) => setEmailResetToken(e.target.value.trim())}
+                    />
+                    <input
+                      type="password"
+                      data-testid="forgot-new-password"
+                      placeholder="كلمة المرور الجديدة"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl py-3 px-4 text-sm"
+                      value={newForgotPassword}
+                      onChange={(e) => setNewForgotPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      data-testid="forgot-email-complete"
+                      onClick={completeEmailReset}
+                      disabled={loading}
+                      className="w-full bg-green-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-60"
+                    >
+                      تحديث كلمة المرور
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="forgot-email-request"
+                    onClick={submitForgotRequest}
+                    disabled={loading}
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm disabled:opacity-60"
+                  >
+                    إرسال رابط البريد
+                  </button>
+                )
+              ) : forgotStatus === 'approved' ? (
                 <>
                   <input
                     type="text"
@@ -382,7 +506,14 @@ export default function AuthPage({ onLogin }: { onLogin: (user: any) => void }) 
               <button
                 type="button"
                 data-testid="auth-open-forgot"
-                onClick={() => { setForgotMode(!forgotMode); setError(null); }}
+                onClick={() => {
+                  setForgotMode(!forgotMode);
+                  setError(null);
+                  setForgotStatus('idle');
+                  setForgotChannel('admin');
+                  setEmailResetToken('');
+                  setInfoMessage(null);
+                }}
                 className="text-sm text-amber-600 hover:text-amber-700 font-medium mb-3 block w-full"
               >
                 {forgotMode ? 'العودة لتسجيل الدخول' : 'نسيت كلمة المرور؟'}

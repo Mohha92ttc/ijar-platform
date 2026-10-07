@@ -5,6 +5,20 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 const router = Router();
 const controller = new NotificationController();
 
+router.get('/vapid-public-key', controller.getVapidPublicKey);
+router.post(
+  '/subscribe',
+  authenticateToken,
+  requireRole(['customer', 'owner', 'admin', 'courier']),
+  controller.subscribePush
+);
+router.delete(
+  '/subscribe',
+  authenticateToken,
+  requireRole(['customer', 'owner', 'admin', 'courier']),
+  controller.unsubscribePush
+);
+
 router.get('/user/:userId', authenticateToken, requireRole(['customer', 'owner', 'admin', 'courier']), controller.getByUser);
 router.patch('/:id/read', authenticateToken, requireRole(['customer', 'owner', 'admin', 'courier']), controller.markAsRead);
 router.patch('/user/:userId/read-all', authenticateToken, requireRole(['customer', 'owner', 'admin', 'courier']), controller.markAllAsRead);

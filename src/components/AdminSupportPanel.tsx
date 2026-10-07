@@ -10,6 +10,7 @@ type SupportMsg = {
   message: string;
   status: string;
   admin_notes?: string | null;
+  admin_reply?: string | null;
   customer_reply?: string | null;
   booking_id?: string | null;
   created_at: string;
@@ -26,12 +27,19 @@ const CATEGORY_AR: Record<string, string> = {
 export default function AdminSupportPanel() {
   const [rows, setRows] = useState<SupportMsg[]>([]);
   const [loading, setLoading] = useState(true);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const list = await apiJson<SupportMsg[]>('/api/support/messages');
       setRows(list);
+      const drafts: Record<string, string> = {};
+      for (const m of list) {
+        drafts[m.id] = m.admin_reply || m.admin_notes || '';
+      }
+      setReplyDrafts(drafts);
     } catch {
       setRows([]);
     } finally {
@@ -55,17 +63,27 @@ export default function AdminSupportPanel() {
     }
   };
 
-  const saveNote = async (id: string, current?: string | null) => {
-    const note = prompt('ملاحظات الإدارة', current || '');
-    if (note == null) return;
+  const saveReply = async (id: string) => {
+    const reply = String(replyDrafts[id] || '').trim();
+    if (reply.length < 2) {
+      alert('اكتب رداً قبل الحفظ');
+      return;
+    }
+    setSavingId(id);
     try {
       await apiJson(`/api/support/messages/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ admin_notes: note, status: 'in_progress' }),
+        body: JSON.stringify({
+          admin_notes: reply,
+          admin_reply: reply,
+          status: 'in_progress',
+        }),
       });
       await load();
     } catch (e: unknown) {
       alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
+    } finally {
+      setSavingId(null);
     }
   };
 
@@ -124,14 +142,40 @@ export default function AdminSupportPanel() {
                 حجز مرتبط: {m.booking_id}
               </p>
             )}
-            {m.admin_notes && (
-              <p className="text-xs text-blue-800 bg-blue-50 rounded-xl px-3 py-2">ملاحظة: {m.admin_notes}</p>
+            {(m.admin_reply || m.admin_notes) && (
+              <p className="text-xs text-blue-800 bg-blue-50 rounded-xl px-3 py-2">
+                رد محفوظ: {m.admin_reply || m.admin_notes}
+              </p>
             )}
             {m.customer_reply && (
               <p className="text-xs text-emerald-800 bg-emerald-50 rounded-xl px-3 py-2" data-testid="admin-support-customer-reply">
                 رد الزبون: {m.customer_reply}
               </p>
             )}
+
+            <div className="space-y-2 pt-1" data-testid="admin-support-reply-composer">
+              <label className="text-[11px] font-bold text-slate-600 block">رد للإدارة (يظهر للزبون)</label>
+              <textarea
+                data-testid="admin-support-reply-input"
+                rows={3}
+                value={replyDrafts[m.id] ?? ''}
+                onChange={(e) =>
+                  setReplyDrafts((prev) => ({ ...prev, [m.id]: e.target.value }))
+                }
+                placeholder="اكتب ردك هنا…"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-800 resize-y min-h-[72px] focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+              <button
+                type="button"
+                data-testid="admin-support-reply-save"
+                disabled={savingId === m.id}
+                onClick={() => saveReply(m.id)}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-blue-600 text-white disabled:opacity-50"
+              >
+                {savingId === m.id ? 'جاري الحفظ…' : 'حفظ الرد'}
+              </button>
+            </div>
+
             <div className="flex flex-wrap gap-2 pt-1">
               <button
                 type="button"
@@ -146,13 +190,6 @@ export default function AdminSupportPanel() {
                 onClick={() => setStatus(m.id, 'resolved')}
               >
                 تم الحل
-              </button>
-              <button
-                type="button"
-                className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700"
-                onClick={() => saveNote(m.id, m.admin_notes)}
-              >
-                ملاحظة
               </button>
               <a
                 href={`mailto:${m.email}?subject=${encodeURIComponent('رد إيجار على طلبك')}`}

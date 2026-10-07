@@ -1,8 +1,33 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Settings, User, Mail, Phone, Lock, Save, X, ShieldCheck } from 'lucide-react';
+import { Settings, User, Mail, Phone, Lock, Save, X, ShieldCheck, Database, Server, CreditCard, KeyRound } from 'lucide-react';
 import { User as UserType } from '../types';
-import { apiJson, ApiError } from '../lib/api';
+import { apiJson, ApiError, apiFetch } from '../lib/api';
+
+type ReadinessCheck = {
+  name: string;
+  ok: boolean;
+  required: boolean;
+  detail?: string;
+};
+
+type ReadinessReport = {
+  ready: boolean;
+  environment: string;
+  checks: ReadinessCheck[];
+  score: number;
+};
+
+const CHECK_LABELS: Record<string, string> = {
+  jwt_secret: 'مفتاح JWT',
+  database: 'قاعدة البيانات',
+  smtp: 'البريد SMTP',
+  stripe: 'Stripe',
+  allowed_origins: 'CORS / Origins',
+  object_storage: 'تخزين الملفات',
+  mock_auth_disabled: 'تعطيل المصادقة الوهمية',
+  backup_script: 'نسخ احتياطي',
+};
 
 interface AdminCredentials {
   username: string;
@@ -26,6 +51,9 @@ export default function AdminSettings() {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [readiness, setReadiness] = useState<ReadinessReport | null>(null);
+  const [readinessError, setReadinessError] = useState<string | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
 
   const [platformBank, setPlatformBank] = useState({
     bank_name: '',
@@ -41,6 +69,25 @@ export default function AdminSettings() {
     commission_rate: 0.1,
   });
 
+  const loadReadiness = React.useCallback(async () => {
+    setReadinessLoading(true);
+    setReadinessError(null);
+    try {
+      // 503 when not ready still returns the report body
+      const res = await apiFetch('/api/admin/readiness');
+      const body = (await res.json()) as ReadinessReport & { error?: string };
+      if (!body.checks) {
+        throw new Error(body.error || 'تعذر فحص الجاهزية');
+      }
+      setReadiness(body);
+    } catch (e) {
+      setReadiness(null);
+      setReadinessError(e instanceof Error ? e.message : 'تعذر فحص الجاهزية');
+    } finally {
+      setReadinessLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     (async () => {
       try {
@@ -55,7 +102,8 @@ export default function AdminSettings() {
         // Handle silently
       }
     })();
-  }, []);
+    loadReadiness();
+  }, [loadReadiness]);
 
   React.useEffect(() => {
     (async () => {
@@ -171,8 +219,86 @@ export default function AdminSettings() {
     }
   };
 
+  const checkIcon = (name: string) => {
+    if (name === 'database') return Database;
+    if (name === 'smtp') return Mail;
+    if (name === 'stripe') return CreditCard;
+    if (name === 'jwt_secret') return KeyRound;
+    return Server;
+  };
+
+  const highlightChecks = ['jwt_secret', 'database', 'smtp', 'stripe'];
+
   return (
     <div className="space-y-6">
+      {/* Production readiness */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm" data-testid="admin-readiness">
+        <div className="p-6 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">جاهزية النظام للإنتاج</h3>
+            <p className="text-sm text-slate-500 mt-1">فحص SMTP وقاعدة البيانات وStripe وJWT</p>
+          </div>
+          <button
+            type="button"
+            data-testid="admin-readiness-refresh"
+            onClick={loadReadiness}
+            disabled={readinessLoading}
+            className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+          >
+            {readinessLoading ? 'جاري الفحص…' : 'إعادة الفحص'}
+          </button>
+        </div>
+        <div className="p-6 space-y-4">
+          {readinessError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-3 py-2">{readinessError}</p>
+          )}
+          {readiness && (
+            <div className="flex flex-wrap gap-3 text-sm">
+              <span
+                className={`px-3 py-1 rounded-full font-bold ${
+                  readiness.ready ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-800'
+                }`}
+              >
+                {readiness.ready ? 'جاهز' : 'غير جاهز بالكامل'} · الدرجة {readiness.score}
+              </span>
+              <span className="px-3 py-1 rounded-full bg-slate-100 text-slate-600 font-bold">
+                البيئة: {readiness.environment}
+              </span>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {(readiness?.checks || [])
+              .filter((c) => highlightChecks.includes(c.name))
+              .map((c) => {
+                const Icon = checkIcon(c.name);
+                return (
+                  <div
+                    key={c.name}
+                    data-testid={`admin-readiness-${c.name}`}
+                    className={`rounded-2xl border p-4 ${
+                      c.ok ? 'border-green-100 bg-green-50/40' : 'border-red-100 bg-red-50/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <Icon size={16} className={c.ok ? 'text-green-700' : 'text-red-600'} />
+                      <span className="text-sm font-bold text-slate-800">
+                        {CHECK_LABELS[c.name] || c.name}
+                      </span>
+                    </div>
+                    <p className={`text-xs font-bold ${c.ok ? 'text-green-700' : 'text-red-600'}`}>
+                      {c.ok ? 'سليم' : 'يحتاج إعداداً'}
+                    </p>
+                    {c.detail && <p className="text-[11px] text-slate-500 mt-1 break-words">{c.detail}</p>}
+                  </div>
+                );
+              })}
+            {!readiness && !readinessLoading && !readinessError && (
+              <p className="text-sm text-slate-500 col-span-full">لا توجد نتائج بعد</p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Admin Profile Section */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
         <div className="p-6 border-b border-slate-200">

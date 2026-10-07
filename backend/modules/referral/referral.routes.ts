@@ -4,24 +4,45 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 
 const router = Router();
 
-// Referral program management
-router.post('/programs', authenticateToken, requireRole(['admin']), referralController.createReferralProgram);
-router.get('/programs', authenticateToken, referralController.getReferralPrograms);
-router.get('/programs/:id', authenticateToken, referralController.getReferralProgram);
-router.put('/programs/:id', authenticateToken, requireRole(['admin']), referralController.updateReferralProgram);
-router.delete('/programs/:id', authenticateToken, requireRole(['admin']), referralController.deleteReferralProgram);
-
-// Referral codes
+// Referral codes (real)
 router.post('/codes', authenticateToken, referralController.createReferralCode);
 router.get('/codes', authenticateToken, referralController.getReferralCodes);
 router.post('/codes/validate', referralController.validateReferralCode);
 router.post('/codes/:code/use', authenticateToken, referralController.useReferralCode);
 
-// Referral transactions
-router.get('/transactions', authenticateToken, referralController.getReferralTransactions);
-router.get('/transactions/:userId', authenticateToken, referralController.getUserReferralTransactions);
+// Programs (stubs)
+router.post(
+  '/programs',
+  authenticateToken,
+  requireRole(['admin']),
+  referralController.createReferralProgram
+);
+router.get('/programs', authenticateToken, referralController.getReferralPrograms);
+router.get('/programs/:id', authenticateToken, referralController.getReferralProgram);
+router.put(
+  '/programs/:id',
+  authenticateToken,
+  requireRole(['admin']),
+  referralController.updateReferralProgram
+);
+router.delete(
+  '/programs/:id',
+  authenticateToken,
+  requireRole(['admin']),
+  referralController.deleteReferralProgram
+);
 
-// Recommendations
-router.post('/recommendations', authenticateToken, referralController.getPersonalizedRecommendations);
+router.get('/transactions', authenticateToken, referralController.getReferralTransactions);
+router.get(
+  '/transactions/:userId',
+  authenticateToken,
+  referralController.getUserReferralTransactions
+);
+
+router.post(
+  '/recommendations',
+  authenticateToken,
+  referralController.getPersonalizedRecommendations
+);
 
 export default router;

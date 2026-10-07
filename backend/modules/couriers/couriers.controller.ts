@@ -107,6 +107,9 @@ export class CouriersController {
       const leg = String(req.body.leg || req.body.delivery_leg || 'outbound');
 
       const courier = await this.service.assertOwned(actor.userId, courierId);
+      if (!courier.is_active) {
+        return res.status(400).json({ error: 'المندوب غير نشط — فعّله قبل التعيين' });
+      }
 
       const own = await query(
         `
@@ -306,13 +309,49 @@ export class CouriersController {
       }
       const me = await this.service.getByUserId(actor.userId);
       if (!me) return res.status(403).json({ error: 'مندوب غير معروف' });
-      const status = String(req.body.delivery_status || '');
+      let status = String(req.body.delivery_status || '');
       const leg = String(req.body.leg || req.body.delivery_leg || 'outbound');
+      // Alias: picked_up → out_for_delivery
+      if (status === 'picked_up') status = 'out_for_delivery';
       if (!['assigned', 'out_for_delivery', 'delivered', 'failed'].includes(status)) {
         return res.status(400).json({ error: 'حالة غير صالحة' });
       }
 
       const isReturn = leg === 'return';
+      const currentRes = await query(
+        isReturn
+          ? `
+        SELECT id, customer_id, return_status AS current_status
+        FROM bookings
+        WHERE id = $1 AND return_courier_id = $2 AND status = 'confirmed'::booking_status
+        `
+          : `
+        SELECT id, customer_id, delivery_status AS current_status
+        FROM bookings
+        WHERE id = $1 AND assigned_courier_id = $2 AND status = 'confirmed'::booking_status
+        `,
+        [req.params.bookingId, me.id]
+      );
+      if (!currentRes.rows[0]) return res.status(404).json({ error: 'الطلب غير معيّن لك أو غير مؤكد' });
+
+      const current = String(currentRes.rows[0].current_status || 'assigned');
+      const rank: Record<string, number> = {
+        pending_assign: 0,
+        assigned: 1,
+        picked_up: 2,
+        out_for_delivery: 2,
+        delivered: 3,
+      };
+      const fromRank = rank[current];
+      const toRank = rank[status];
+      // Forward-only: no rollback from delivered → assigned/picked_up/out_for_delivery
+      if (current === 'delivered' && status !== 'delivered') {
+        return res.status(400).json({ error: 'لا يمكن التراجع عن حالة التسليم المكتمل' });
+      }
+      if (status !== 'failed' && fromRank != null && toRank != null && toRank < fromRank) {
+        return res.status(400).json({ error: 'انتقال الحالة مسموح للأمام فقط' });
+      }
+
       const resu = await query(
         isReturn
           ? `

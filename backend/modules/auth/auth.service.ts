@@ -5,6 +5,7 @@ import { query } from '../../database/connection';
 import { RegisterDTO, LoginResponse, UserRole } from './auth.types';
 import { NotificationService } from '../notifications/notification.service';
 import { mailService } from '../../services/mail.service';
+import { applyReferralOnRegister } from '../referral/referral.controller';
 
 interface MeResponse {
   id: string;
@@ -59,8 +60,9 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(data.password, this.bcryptRounds);
     const phone = (data.phone && data.phone.replace(/\s/g, '')) || `+964000${Date.now().toString().slice(-7)}`;
 
-    const autoApprove = Boolean(data.auto_approve);
-    const isApproved = role === 'customer' || role === 'admin' || autoApprove;
+    // auto_approve is ignored on public register (stripped in controller).
+    // Only customers/admins are auto-approved; owners await admin approval.
+    const isApproved = role === 'customer' || role === 'admin';
     // Customers: mark verified only when SMTP not configured (dev), else require verify link
     const emailVerified = role !== 'customer' ? true : !mailService.isConfigured();
     const verificationToken = !emailVerified ? this.generateSecureToken() : null;
@@ -80,11 +82,20 @@ export class AuthService {
         emailVerified,
         isApproved,
         verificationToken,
-        autoApprove && role === 'owner' ? 'active' : role === 'owner' ? 'pending' : 'none',
+        role === 'owner' ? 'pending' : 'none',
       ]
     );
 
     const row = ins.rows[0];
+
+    // Optional: apply referral code on register (non-blocking if invalid)
+    if (data.referral_code) {
+      try {
+        await applyReferralOnRegister(data.referral_code, String(row.id));
+      } catch (e) {
+        console.warn('referral apply on register skipped:', e instanceof Error ? e.message : e);
+      }
+    }
 
     if (role === 'owner' && !isApproved) {
       await this.notificationService.notifyAdmins({
@@ -345,8 +356,8 @@ export class AuthService {
     if (res.rows.length === 0) return;
     const userId = String(res.rows[0].id);
     const role = String(res.rows[0].role);
-    if (!['customer', 'owner'].includes(role)) {
-      throw new Error('Only customer and owner accounts are allowed');
+    if (!['customer', 'owner', 'courier'].includes(role)) {
+      throw new Error('Only customer, owner, and courier accounts are allowed');
     }
 
     const existing = await query(

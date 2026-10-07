@@ -39,7 +39,7 @@ router.patch(
 router.post('/tickets', authenticateToken, supportController.createTicket);
 router.get('/tickets', authenticateToken, supportController.getTickets);
 router.get('/tickets/:id', authenticateToken, supportController.getTicket);
-router.put('/tickets/:id', authenticateToken, supportController.updateTicket);
+router.put('/tickets/:id', authenticateToken, requireRole(['admin']), supportController.updateTicket);
 router.delete('/tickets/:id', authenticateToken, requireRole(['admin']), supportController.deleteTicket);
 
 // Live chat

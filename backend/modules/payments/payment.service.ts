@@ -91,6 +91,10 @@ export class PaymentService {
     }
 
     const bookingParticipants = await this.resolveBookingParticipants(data.booking_id);
+    // Prevent IDOR: logged-in customer may only pay for their own booking
+    if (customerId && String(bookingParticipants.customerId) !== String(customerId)) {
+      throw new Error('غير مصرح: هذا الحجز ليس لك');
+    }
     const effectiveCustomerId = customerId || bookingParticipants.customerId;
     const effectiveOwnerId = ownerId || bookingParticipants.ownerId;
     // Trust server booking total — ignore client-sent amount for underpay/overpay
@@ -419,7 +423,48 @@ export class PaymentService {
       return;
     }
 
+    // Rejecting booking: cancel path (admin-style) — for proof-only reject use rejectProofOnly
     await this.adminReview(paymentId, false, notes || 'رفض الشريك', ownerId);
+  }
+
+  /**
+   * Partner rejects transfer proof only — booking stays pending so customer can resubmit proof.
+   * Does NOT cancel the booking.
+   */
+  async rejectProofOnly(bookingId: string, ownerId: string, notes?: string): Promise<void> {
+    const payment = await this.repository.findByBookingId(bookingId);
+    if (!payment) {
+      throw new Error('لا توجد دفعة لهذا الحجز');
+    }
+    const raw = payment as Payment & Record<string, unknown>;
+    if (String(raw.owner_id || payment.owner_id) !== ownerId) {
+      throw new Error('غير مصرح بمراجعة هذه الدفعة');
+    }
+    const status = String(raw.status ?? payment.payment_status);
+    if (!['under_review', 'proof_uploaded', 'pending'].includes(status)) {
+      throw new Error('لا يمكن رفض إثبات بهذه الحالة');
+    }
+    const method = String(raw.method ?? payment.payment_method ?? '').toLowerCase();
+    if (method === 'cash' || method === 'cash_on_delivery') {
+      throw new Error('دفع عند التسليم لا يحتاج رفض إثبات');
+    }
+    const paymentId = String(raw.id || payment.id);
+    const why = String(notes || 'رفض إثبات التحويل — أعد رفع صورة صحيحة').trim().slice(0, 400);
+    await this.repository.updateStatus(paymentId, 'rejected');
+    await query(`UPDATE payments SET notes = COALESCE(notes,'') || $1, updated_at = NOW() WHERE id = $2`, [
+      ` | ${why}`,
+      paymentId,
+    ]);
+    const customerId = String(raw.customer_id || payment.customer_id || '');
+    if (customerId) {
+      await this.notificationService.create({
+        user_id: customerId,
+        type: 'payment',
+        title: 'رُفض إثبات التحويل',
+        message: `${why}. الحجز ما زال معلقاً — أعد رفع إثبات من حجوزاتك.`,
+        related_id: bookingId,
+      });
+    }
   }
 
   /** On cancel: reject open reviews; mark approved as refunded (manual settlement). */

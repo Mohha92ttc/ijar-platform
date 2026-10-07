@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { NotificationService } from './notification.service';
+import pushNotificationService from '../../services/push-notification.service';
 
 export class NotificationController {
   private notificationService: NotificationService;
@@ -7,6 +8,56 @@ export class NotificationController {
   constructor() {
     this.notificationService = new NotificationService();
   }
+
+  getVapidPublicKey = async (_req: Request, res: Response) => {
+    try {
+      const publicKey = pushNotificationService.getVapidPublicKey();
+      if (!publicKey) {
+        return res.status(503).json({ error: 'إشعارات الدفع غير مفعّلة على الخادم' });
+      }
+      res.json({ publicKey });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'تعذر جلب مفتاح VAPID' });
+    }
+  };
+
+  subscribePush = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as any).user as { userId?: string } | undefined;
+      if (!actor?.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const subscription = req.body?.subscription || req.body;
+      const endpoint = subscription?.endpoint;
+      const keys = subscription?.keys;
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ error: 'اشتراك الدفع غير صالح' });
+      }
+      await pushNotificationService.saveSubscription(actor.userId, {
+        endpoint: String(endpoint),
+        keys: {
+          p256dh: String(keys.p256dh),
+          auth: String(keys.auth),
+        },
+      });
+      res.status(201).json({ ok: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'تعذر حفظ الاشتراك' });
+    }
+  };
+
+  unsubscribePush = async (req: Request, res: Response) => {
+    try {
+      const actor = (req as any).user as { userId?: string } | undefined;
+      if (!actor?.userId) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      await pushNotificationService.removeSubscription(actor.userId);
+      res.json({ ok: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message || 'تعذر إلغاء الاشتراك' });
+    }
+  };
 
   getByUser = async (req: Request, res: Response) => {
     try {

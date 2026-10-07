@@ -22,6 +22,8 @@ export interface RegisterDTO {
   role?: UserRole | 'user';
   /** When admin creates an owner and wants immediate approval */
   auto_approve?: boolean;
+  /** Optional referral code — applied after user insert */
+  referral_code?: string;
 }
 
 export interface LoginResponse {

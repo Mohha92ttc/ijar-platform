@@ -418,6 +418,7 @@ async function createTables() {
     );
     ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL;
     ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS customer_reply TEXT;
+    ALTER TABLE support_messages ADD COLUMN IF NOT EXISTS admin_reply TEXT;
     CREATE INDEX IF NOT EXISTS idx_support_messages_status ON support_messages (status);
     CREATE INDEX IF NOT EXISTS idx_support_messages_booking ON support_messages (booking_id);
 
@@ -429,6 +430,39 @@ async function createTables() {
       UNIQUE(user_id, equipment_id)
     );
     CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites (user_id);
+
+    -- Discount codes (promo)
+    CREATE TABLE IF NOT EXISTS discount_codes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      code TEXT UNIQUE NOT NULL,
+      discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+      discount_value NUMERIC NOT NULL,
+      max_uses INT,
+      used_count INT DEFAULT 0,
+      min_order NUMERIC DEFAULT 0,
+      starts_at TIMESTAMPTZ,
+      ends_at TIMESTAMPTZ,
+      is_active BOOLEAN DEFAULT true,
+      created_by UUID,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_discount_codes_code ON discount_codes (code);
+
+    -- Referral codes (per user)
+    CREATE TABLE IF NOT EXISTS referral_codes (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+      code TEXT UNIQUE NOT NULL,
+      uses_count INT DEFAULT 0,
+      reward_amount NUMERIC DEFAULT 0,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_referral_codes_user ON referral_codes (user_id);
+    CREATE INDEX IF NOT EXISTS idx_referral_codes_code ON referral_codes (code);
+
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_code TEXT;
+    ALTER TABLE bookings ADD COLUMN IF NOT EXISTS discount_amount NUMERIC DEFAULT 0;
 
     -- Messages Table
     CREATE TABLE IF NOT EXISTS messages (
@@ -484,6 +518,36 @@ async function createTables() {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Digital rental contracts (minimal)
+    CREATE TABLE IF NOT EXISTS digital_contracts (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      booking_id UUID NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
+      customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'sent', 'signed', 'cancelled')),
+      terms_text TEXT NOT NULL,
+      signed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_digital_contracts_customer ON digital_contracts (customer_id);
+    CREATE INDEX IF NOT EXISTS idx_digital_contracts_owner ON digital_contracts (owner_id);
+
+    -- Insurance claims (minimal)
+    CREATE TABLE IF NOT EXISTS insurance_claims (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      booking_id UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+      customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      description TEXT NOT NULL,
+      amount NUMERIC NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected')),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_insurance_claims_customer ON insurance_claims (customer_id);
+    CREATE INDEX IF NOT EXISTS idx_insurance_claims_booking ON insurance_claims (booking_id);
+    CREATE INDEX IF NOT EXISTS idx_insurance_claims_status ON insurance_claims (status);
+
     -- Create indexes for better performance
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
@@ -518,3 +582,25 @@ async function createTables() {
 
 // Export the pool for direct use if needed
 export default pool;
+
+/** Run work inside a single DB transaction (BEGIN/COMMIT/ROLLBACK). */
+export async function withTransaction<T>(
+  fn: (client: import('pg').PoolClient) => Promise<T>
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // ignore rollback errors
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}

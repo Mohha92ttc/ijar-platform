@@ -33,7 +33,14 @@ export class ReviewController {
 
   getByOwner = async (req: Request, res: Response) => {
     try {
+      const actor = (req as any).user as { userId?: string; role?: string } | undefined;
+      if (!actor?.userId || !actor.role) {
+        return res.status(401).json({ message: 'Unauthorized' });
+      }
       const { ownerId } = req.params;
+      if (actor.role === 'owner' && String(ownerId) !== String(actor.userId)) {
+        return res.status(403).json({ message: 'Not allowed' });
+      }
       const reviews = await this.reviewService.getByOwner(ownerId);
       res.status(200).json(reviews);
     } catch (error: any) {

@@ -1,7 +1,7 @@
 import { motion } from 'motion/react';
 import { ArrowRight, Phone, Mail, MessageCircle, HelpCircle, Search, Book, Headphones, Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { apiJson, ApiError } from '../lib/api';
+import { apiJson, ApiError, getStoredUser, getToken } from '../lib/api';
 
 const faqData = [
   {
@@ -49,6 +49,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
       message: string;
       status: string;
       admin_notes?: string;
+      admin_reply?: string | null;
       customer_reply?: string | null;
       booking_id?: string;
       created_at: string;
@@ -66,6 +67,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
   const [formMsg, setFormMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [contactPhone, setContactPhone] = useState('+964 7700 123 456');
   const [contactEmail, setContactEmail] = useState('support@ijar.iq');
+  const isLoggedIn = Boolean(getToken() || getStoredUser()?.id);
 
   useEffect(() => {
     try {
@@ -89,7 +91,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
     (async () => {
       try {
         const rows = await apiJson<
-          { id: string; category: string; message: string; status: string; admin_notes?: string; booking_id?: string; created_at: string }[]
+          { id: string; category: string; message: string; status: string; admin_notes?: string; admin_reply?: string | null; booking_id?: string; created_at: string }[]
         >('/api/support/my-messages');
         if (!cancelled) setMyTickets(Array.isArray(rows) ? rows : []);
       } catch {
@@ -315,6 +317,15 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
           </div>
         </motion.div>
 
+        {!isLoggedIn && (
+          <div
+            className="bg-amber-50 border border-amber-100 rounded-2xl p-4 mb-8 text-sm text-amber-900 text-center"
+            data-testid="help-guest-tickets-hint"
+          >
+            سجّل دخولك لرؤية تذاكرك السابقة
+          </div>
+        )}
+
         {myTickets.length > 0 && (
           <div className="bg-white rounded-2xl p-6 border border-slate-200 mb-8 space-y-3" data-testid="help-my-tickets">
             <h3 className="text-lg font-bold">تذاكر الدعم الخاصة بك</h3>
@@ -336,15 +347,15 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
                 </div>
                 <p className="text-sm text-slate-600 line-clamp-3 whitespace-pre-wrap">{t.message}</p>
                 {t.booking_id && <p className="text-[11px] font-mono text-violet-700">حجز: {t.booking_id}</p>}
-                {t.admin_notes && (
-                  <p className="text-xs text-blue-800 bg-blue-50 rounded-lg px-2 py-1.5">رد الإدارة: {t.admin_notes}</p>
+                {(t.admin_reply || t.admin_notes) && (
+                  <p className="text-xs text-blue-800 bg-blue-50 rounded-lg px-2 py-1.5">رد الإدارة: {t.admin_reply || t.admin_notes}</p>
                 )}
                 {t.customer_reply && (
                   <p className="text-xs text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5" data-testid="help-ticket-my-reply">
                     ردك: {t.customer_reply}
                   </p>
                 )}
-                {t.admin_notes && t.status !== 'resolved' && (
+                {(t.admin_reply || t.admin_notes) && t.status !== 'resolved' && (
                   <div className="flex flex-col sm:flex-row gap-2 pt-1">
                     <input
                       type="text"

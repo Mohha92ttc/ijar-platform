@@ -1142,9 +1142,16 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               </p>
             )}
             {!loading && bookings.length === 0 && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-2" data-testid="partner-bookings-empty">
+              <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-3" data-testid="partner-bookings-empty">
                 <p className="font-bold text-slate-700">لا طلبات بعد</p>
                 <p className="text-sm text-slate-500">عندما يحجز زبون معدتك ستظهر الطلبات هنا للموافقة أو الرفض.</p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('equipment')}
+                  className="inline-flex items-center justify-center bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700"
+                >
+                  أضف معدات للسوق
+                </button>
               </div>
             )}
             
@@ -1332,6 +1339,34 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                               حالة الدفع: {booking.paymentStatus === 'under_review' ? 'بانتظار مراجعتك' : booking.paymentStatus}
                             </span>
                           )}
+                          {['under_review', 'proof_uploaded', 'pending'].includes(
+                            String(booking.paymentStatus || '')
+                          ) &&
+                            booking.status === 'pending' && (
+                              <button
+                                type="button"
+                                data-testid="partner-reject-proof-only"
+                                onClick={async () => {
+                                  const notes = window.prompt(
+                                    'سبب رفض الإثبات (الحجز يبقى معلقاً ليعيد الزبون الرفع):',
+                                    'صورة غير واضحة أو مبلغ غير مطابق'
+                                  );
+                                  if (notes === null) return;
+                                  try {
+                                    await apiJson(`/api/payments/booking/${booking.id}/reject-proof`, {
+                                      method: 'POST',
+                                      body: JSON.stringify({ notes: notes.trim() || undefined }),
+                                    });
+                                    await loadData();
+                                  } catch (e) {
+                                    alert(e instanceof ApiError ? e.message : 'تعذر رفض الإثبات');
+                                  }
+                                }}
+                                className="mt-2 text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200"
+                              >
+                                رفض الإثبات فقط (بدون إلغاء الحجز)
+                              </button>
+                            )}
                         </div>
                       </div>
                     ) : (

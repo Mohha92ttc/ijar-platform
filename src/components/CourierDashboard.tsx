@@ -330,8 +330,15 @@ export default function CourierDashboard({
             </div>
 
             {!loading && bookings.length === 0 && (
-              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500 text-sm">
-                لا توجد طلبات معيّنة لك حالياً
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500 text-sm space-y-3">
+                <p>لا توجد طلبات معيّنة لك حالياً</p>
+                <button
+                  type="button"
+                  onClick={() => load()}
+                  className="inline-flex items-center gap-1 text-emerald-700 font-bold hover:bg-emerald-50 px-3 py-2 rounded-lg"
+                >
+                  <RefreshCw size={14} /> تحديث القائمة
+                </button>
               </div>
             )}
 

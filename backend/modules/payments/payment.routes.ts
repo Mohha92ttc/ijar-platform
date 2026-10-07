@@ -45,6 +45,12 @@ router.post(
   requireRole(['owner']),
   controller.ownerSettleRefund
 );
+router.post(
+  '/booking/:bookingId/reject-proof',
+  authenticateToken,
+  requireRole(['owner']),
+  controller.ownerRejectProof
+);
 
 // Admin routes
 router.get('/reviews', authenticateToken, requireRole(['admin']), controller.getPendingReviews);

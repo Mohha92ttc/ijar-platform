@@ -104,7 +104,8 @@ export class AdminController {
       const { id } = req.params;
       const status = String(req.body?.status || '');
       const reason = req.body?.reason != null ? String(req.body.reason) : undefined;
-      await this.adminService.updateBookingStatus(id, status, actor.userId, reason);
+      const forceOverride = Boolean(req.body?.force_override);
+      await this.adminService.updateBookingStatus(id, status, actor.userId, reason, forceOverride);
       res.status(200).json({ message: 'تم تحديث الحجز' });
     } catch (error: unknown) {
       res.status(400).json({ error: publicError(error, 'فشل تحديث الحجز') });

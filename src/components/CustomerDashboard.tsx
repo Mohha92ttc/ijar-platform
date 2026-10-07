@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone, Save, Bell, Navigation } from 'lucide-react';
+import { User, Calendar, MapPin, Star, Settings, LogOut, Home, Truck, Phone, Save, Bell, Navigation, FileText, Shield } from 'lucide-react';
 import { apiJson, ApiError, apiLogout } from '../lib/api';
 import NotificationsPanel from './NotificationsPanel';
 import { googleMapsDirectionsUrl } from './MapPicker';
 import { iraqWaDigits } from '../lib/phone';
+import { canUseWebPush, enableDevicePushNotifications } from '../lib/webPush';
 
 type Row = {
   id: string;
@@ -125,6 +126,16 @@ export default function CustomerDashboard({
   const [repayBusy, setRepayBusy] = useState<string | null>(null);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [focusBookingId, setFocusBookingId] = useState<string | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushHint, setPushHint] = useState<string | null>(null);
+  const [contractModal, setContractModal] = useState<{
+    bookingId: string;
+    id: string;
+    status: string;
+    terms_text: string;
+  } | null>(null);
+  const [contractBusy, setContractBusy] = useState(false);
+  const [claimBusy, setClaimBusy] = useState<string | null>(null);
 
   const loadPrefs = useCallback(() => {
     try {
@@ -360,6 +371,84 @@ export default function CustomerDashboard({
     }
   };
 
+  const openRentalContract = async (bookingId: string) => {
+    setContractBusy(true);
+    try {
+      const c = await apiJson<{
+        id: string;
+        status: string;
+        terms_text?: string;
+        terms?: string;
+        booking_id?: string;
+        bookingId?: string;
+      }>(`/api/contracts/booking/${bookingId}`);
+      setContractModal({
+        bookingId,
+        id: String(c.id),
+        status: String(c.status),
+        terms_text: String(c.terms_text || c.terms || ''),
+      });
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر فتح عقد الإيجار');
+    } finally {
+      setContractBusy(false);
+    }
+  };
+
+  const signRentalContract = async () => {
+    if (!contractModal) return;
+    if (!confirm('بتوقيعك توافق على شروط عقد الإيجار. متابعة؟')) return;
+    setContractBusy(true);
+    try {
+      const c = await apiJson<{ id: string; status: string; terms_text?: string; terms?: string }>(
+        `/api/contracts/${contractModal.id}/sign`,
+        { method: 'POST', body: JSON.stringify({}) }
+      );
+      setContractModal({
+        ...contractModal,
+        status: String(c.status),
+        terms_text: String(c.terms_text || c.terms || contractModal.terms_text),
+      });
+      alert('تم توقيع العقد بنجاح');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر توقيع العقد');
+    } finally {
+      setContractBusy(false);
+    }
+  };
+
+  const openInsuranceClaim = async (bookingId: string) => {
+    const description = window.prompt('صف الضرر أو سبب مطالبة التأمين:');
+    if (description == null) return;
+    if (!description.trim()) {
+      alert('الوصف مطلوب');
+      return;
+    }
+    const amountRaw = window.prompt('المبلغ التقديري (د.ع):', '0');
+    if (amountRaw == null) return;
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(amount) || amount < 0) {
+      alert('مبلغ غير صالح');
+      return;
+    }
+    setClaimBusy(bookingId);
+    try {
+      await apiJson('/api/insurance/claims', {
+        method: 'POST',
+        body: JSON.stringify({
+          bookingId,
+          description: description.trim(),
+          amount,
+        }),
+      });
+      alert('تم إرسال مطالبة التأمين — ستراجعها الإدارة');
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إرسال المطالبة');
+    } finally {
+      setClaimBusy(null);
+    }
+  };
+
   const resubmitPaymentProof = async (booking: Row, file: File) => {
     setRepayBusy(booking.id);
     try {
@@ -563,10 +652,17 @@ export default function CustomerDashboard({
           <div className="space-y-4">
             {loadingBookings && <p className="text-sm text-slate-500">جاري تحميل الحجوزات…</p>}
             {!loadingBookings && bookings.length === 0 && (
-              <div className="bg-white rounded-2xl p-10 text-center border border-slate-100">
-                <Calendar className="mx-auto text-slate-400 mb-3" size={40} />
+              <div className="bg-white rounded-2xl p-10 text-center border border-slate-100 space-y-3">
+                <Calendar className="mx-auto text-slate-400 mb-1" size={40} />
                 <h3 className="font-bold text-slate-700 mb-1">لا توجد حجوزات حالياً</h3>
                 <p className="text-slate-500 text-sm">ابدأ باستكشاف المعدات المتاحة للحجز</p>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="inline-flex items-center justify-center bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700"
+                >
+                  تصفح المعدات
+                </button>
               </div>
             )}
             {bookings.map((booking) => (
@@ -740,16 +836,41 @@ export default function CustomerDashboard({
                     بعد التأكيد لا يمكن الإلغاء من هنا — تواصل مع الشريك أو افتح شكوى للدعم.
                   </p>
                 )}
-                {onOpenSupport && ['pending', 'confirmed', 'cancelled', 'completed'].includes(booking.status) && (
-                  <button
-                    type="button"
-                    data-testid="customer-dispute-booking"
-                    onClick={() => onOpenSupport(booking.id)}
-                    className="text-xs font-bold text-violet-700 border border-violet-200 px-3 py-1.5 rounded-xl hover:bg-violet-50"
-                  >
-                    شكوى / دعم لهذا الحجز
-                  </button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {booking.status === 'confirmed' && (
+                    <button
+                      type="button"
+                      data-testid="customer-open-contract"
+                      disabled={contractBusy}
+                      onClick={() => openRentalContract(booking.id)}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 border border-blue-200 px-3 py-1.5 rounded-xl hover:bg-blue-50 disabled:opacity-60"
+                    >
+                      <FileText size={12} /> عقد الإيجار
+                    </button>
+                  )}
+                  {booking.status === 'completed' && (
+                    <button
+                      type="button"
+                      data-testid="customer-insurance-claim"
+                      disabled={claimBusy === booking.id}
+                      onClick={() => openInsuranceClaim(booking.id)}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 border border-amber-200 px-3 py-1.5 rounded-xl hover:bg-amber-50 disabled:opacity-60"
+                    >
+                      <Shield size={12} />
+                      {claimBusy === booking.id ? 'جاري الإرسال…' : 'مطالبة تأمين'}
+                    </button>
+                  )}
+                  {onOpenSupport && ['pending', 'confirmed', 'cancelled', 'completed'].includes(booking.status) && (
+                    <button
+                      type="button"
+                      data-testid="customer-dispute-booking"
+                      onClick={() => onOpenSupport(booking.id)}
+                      className="text-xs font-bold text-violet-700 border border-violet-200 px-3 py-1.5 rounded-xl hover:bg-violet-50"
+                    >
+                      شكوى / دعم لهذا الحجز
+                    </button>
+                  )}
+                </div>
                 {booking.status === 'completed' && !booking.reviewed && (
                   <div className="border-t border-slate-100 pt-3 space-y-2" data-testid="customer-review-box">
                     <p className="text-xs font-bold text-slate-700">قيّم تجربتك</p>
@@ -810,10 +931,17 @@ export default function CustomerDashboard({
         {activeTab === 'favorites' && (
           <div className="space-y-4">
             {favorites.length === 0 ? (
-              <div className="bg-white rounded-2xl p-10 text-center border border-slate-100">
-                <Star className="mx-auto text-slate-400 mb-3" size={40} />
+              <div className="bg-white rounded-2xl p-10 text-center border border-slate-100 space-y-3">
+                <Star className="mx-auto text-slate-400 mb-1" size={40} />
                 <h3 className="font-bold text-slate-700 mb-1">لا توجد معدات مفضلة</h3>
                 <p className="text-slate-500 text-sm">اضغط النجمة على بطاقة المعدة في الرئيسية</p>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="inline-flex items-center justify-center bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700"
+                >
+                  تصفح المعدات
+                </button>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -939,6 +1067,36 @@ export default function CustomerDashboard({
                   {notifyOn ? 'مفعّلة' : 'معطّلة'}
                 </button>
               </div>
+              {canUseWebPush() && (
+                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
+                  <div>
+                    <div className="font-bold">إشعارات الجهاز</div>
+                    <div className="text-sm text-slate-500">
+                      إشعارات فورية حتى مع إغلاق التطبيق (Web Push) — يُطلب الإذن مرة واحدة عند التفعيل
+                    </div>
+                    {pushHint && (
+                      <div className="text-xs mt-1 text-slate-600" data-testid="customer-push-hint">
+                        {pushHint}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="customer-settings-device-push"
+                    disabled={pushBusy}
+                    onClick={async () => {
+                      setPushBusy(true);
+                      setPushHint(null);
+                      const result = await enableDevicePushNotifications();
+                      setPushHint(result.message);
+                      setPushBusy(false);
+                    }}
+                    className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 text-white disabled:opacity-60 whitespace-nowrap"
+                  >
+                    {pushBusy ? 'جاري التفعيل…' : 'تفعيل إشعارات الجهاز'}
+                  </button>
+                </div>
+              )}
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
                 <div>
                   <div className="font-bold">اللغة</div>
@@ -985,6 +1143,52 @@ export default function CustomerDashboard({
           </div>
         )}
       </main>
+
+      {contractModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          data-testid="customer-contract-modal"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[85vh] overflow-hidden shadow-xl flex flex-col">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center gap-3">
+              <h3 className="font-bold text-slate-800">عقد الإيجار</h3>
+              <button
+                type="button"
+                className="text-sm text-slate-500 hover:text-slate-800"
+                onClick={() => setContractModal(null)}
+              >
+                إغلاق
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto p-4 text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed bg-slate-50">
+              {contractModal.terms_text}
+            </pre>
+            <div className="p-4 border-t border-slate-100 flex flex-wrap gap-2 justify-between items-center">
+              <span className="text-xs font-bold text-slate-600">
+                الحالة:{' '}
+                {contractModal.status === 'signed'
+                  ? 'موقّع'
+                  : contractModal.status === 'sent'
+                    ? 'بانتظار التوقيع'
+                    : contractModal.status}
+              </span>
+              {contractModal.status !== 'signed' && contractModal.status !== 'cancelled' && (
+                <button
+                  type="button"
+                  data-testid="customer-sign-contract"
+                  disabled={contractBusy}
+                  onClick={signRentalContract}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold disabled:opacity-60"
+                >
+                  {contractBusy ? 'جاري التوقيع…' : 'توقيع العقد'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,126 +1,136 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { aiService } from './ai.service';
+import { AuthenticatedRequest } from '../auth/auth.middleware';
+
+function uid(req: AuthenticatedRequest): string | undefined {
+  return req.user?.userId || req.user?.id;
+}
 
 export const aiController = {
-  // AI-powered recommendations
-  async getRecommendations(req: Request, res: Response) {
+  /** GET/POST توصيات حسب الشعبية */
+  async getRecommendations(req: AuthenticatedRequest, res: Response) {
     try {
-      const { userId, equipmentType, location } = req.body;
-      const personalized = await aiService.getPersonalizedRecommendations(userId, equipmentType, location);
-      res.json({ personalized });
+      const userId =
+        uid(req) ||
+        String(req.body?.userId || req.query?.userId || '').trim() ||
+        undefined;
+      const limit = Number(req.body?.limit || req.query?.limit || 8);
+      const data = await aiService.getRecommendations(userId, limit);
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to get recommendations' });
+      console.error('getRecommendations', error);
+      res.status(500).json({ error: 'فشل جلب التوصيات' });
     }
   },
 
-  async predictDemand(req: Request, res: Response) {
+  /** بحث مساعد ILIKE */
+  async smartSearch(req: AuthenticatedRequest, res: Response) {
     try {
-      const { timeRange, equipmentCategory, location } = req.body;
-      const predictions = await aiService.predictEquipmentDemand(timeRange, equipmentCategory, location);
-      res.json(predictions);
+      const q = String(req.body?.query || req.query?.q || req.query?.query || '').trim();
+      const limit = Number(req.body?.limit || req.query?.limit || 20);
+      const data = await aiService.searchAssist(q, limit);
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to predict demand' });
+      console.error('smartSearch', error);
+      res.status(500).json({ error: 'فشل البحث' });
     }
   },
 
-  async predictChurn(req: Request, res: Response) {
+  async predictDemand(req: AuthenticatedRequest, res: Response) {
     try {
-      const { timeRange } = req.body;
-      const churnPredictions = await aiService.predictCustomerChurn(timeRange);
-      res.json(churnPredictions);
+      const data = await aiService.predictEquipmentDemand(
+        req.body?.timeRange,
+        req.body?.equipmentCategory
+      );
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to predict churn' });
+      res.status(500).json({ error: 'فشل إحصاء الطلب' });
     }
   },
 
-  async predictRevenue(req: Request, res: Response) {
+  async predictChurn(req: AuthenticatedRequest, res: Response) {
     try {
-      const { timeRange, equipmentIds } = req.body;
-      const revenuePredictions = await aiService.predictRevenue(timeRange, equipmentIds);
-      res.json(revenuePredictions);
+      const data = await aiService.predictCustomerChurn(req.body?.timeRange);
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to predict revenue' });
+      res.status(500).json({ error: 'فشل إحصاء العملاء غير النشطين' });
     }
   },
 
-  async analyzeSentiment(req: Request, res: Response) {
+  async predictRevenue(req: AuthenticatedRequest, res: Response) {
     try {
-      const { reviews, feedback } = req.body;
-      const sentimentAnalysis = await aiService.analyzeSentiment(reviews, feedback);
-      res.json(sentimentAnalysis);
+      const data = await aiService.predictRevenue(req.body?.timeRange);
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to analyze sentiment' });
+      res.status(500).json({ error: 'فشل جلب إيرادات الحجوزات' });
     }
   },
 
-  async optimizePricing(req: Request, res: Response) {
+  async analyzeSentiment(_req: AuthenticatedRequest, res: Response) {
     try {
-      const { equipmentIds, marketData, demandData } = req.body;
-      const optimizedPricing = await aiService.optimizePricing(equipmentIds, marketData, demandData);
-      res.json(optimizedPricing);
+      const data = await aiService.analyzeSentiment();
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to optimize pricing' });
+      res.status(500).json({ error: 'فشل ملخص التقييمات' });
     }
   },
 
-  // AI-powered search and matching
-  async smartSearch(req: Request, res: Response) {
+  async optimizePricing(_req: AuthenticatedRequest, res: Response) {
     try {
-      const { query, filters, userId } = req.body;
-      const searchResults = await aiService.smartSearch(query, filters, userId);
-      res.json(searchResults);
+      const data = await aiService.optimizePricing();
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to perform smart search' });
+      res.status(500).json({ error: 'فشل ملاحظات التسعير' });
     }
   },
 
-  async matchEquipment(req: Request, res: Response) {
+  async matchEquipment(req: AuthenticatedRequest, res: Response) {
     try {
-      const { requirements, preferences, location } = req.body;
-      const matches = await aiService.findBestEquipmentMatch(requirements, preferences, location);
-      res.json(matches);
+      const requirements = {
+        category: req.body?.requirements?.category || req.body?.category,
+        maxPrice: req.body?.requirements?.maxPrice ?? req.body?.maxPrice,
+      };
+      const data = await aiService.findBestEquipmentMatch(requirements);
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to match equipment' });
+      res.status(500).json({ error: 'فشل مطابقة المعدات' });
     }
   },
 
-  async personalizeContent(req: Request, res: Response) {
+  async personalizeContent(req: AuthenticatedRequest, res: Response) {
     try {
-      const { userId, contentType } = req.body;
-      const personalizedContent = await aiService.generatePersonalizedContent(userId, contentType);
-      res.json(personalizedContent);
+      const userId = uid(req) || String(req.body?.userId || '').trim() || undefined;
+      const data = await aiService.generatePersonalizedContent(userId);
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to personalize content' });
+      res.status(500).json({ error: 'فشل التوصيات الشخصية' });
     }
   },
 
-  // Analytics and insights
-  async getAnalyticsOverview(req: Request, res: Response) {
+  async getAnalyticsOverview(_req: AuthenticatedRequest, res: Response) {
     try {
-      const overview = await aiService.getAnalyticsOverview();
-      res.json(overview);
+      const data = await aiService.getAnalyticsOverview();
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to get analytics overview' });
+      res.status(500).json({ error: 'فشل النظرة العامة' });
     }
   },
 
-  async getUserBehaviorAnalytics(req: Request, res: Response) {
+  async getUserBehaviorAnalytics(_req: AuthenticatedRequest, res: Response) {
     try {
-      const { timeRange, userSegment } = req.body;
-      const behaviorAnalytics = await aiService.getUserBehaviorAnalytics(timeRange, userSegment);
-      res.json(behaviorAnalytics);
+      const data = await aiService.getUserBehaviorAnalytics();
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to get user behavior analytics' });
+      res.status(500).json({ error: 'فشل تحليل السلوك' });
     }
   },
 
-  async getMarketTrends(req: Request, res: Response) {
+  async getMarketTrends(_req: AuthenticatedRequest, res: Response) {
     try {
-      const { timeRange, region, equipmentCategory } = req.body;
-      const marketTrends = await aiService.getMarketTrends(timeRange, region, equipmentCategory);
-      res.json(marketTrends);
+      const data = await aiService.getMarketTrends();
+      res.json(data);
     } catch (error) {
-      res.status(500).json({ error: 'Failed to get market trends' });
+      res.status(500).json({ error: 'فشل اتجاهات السوق' });
     }
-  }
+  },
 };

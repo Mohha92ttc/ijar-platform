@@ -29,8 +29,17 @@ export class AuthController {
 
   register = async (req: Request, res: Response) => {
     try {
-      const { name, email, phone, password, role, auto_approve } = req.body;
-      const result = await this.authService.register({ name, email, phone, password, role, auto_approve });
+      // Public register must never accept auto_approve (partner approval bypass).
+      // Admin creates users via POST /api/admin/users instead.
+      const { name, email, phone, password, role, referral_code } = req.body;
+      const result = await this.authService.register({
+        name,
+        email,
+        phone,
+        password,
+        role,
+        referral_code,
+      });
       // Don't overwrite an existing admin/session cookie when admin creates a user
       const hasExistingSession =
         Boolean(req.headers.authorization) ||

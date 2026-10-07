@@ -33,6 +33,7 @@ export class BookingController {
         delivery_lng: req.body.delivery_lng != null ? Number(req.body.delivery_lng) : null,
         delivery_address: req.body.delivery_address ? String(req.body.delivery_address) : null,
         payment_preference: req.body.payment_preference ? String(req.body.payment_preference) : undefined,
+        discount_code: req.body.discount_code ? String(req.body.discount_code) : undefined,
       });
       res.status(201).json(booking);
     } catch (error: any) {
@@ -89,9 +90,17 @@ export class BookingController {
       }
 
       const { equipmentId } = req.params;
+      if (actor.role === 'owner') {
+        const allowed = await this.bookingService.ownerOwnsEquipment(actor.userId, equipmentId);
+        if (!allowed) {
+          return res.status(403).json({ message: 'Not allowed' });
+        }
+      }
       const bookings = await this.bookingService.getByEquipment(equipmentId);
       const filtered =
-        actor.role === 'customer' ? bookings.filter((b: any) => String(b.customer_id) === actor.userId) : bookings;
+        actor.role === 'customer'
+          ? bookings.filter((b: any) => String(b.customer_id) === actor.userId)
+          : bookings;
       res.status(200).json(filtered);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -147,8 +156,14 @@ export class BookingController {
 
       const { id } = req.params;
       const booking = await this.bookingService.getById(id);
-      if (actor.role === 'customer' && booking.customer_id !== actor.userId) {
+      if (actor.role === 'customer' && String(booking.customer_id) !== String(actor.userId)) {
         return res.status(403).json({ message: 'Not allowed' });
+      }
+      if (actor.role === 'owner') {
+        const allowed = await this.bookingService.ownerOwnsEquipment(actor.userId, booking.equipment_id);
+        if (!allowed) {
+          return res.status(403).json({ message: 'Not allowed' });
+        }
       }
       res.status(200).json(booking);
     } catch (error: any) {

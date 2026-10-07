@@ -19,6 +19,8 @@ export type CheckoutFormData = {
   deliveryLat?: number | null;
   deliveryLng?: number | null;
   deliveryAddress?: string | null;
+  /** Optional promo — validated client-side for display; server re-validates */
+  discount_code?: string;
 };
 
 function needsPaymentProof(m: CartPaymentMethod): boolean {
@@ -48,6 +50,14 @@ export default function CheckoutPage({
     location: '',
     notes: '',
   });
+  const [promoCode, setPromoCode] = useState('');
+  const [promoStatus, setPromoStatus] = useState<{
+    loading?: boolean;
+    valid?: boolean;
+    message?: string;
+    discount_amount?: number;
+    applied_code?: string;
+  } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>(defaultPay);
   const [proofDataUrl, setProofDataUrl] = useState<string | null>(null);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPin | null>(null);
@@ -131,7 +141,12 @@ export default function CheckoutPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [cart, ownerHints]
   );
-  const total = rentalSum + deliverySum;
+  const subtotal = rentalSum + deliverySum;
+  const discountAmount =
+    promoStatus?.valid && promoStatus.discount_amount
+      ? Math.min(Number(promoStatus.discount_amount), subtotal)
+      : 0;
+  const total = Math.max(0, subtotal - discountAmount);
   const requireProof = needsPaymentProof(paymentMethod);
   const ownersMissingAccounts = useMemo(() => {
     if (!requireProof) return [] as string[];
@@ -192,7 +207,53 @@ export default function CheckoutPage({
       deliveryLat: needsDeliveryMap && deliveryPin ? deliveryPin.lat : null,
       deliveryLng: needsDeliveryMap && deliveryPin ? deliveryPin.lng : null,
       deliveryAddress: formData.location || null,
+      discount_code:
+        promoStatus?.valid && promoStatus.applied_code
+          ? promoStatus.applied_code
+          : undefined,
     });
+  };
+
+  const applyPromoCode = async () => {
+    const code = promoCode.trim();
+    if (!code) {
+      setPromoStatus({ valid: false, message: 'أدخل كود الخصم أولاً' });
+      return;
+    }
+    setPromoStatus({ loading: true });
+    try {
+      const data = await apiJson<{
+        valid: boolean;
+        discount_amount?: number;
+        final_amount?: number;
+        code?: string;
+        message?: string;
+      }>('/api/discounts/codes/validate', {
+        method: 'POST',
+        body: JSON.stringify({ code, amount: subtotal }),
+      });
+      if (!data?.valid) {
+        setPromoStatus({
+          valid: false,
+          message: data?.message || 'كود الخصم غير صالح',
+          discount_amount: 0,
+        });
+        return;
+      }
+      setPromoStatus({
+        valid: true,
+        discount_amount: Number(data.discount_amount || 0),
+        applied_code: String(data.code || code).toUpperCase(),
+        message: `تم تطبيق الخصم: ${Number(data.discount_amount || 0).toLocaleString()} د.ع`,
+      });
+    } catch {
+      // Do not block checkout — just show message
+      setPromoStatus({
+        valid: false,
+        message: 'تعذر التحقق من كود الخصم. يمكنك المتابعة بدون خصم.',
+        discount_amount: 0,
+      });
+    }
   };
 
   const methods: CartPaymentMethod[] = ['zain_cash', 'asia_hawala', 'manual', 'cash_on_delivery'];
@@ -230,8 +291,17 @@ export default function CheckoutPage({
 
           <div className="space-y-4">
             {cart.length === 0 && (
-              <div className="text-center text-slate-500 py-12" data-testid="checkout-empty">
-                السلة فارغة
+              <div className="text-center text-slate-500 py-12 space-y-4" data-testid="checkout-empty">
+                <p className="font-bold text-slate-700">السلة فارغة</p>
+                <p className="text-sm">أضف معدات من الصفحة الرئيسية ثم ارجع لإتمام الحجز.</p>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700"
+                >
+                  تصفح المعدات
+                  <ArrowRight size={16} />
+                </button>
               </div>
             )}
             {cart.map((item, idx) => {
@@ -283,6 +353,12 @@ export default function CheckoutPage({
               <div className="flex justify-between text-sm text-slate-600">
                 <span>التوصيل</span>
                 <span>{deliverySum.toLocaleString()} د.ع</span>
+              </div>
+            )}
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-emerald-700" data-testid="checkout-discount-line">
+                <span>الخصم ({promoStatus?.applied_code})</span>
+                <span>−{discountAmount.toLocaleString()} د.ع</span>
               </div>
             )}
             <div className="flex justify-between items-center text-xl font-bold">
@@ -359,6 +435,42 @@ export default function CheckoutPage({
                 className="w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 h-20 resize-none"
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               />
+            </div>
+
+            <div className="space-y-2" data-testid="checkout-promo">
+              <label className="text-xs font-bold text-slate-500 mr-2">كود خصم (اختياري)</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  data-testid="checkout-promo-input"
+                  value={promoCode}
+                  placeholder="مثال: SUMMER20"
+                  className="flex-1 bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                  onChange={(e) => {
+                    setPromoCode(e.target.value);
+                    if (promoStatus?.valid) setPromoStatus(null);
+                  }}
+                />
+                <button
+                  type="button"
+                  data-testid="checkout-promo-apply"
+                  disabled={promoStatus?.loading}
+                  onClick={applyPromoCode}
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-white text-sm font-bold hover:bg-slate-900 disabled:opacity-60"
+                >
+                  {promoStatus?.loading ? '…' : 'تطبيق'}
+                </button>
+              </div>
+              {promoStatus?.message && (
+                <p
+                  data-testid="checkout-promo-message"
+                  className={`text-[11px] font-medium ${
+                    promoStatus.valid ? 'text-emerald-700' : 'text-amber-700'
+                  }`}
+                >
+                  {promoStatus.message}
+                </p>
+              )}
             </div>
 
             <div className="space-y-2" data-testid="checkout-payment-methods">

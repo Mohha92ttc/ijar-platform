@@ -37,6 +37,8 @@ export interface CreateBookingDTO {
   delivery_lng?: number | null;
   delivery_address?: string | null;
   payment_preference?: string;
+  /** Promo code — validated server-side; client amount is ignored */
+  discount_code?: string;
 }
 
 export interface UpdateBookingStatusDTO {

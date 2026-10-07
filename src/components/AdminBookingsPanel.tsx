@@ -92,7 +92,7 @@ export default function AdminBookingsPanel() {
     try {
       await apiJson(`/api/admin/bookings/${id}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: 'completed', reason: trimmed }),
+        body: JSON.stringify({ status: 'completed', reason: trimmed, force_override: true }),
       });
       await load();
     } catch (e) {

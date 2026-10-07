@@ -233,7 +233,8 @@ export class AdminService {
     bookingId: string,
     status: string,
     adminUserId: string,
-    reason?: string
+    reason?: string,
+    forceOverride?: boolean
   ): Promise<void> {
     if (status !== 'cancelled' && status !== 'completed') {
       throw new Error(
@@ -259,7 +260,7 @@ export class AdminService {
       bookingId,
       'completed',
       { userId: adminUserId, role: 'admin' },
-      { reason: why }
+      { reason: why, forceOverride: Boolean(forceOverride) }
     );
   }
 
