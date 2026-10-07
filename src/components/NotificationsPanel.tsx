@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Bell, X, CheckCircle, MessageCircle, User, Calendar, DollarSign } from 'lucide-react';
+import { Bell, X, CheckCircle, MessageCircle, User, Calendar, DollarSign, Trash2 } from 'lucide-react';
 import { apiFetch, apiJson } from '../lib/api';
 import { onRealtimeNotification } from '../lib/realtime';
 
@@ -100,6 +100,16 @@ export default function NotificationsPanel({
     }
   };
 
+  const deleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await apiFetch(`/api/notifications/${id}`, { method: 'DELETE' });
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    } catch {
+      // ignore
+    }
+  };
+
   const getNotificationIcon = (type: string) => {
     switch (type) {
       case 'booking_confirmed':
@@ -173,29 +183,42 @@ export default function NotificationsPanel({
                 notifications.map((n) => {
                   const loc = localizeNotification(n);
                   return (
-                    <button
+                    <div
                       key={n.id}
-                      type="button"
+                      className={`relative w-full text-right p-4 rounded-xl border transition-all ${n.is_read ? 'bg-slate-50 border-slate-100' : 'bg-blue-50 border-blue-100'}`}
                       data-testid="notification-item"
-                      onClick={async () => {
-                        await markAsRead(n.id);
-                        if (n.related_id && onOpenRelated) {
-                          onOpenRelated({ related_id: n.related_id, type: n.type });
-                          onClose();
-                        }
-                      }}
-                      className={`w-full text-right p-4 rounded-xl border transition-all ${n.is_read ? 'bg-slate-50 border-slate-100' : 'bg-blue-50 border-blue-100'}`}
                     >
-                      <div className="flex gap-3">
-                        <div className="mt-1">{getNotificationIcon(n.type)}</div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-sm text-slate-800 mb-1">{loc.title}</h4>
-                          <p className="text-xs text-slate-600 leading-relaxed">{loc.message}</p>
-                          <p className="text-[10px] text-slate-400 mt-2">{new Date(n.created_at).toLocaleString('ar-IQ')}</p>
+                      <button
+                        type="button"
+                        className="w-full text-right"
+                        onClick={async () => {
+                          await markAsRead(n.id);
+                          if (n.related_id && onOpenRelated) {
+                            onOpenRelated({ related_id: n.related_id, type: n.type });
+                            onClose();
+                          }
+                        }}
+                      >
+                        <div className="flex gap-3">
+                          <div className="mt-1">{getNotificationIcon(n.type)}</div>
+                          <div className="flex-1 min-w-0 pr-8">
+                            <h4 className="font-bold text-sm text-slate-800 mb-1">{loc.title}</h4>
+                            <p className="text-xs text-slate-600 leading-relaxed">{loc.message}</p>
+                            <p className="text-[10px] text-slate-400 mt-2">{new Date(n.created_at).toLocaleString('ar-IQ')}</p>
+                          </div>
+                          {!n.is_read && <CheckCircle className="text-blue-500 shrink-0" size={16} />}
                         </div>
-                        {!n.is_read && <CheckCircle className="text-blue-500 shrink-0" size={16} />}
-                      </div>
-                    </button>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="notification-delete"
+                        title="حذف"
+                        onClick={(e) => deleteNotification(n.id, e)}
+                        className="absolute top-3 left-3 p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   );
                 })}
             </div>

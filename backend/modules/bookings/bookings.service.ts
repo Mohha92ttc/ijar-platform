@@ -197,6 +197,11 @@ export class BookingService {
     return res.rows.length > 0;
   }
 
+  /** Cron / startup: expire all stale pending bookings (no equipment filter). */
+  async expireAllStalePendings(): Promise<void> {
+    await this.expireStalePending();
+  }
+
   /** Cancel pending bookings older than 48h via full cancel path (settle + notifs). */
   private async expireStalePending(equipmentId?: string): Promise<void> {
     try {

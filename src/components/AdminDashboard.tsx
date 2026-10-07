@@ -92,6 +92,87 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
     }[]
   >([]);
   const [insuranceLoading, setInsuranceLoading] = useState(false);
+  const [discountCodes, setDiscountCodes] = useState<
+    {
+      id: string;
+      code: string;
+      discount_type: string;
+      discount_value: number;
+      max_uses: number | null;
+      used_count: number;
+      is_active: boolean;
+    }[]
+  >([]);
+  const [discountLoading, setDiscountLoading] = useState(false);
+  const [discountForm, setDiscountForm] = useState({
+    code: '',
+    discount_type: 'percentage' as 'percentage' | 'fixed',
+    discount_value: '',
+    max_uses: '',
+  });
+  const [discountSaving, setDiscountSaving] = useState(false);
+
+  const loadDiscountCodes = async () => {
+    setDiscountLoading(true);
+    try {
+      const rows = await apiJson<any[]>('/api/discounts/codes');
+      setDiscountCodes(
+        (Array.isArray(rows) ? rows : []).map((r) => ({
+          id: String(r.id),
+          code: String(r.code || ''),
+          discount_type: String(r.discount_type || 'percentage'),
+          discount_value: Number(r.discount_value || 0),
+          max_uses: r.max_uses != null ? Number(r.max_uses) : null,
+          used_count: Number(r.used_count || 0),
+          is_active: Boolean(r.is_active),
+        }))
+      );
+    } catch {
+      setDiscountCodes([]);
+    } finally {
+      setDiscountLoading(false);
+    }
+  };
+
+  const createDiscountCode = async () => {
+    const code = discountForm.code.trim().toUpperCase();
+    const value = Number(discountForm.discount_value);
+    if (!code || !Number.isFinite(value) || value <= 0) {
+      alert('أدخل كوداً صالحاً وقيمة خصم أكبر من صفر');
+      return;
+    }
+    setDiscountSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        code,
+        discount_type: discountForm.discount_type,
+        discount_value: value,
+      };
+      if (discountForm.max_uses.trim()) {
+        body.max_uses = Number(discountForm.max_uses);
+      }
+      await apiJson('/api/discounts/codes', { method: 'POST', body: JSON.stringify(body) });
+      setDiscountForm({ code: '', discount_type: 'percentage', discount_value: '', max_uses: '' });
+      await loadDiscountCodes();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'فشل إنشاء كود الخصم');
+    } finally {
+      setDiscountSaving(false);
+    }
+  };
+
+  const deactivateDiscountCode = async (id: string) => {
+    if (!confirm('تعطيل كود الخصم؟')) return;
+    try {
+      await apiJson(`/api/discounts/codes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_active: false }),
+      });
+      await loadDiscountCodes();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'فشل تعطيل الكود');
+    }
+  };
 
   const loadInsuranceClaims = async () => {
     setInsuranceLoading(true);
@@ -211,6 +292,9 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   useEffect(() => {
     if (activeTab === 'insurance') {
       loadInsuranceClaims();
+    }
+    if (activeTab === 'discounts') {
+      loadDiscountCodes();
     }
   }, [activeTab]);
 
@@ -551,6 +635,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           >
             <CreditCard size={18} /> المدفوعات
           </button>
+          <button
+            type="button"
+            data-testid="admin-nav-discounts"
+            onClick={() => setActiveTab('discounts')}
+            className={`flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right ${
+              activeTab === 'discounts' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
+            }`}
+          >
+            <Sparkles size={18} /> أكواد الخصم
+          </button>
           <button 
             type="button"
             data-testid="admin-nav-settings"
@@ -601,6 +695,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               { id: 'categories', label: 'تصنيفات', testId: 'admin-nav-categories-m' },
               { id: 'support', label: 'دعم', testId: 'admin-nav-support-m' },
               { id: 'insurance', label: 'تأمين', testId: 'admin-nav-insurance-m' },
+              { id: 'discounts', label: 'خصم', testId: 'admin-nav-discounts-m' },
               { id: 'settings', label: 'إعدادات', testId: 'admin-nav-settings-m' },
               { id: 'stats', label: 'إحصاء', testId: 'admin-nav-stats-m' },
             ] as const
@@ -638,6 +733,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
             {activeTab === 'support' && 'رسائل الدعم من صفحة المساعدة'}
             {activeTab === 'insurance' && 'مطالبات التأمين'}
             {activeTab === 'payments' && 'إدارة المدفوعات'}
+            {activeTab === 'discounts' && 'أكواد الخصم'}
             {activeTab === 'settings' && 'إعدادات النظام'}
             {activeTab === 'stats' && 'الإحصائيات والتقارير'}
           </h2>
@@ -1557,6 +1653,117 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         {/* Payments Tab Content */}
         {activeTab === 'payments' && (
           <PaymentsTab />
+        )}
+
+        {activeTab === 'discounts' && (
+          <div className="space-y-6" data-testid="admin-discounts-panel">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4">
+              <h3 className="text-lg font-bold">إنشاء كود خصم</h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <input
+                  type="text"
+                  data-testid="admin-discount-code"
+                  placeholder="الكود (مثل SAVE10)"
+                  value={discountForm.code}
+                  onChange={(e) => setDiscountForm({ ...discountForm, code: e.target.value })}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+                <select
+                  data-testid="admin-discount-type"
+                  value={discountForm.discount_type}
+                  onChange={(e) =>
+                    setDiscountForm({
+                      ...discountForm,
+                      discount_type: e.target.value as 'percentage' | 'fixed',
+                    })
+                  }
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                >
+                  <option value="percentage">نسبة مئوية</option>
+                  <option value="fixed">مبلغ ثابت</option>
+                </select>
+                <input
+                  type="number"
+                  data-testid="admin-discount-value"
+                  placeholder={discountForm.discount_type === 'percentage' ? 'القيمة %' : 'القيمة د.ع'}
+                  value={discountForm.discount_value}
+                  onChange={(e) => setDiscountForm({ ...discountForm, discount_value: e.target.value })}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+                <input
+                  type="number"
+                  data-testid="admin-discount-max-uses"
+                  placeholder="أقصى استخدامات (اختياري)"
+                  value={discountForm.max_uses}
+                  onChange={(e) => setDiscountForm({ ...discountForm, max_uses: e.target.value })}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                data-testid="admin-discount-create"
+                disabled={discountSaving}
+                onClick={createDiscountCode}
+                className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+              >
+                <Plus size={16} /> {discountSaving ? 'جاري الحفظ…' : 'إنشاء الكود'}
+              </button>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold">الأكواد الحالية</h3>
+              <button
+                type="button"
+                onClick={loadDiscountCodes}
+                disabled={discountLoading}
+                className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {discountLoading ? 'جاري التحميل…' : 'تحديث'}
+              </button>
+            </div>
+            {discountCodes.length === 0 && !discountLoading && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-sm text-slate-500">
+                لا توجد أكواد خصم بعد
+              </div>
+            )}
+            <div className="space-y-3">
+              {discountCodes.map((d) => (
+                <div
+                  key={d.id}
+                  data-testid="admin-discount-row"
+                  className="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3"
+                >
+                  <div>
+                    <p className="font-bold text-slate-800 font-mono tracking-wide">{d.code}</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {d.discount_type === 'percentage'
+                        ? `${d.discount_value}%`
+                        : `${d.discount_value.toLocaleString()} د.ع`}
+                      {' · '}
+                      استخدامات: {d.used_count}
+                      {d.max_uses != null ? ` / ${d.max_uses}` : ''}
+                      {' · '}
+                      {d.is_active ? (
+                        <span className="text-green-700">نشط</span>
+                      ) : (
+                        <span className="text-slate-400">معطّل</span>
+                      )}
+                    </p>
+                  </div>
+                  {d.is_active && (
+                    <button
+                      type="button"
+                      data-testid="admin-discount-deactivate"
+                      onClick={() => deactivateDiscountCode(d.id)}
+                      className="text-xs font-bold px-3 py-2 rounded-xl border border-red-200 text-red-700 hover:bg-red-50"
+                    >
+                      تعطيل
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {/* Stats Tab Content */}

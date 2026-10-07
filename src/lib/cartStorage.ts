@@ -1,6 +1,11 @@
 const CART_PREFIX = 'ijar_cart_v1';
 
-export type CartPaymentMethod = 'zain_cash' | 'asia_hawala' | 'manual' | 'cash_on_delivery';
+export type CartPaymentMethod =
+  | 'zain_cash'
+  | 'asia_hawala'
+  | 'manual'
+  | 'cash_on_delivery'
+  | 'stripe';
 
 export type CartLine = {
   id: string;
@@ -97,8 +102,15 @@ export function paymentMethodLabel(m: CartPaymentMethod): string {
       return 'زين حوالة / آسيا حوالة';
     case 'cash_on_delivery':
       return 'دفع عند التسليم';
+    case 'stripe':
+      return 'بطاقة (Stripe)';
     case 'manual':
     default:
       return 'تحويل يدوي (إثبات)';
   }
+}
+
+/** Transfer methods that require proof image (not COD / Stripe). */
+export function needsPaymentProof(m: CartPaymentMethod): boolean {
+  return m !== 'cash_on_delivery' && m !== 'stripe';
 }

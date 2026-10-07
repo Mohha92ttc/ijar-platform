@@ -1,2 +1,1 @@
-// Middleware placeholder
-export {};
+export { createRateLimiter, authSensitiveLimiter } from './rateLimit';

@@ -23,6 +23,11 @@ export class PaymentController {
     }
   };
 
+  /** Public — UI shows Stripe option only when available */
+  stripeStatus = async (_req: Request, res: Response) => {
+    res.status(200).json({ available: this.service.isStripeAvailable() });
+  };
+
   partnerPlatformSubmit = async (req: Request, res: Response) => {
     try {
       const actor = (req as Request & { user?: { userId?: string } }).user;

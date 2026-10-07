@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { supportController } from './support.controller';
 import { authenticateToken, requireRole } from '../auth/auth.middleware';
+import { authSensitiveLimiter } from '../../middleware/rateLimit';
 
 const router = Router();
 
 // Public contact (Help page)
-router.post('/contact', supportController.submitContact);
+router.post('/contact', authSensitiveLimiter, supportController.submitContact);
 
 // Customer: my support tickets by account email
 router.get(

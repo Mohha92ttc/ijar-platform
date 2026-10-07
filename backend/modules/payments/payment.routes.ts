@@ -6,6 +6,9 @@ import { validatePaymentRequest, validateImageUpload } from './payment.validatio
 const router = Router();
 const controller = new PaymentController();
 
+// Public: Stripe Checkout availability for checkout UI
+router.get('/stripe-status', controller.stripeStatus);
+
 // Customer routes
 router.post(
   '/initiate',

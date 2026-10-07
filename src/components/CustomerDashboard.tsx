@@ -136,6 +136,49 @@ export default function CustomerDashboard({
   } | null>(null);
   const [contractBusy, setContractBusy] = useState(false);
   const [claimBusy, setClaimBusy] = useState<string | null>(null);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralCopied, setReferralCopied] = useState(false);
+
+  const loadReferralCode = useCallback(async () => {
+    setReferralLoading(true);
+    try {
+      const rows = await apiJson<{ code?: string }[]>('/api/referral/codes');
+      const code = Array.isArray(rows) && rows[0]?.code ? String(rows[0].code) : null;
+      setReferralCode(code);
+    } catch {
+      setReferralCode(null);
+    } finally {
+      setReferralLoading(false);
+    }
+  }, []);
+
+  const ensureReferralCode = async () => {
+    setReferralLoading(true);
+    try {
+      const row = await apiJson<{ code?: string }>('/api/referral/codes', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      if (row?.code) setReferralCode(String(row.code));
+      else await loadReferralCode();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'تعذر إنشاء كود الإحالة');
+    } finally {
+      setReferralLoading(false);
+    }
+  };
+
+  const copyReferralCode = async () => {
+    if (!referralCode) return;
+    try {
+      await navigator.clipboard.writeText(referralCode);
+      setReferralCopied(true);
+      setTimeout(() => setReferralCopied(false), 2000);
+    } catch {
+      alert(referralCode);
+    }
+  };
 
   const loadPrefs = useCallback(() => {
     try {
@@ -225,6 +268,13 @@ export default function CustomerDashboard({
       setLoadingBookings(false);
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+    if (activeTab === 'profile' || activeTab === 'settings') {
+      loadReferralCode();
+    }
+  }, [userId, activeTab, loadReferralCode]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1042,6 +1092,45 @@ export default function CustomerDashboard({
             >
               <Save size={16} /> {savingProfile ? 'جاري الحفظ…' : 'حفظ التعديلات'}
             </button>
+
+            <div
+              className="mt-6 pt-6 border-t border-slate-100 space-y-3"
+              data-testid="customer-referral-panel"
+            >
+              <h4 className="font-bold text-slate-800">كود الإحالة</h4>
+              <p className="text-sm text-slate-500">
+                شارك كودك مع الأصدقاء عند التسجيل — يُنشأ تلقائياً لحسابك.
+              </p>
+              {referralLoading && <p className="text-sm text-slate-400">جاري التحميل…</p>}
+              {!referralLoading && referralCode && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <code
+                    className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-sm font-bold tracking-wider"
+                    data-testid="customer-referral-code"
+                  >
+                    {referralCode}
+                  </code>
+                  <button
+                    type="button"
+                    data-testid="customer-referral-copy"
+                    onClick={copyReferralCode}
+                    className="px-4 py-2.5 rounded-xl text-sm font-bold bg-slate-800 text-white"
+                  >
+                    {referralCopied ? 'تم النسخ' : 'نسخ'}
+                  </button>
+                </div>
+              )}
+              {!referralLoading && !referralCode && (
+                <button
+                  type="button"
+                  data-testid="customer-referral-create"
+                  onClick={ensureReferralCode}
+                  className="px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 text-white"
+                >
+                  إنشاء كود إحالة
+                </button>
+              )}
+            </div>
           </div>
         )}
 

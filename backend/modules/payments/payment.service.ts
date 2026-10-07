@@ -114,7 +114,8 @@ export class PaymentService {
 
     const methodKey = String(data.payment_method);
     const isCod = methodKey === 'cash_on_delivery' || methodKey === 'cash';
-    if (!isCod && (!proofPath || String(proofPath).length < 8)) {
+    const isStripe = methodKey === 'stripe' || mapped.provider === 'stripe';
+    if (!isCod && !isStripe && (!proofPath || String(proofPath).length < 8)) {
       throw new Error('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
     }
 
@@ -125,9 +126,13 @@ export class PaymentService {
     };
     const providerResponse = await provider.processPayment({ ...providerPayload, proof_image: proofPath });
 
-    // COD stays pending until delivery; transfer+proof → under_review for partner
+    if (isStripe && !providerResponse.success) {
+      throw new Error('الدفع عبر البطاقة (Stripe) غير متاح حالياً. اختر طريقة أخرى.');
+    }
+
+    // COD stays pending until delivery; Stripe pending until webhook; transfer+proof → under_review
     let status = providerResponse.status;
-    if (isCod) {
+    if (isCod || isStripe) {
       status = 'pending';
     } else if (proofPath) {
       status = 'under_review';
@@ -153,7 +158,7 @@ export class PaymentService {
 
     const saved = await this.repository.save(payment);
 
-    if (!isCod && proofPath && status === 'under_review' && effectiveOwnerId) {
+    if (!isCod && !isStripe && proofPath && status === 'under_review' && effectiveOwnerId) {
       try {
         await this.notificationService.create({
           user_id: effectiveOwnerId,
@@ -167,7 +172,19 @@ export class PaymentService {
       }
     }
 
-    return saved;
+    const checkoutUrl = providerResponse.transaction_url;
+    return {
+      ...saved,
+      ...(checkoutUrl
+        ? { transaction_url: checkoutUrl, checkout_url: checkoutUrl }
+        : {}),
+    } as Payment & { transaction_url?: string; checkout_url?: string };
+  }
+
+  /** Public: whether Stripe Checkout is configured (sk_ key present). */
+  isStripeAvailable(): boolean {
+    const key = process.env.STRIPE_SECRET_KEY || '';
+    return key.startsWith('sk_');
   }
 
   /**

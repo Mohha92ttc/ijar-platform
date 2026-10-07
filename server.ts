@@ -280,6 +280,17 @@ async function startServer() {
   setRealtimeService(wsService);
   console.log('Database: PostgreSQL');
   console.log('Environment:', process.env.NODE_ENV || 'development');
+
+  // Expire stale pending bookings every 30 minutes
+  const { BookingService } = await import('./backend/modules/bookings/bookings.service');
+  const bookingExpireService = new BookingService();
+  const runExpire = () => {
+    bookingExpireService.expireAllStalePendings().catch((e) => {
+      console.warn('[cron] expireAllStalePendings', e instanceof Error ? e.message : e);
+    });
+  };
+  runExpire();
+  setInterval(runExpire, 30 * 60 * 1000);
 }
 
 startServer().catch(console.error);

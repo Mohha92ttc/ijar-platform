@@ -62,6 +62,7 @@ export default function BookingModal({
   const [dayCount, setDayCount] = useState(1);
   const [step, setStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod | null>(null);
+  const [stripeAvailable, setStripeAvailable] = useState(false);
   const [wantsDelivery, setWantsDelivery] = useState(false);
   const [reviews, setReviews] = useState<
     { id: string; rating: number; comment?: string; reviewer_name?: string; created_at: string }[]
@@ -76,6 +77,21 @@ export default function BookingModal({
     if (imgs.length) return imgs as string[];
     return equipment?.image ? [String(equipment.image)] : [];
   }, [equipment]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const st = await apiJson<{ available?: boolean }>('/api/payments/stripe-status');
+        if (!cancelled) setStripeAvailable(Boolean(st?.available));
+      } catch {
+        if (!cancelled) setStripeAvailable(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +154,15 @@ export default function BookingModal({
   const total = rentalTotal + fee;
 
   const methods: { id: CartPaymentMethod; icon: React.ReactNode; hint: string }[] = [
+    ...(stripeAvailable
+      ? [
+          {
+            id: 'stripe' as const,
+            icon: <CreditCard size={20} />,
+            hint: 'دفع آمن بالبطاقة عبر Stripe',
+          },
+        ]
+      : []),
     {
       id: 'zain_cash',
       icon: <CreditCard size={20} />,

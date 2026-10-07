@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { ShoppingBag, Trash2, MapPin, Phone, ArrowRight, X, Truck } from 'lucide-react';
 import type { CartLine, CartPaymentMethod } from '../lib/cartStorage';
-import { paymentMethodLabel } from '../lib/cartStorage';
+import { needsPaymentProof, paymentMethodLabel } from '../lib/cartStorage';
 import { apiJson } from '../lib/api';
 import TransferAccountsPanel from './TransferAccountsPanel';
 import ImageUpload from './ImageUpload';
@@ -14,7 +14,7 @@ export type CheckoutFormData = {
   location: string;
   notes: string;
   paymentMethod: CartPaymentMethod;
-  /** data URL لإثبات التحويل — إلزامي لغير الدفع عند التسليم */
+  /** data URL لإثبات التحويل — إلزامي لغير الدفع عند التسليم / Stripe */
   proofImage?: string | null;
   deliveryLat?: number | null;
   deliveryLng?: number | null;
@@ -22,10 +22,6 @@ export type CheckoutFormData = {
   /** Optional promo — validated client-side for display; server re-validates */
   discount_code?: string;
 };
-
-function needsPaymentProof(m: CartPaymentMethod): boolean {
-  return m !== 'cash_on_delivery';
-}
 
 export default function CheckoutPage({
   cart,
@@ -59,6 +55,7 @@ export default function CheckoutPage({
     applied_code?: string;
   } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<CartPaymentMethod>(defaultPay);
+  const [stripeAvailable, setStripeAvailable] = useState(false);
   const [proofDataUrl, setProofDataUrl] = useState<string | null>(null);
   const [deliveryPin, setDeliveryPin] = useState<DeliveryPin | null>(null);
   const needsDeliveryMap = cart.some((c) => c.wantsDelivery);
@@ -119,6 +116,21 @@ export default function CheckoutPage({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const st = await apiJson<{ available?: boolean }>('/api/payments/stripe-status');
+        if (!cancelled) setStripeAvailable(Boolean(st?.available));
+      } catch {
+        if (!cancelled) setStripeAvailable(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const lineDeliveryFee = (item: (typeof cart)[number], indexInCart: number) => {
@@ -256,7 +268,13 @@ export default function CheckoutPage({
     }
   };
 
-  const methods: CartPaymentMethod[] = ['zain_cash', 'asia_hawala', 'manual', 'cash_on_delivery'];
+  const methods: CartPaymentMethod[] = [
+    ...(stripeAvailable ? (['stripe'] as CartPaymentMethod[]) : []),
+    'zain_cash',
+    'asia_hawala',
+    'manual',
+    'cash_on_delivery',
+  ];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" data-testid="checkout-page">
@@ -482,7 +500,7 @@ export default function CheckoutPage({
                   data-testid={`checkout-pay-${m}`}
                   onClick={() => {
                     setPaymentMethod(m);
-                    if (m === 'cash_on_delivery') setProofDataUrl(null);
+                    if (m === 'cash_on_delivery' || m === 'stripe') setProofDataUrl(null);
                   }}
                   className={`w-full text-right px-3 py-2.5 rounded-xl border text-sm font-bold transition-all ${
                     paymentMethod === m ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-700'

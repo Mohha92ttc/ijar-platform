@@ -127,6 +127,18 @@ export default function App() {
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [verifyBanner, setVerifyBanner] = useState<string | null>(null);
   const [authPref, setAuthPref] = useState<{ mode?: 'login' | 'register'; role?: 'customer' | 'owner' } | null>(null);
+  const [homeRecs, setHomeRecs] = useState<
+    {
+      id: string;
+      equipmentId: string;
+      equipmentName: string;
+      category?: string;
+      price?: number;
+      location?: string;
+      imageUrl?: string;
+      reason?: string;
+    }[]
+  >([]);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
@@ -281,6 +293,38 @@ export default function App() {
     }
   }, []);
 
+  const refreshRecommendations = useCallback(async () => {
+    try {
+      const data = await apiJson<{
+        items?: {
+          id?: string;
+          equipmentId?: string;
+          equipmentName?: string;
+          category?: string;
+          price?: number;
+          location?: string;
+          imageUrl?: string;
+          reason?: string;
+        }[];
+      }>('/api/ai/recommendations?limit=4');
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setHomeRecs(
+        items.slice(0, 4).map((it, i) => ({
+          id: String(it.id || it.equipmentId || i),
+          equipmentId: String(it.equipmentId || it.id || ''),
+          equipmentName: String(it.equipmentName || 'معدة'),
+          category: it.category ? String(it.category) : undefined,
+          price: it.price != null ? Number(it.price) : undefined,
+          location: it.location ? String(it.location) : undefined,
+          imageUrl: it.imageUrl ? String(it.imageUrl) : undefined,
+          reason: it.reason ? String(it.reason) : undefined,
+        })).filter((r) => r.equipmentId)
+      );
+    } catch {
+      setHomeRecs([]);
+    }
+  }, []);
+
   const refreshPartners = useCallback(async () => {
     try {
       const rows = await apiJson<PublicPartner[]>('/api/equipment/partners');
@@ -294,7 +338,8 @@ export default function App() {
     refreshEquipment();
     refreshCategories();
     refreshPartners();
-  }, [refreshEquipment, refreshCategories, refreshPartners]);
+    refreshRecommendations();
+  }, [refreshEquipment, refreshCategories, refreshPartners, refreshRecommendations]);
 
   // Deep-links: ?partner= / ?equipment=
   useEffect(() => {
@@ -607,7 +652,8 @@ export default function App() {
       return;
     }
     const payMethod = formData.paymentMethod || 'manual';
-    const needsProof = payMethod !== 'cash_on_delivery';
+    const needsProof = payMethod !== 'cash_on_delivery' && payMethod !== 'stripe';
+    const isStripe = payMethod === 'stripe';
     if (needsProof && (!formData.proofImage || formData.proofImage.length < 20)) {
       setCheckoutError('يرجى إرفاق صورة إثبات التحويل');
       alert('يرجى إرفاق صورة إثبات التحويل');
@@ -707,15 +753,38 @@ export default function App() {
             formData.discount_code && i === 0 ? ` | خصم ${formData.discount_code}` : ''
           }`,
         };
-        if (method !== 'cash_on_delivery' && formData.proofImage) {
+        if (needsProof && formData.proofImage) {
           paymentBody.proof_image = formData.proofImage;
         }
 
         try {
-          await apiJson('/api/payments/initiate', {
+          const payRes = await apiJson<{
+            checkout_url?: string;
+            transaction_url?: string;
+            client_secret?: string;
+          }>('/api/payments/initiate', {
             method: 'POST',
             body: JSON.stringify(paymentBody),
           });
+          const checkoutUrl = payRes?.checkout_url || payRes?.transaction_url;
+          if (isStripe && checkoutUrl) {
+            done += 1;
+            setCart((prev) => prev.filter((x) => !(x.id === item.id && x.startDate === item.startDate)));
+            clearCart();
+            window.location.href = checkoutUrl;
+            return;
+          }
+          if (isStripe && payRes?.client_secret) {
+            done += 1;
+            setCart((prev) => prev.filter((x) => !(x.id === item.id && x.startDate === item.startDate)));
+            clearCart();
+            alert('تم إنشاء جلسة الدفع. أكمل الدفع عبر Stripe من الرابط المرسل أو أعد المحاولة.');
+            setView('customer');
+            return;
+          }
+          if (isStripe && !checkoutUrl) {
+            alert('تم تسجيل الحجز. رابط الدفع غير متوفر — راجع حجوزاتك أو تواصل مع الدعم.');
+          }
         } catch (payErr) {
           try {
             await apiJson(`/api/bookings/${booking.id}/status`, {
@@ -750,7 +819,9 @@ export default function App() {
       alert(
         needsProof
           ? 'تم إرسال حجوزاتك مع إثبات الدفع. بانتظار مراجعة الشريك وموافقته.'
-          : 'تم تسجيل حجوزاتك بنجاح. بانتظار موافقة الشريك (الدفع عند التسليم).'
+          : isStripe
+            ? 'تم تسجيل الحجز. أكمل الدفع بالبطاقة إن وُجّهت لصفحة Stripe.'
+            : 'تم تسجيل حجوزاتك بنجاح. بانتظار موافقة الشريك (الدفع عند التسليم).'
       );
     } catch (err) {
       const msg = friendlyAuthMessage(err instanceof ApiError ? err.message : 'فشل إرسال الحجز');
@@ -1171,6 +1242,63 @@ export default function App() {
               عرض الكل
             </button>
           </div>
+
+          {homeRecs.length > 0 && (
+            <div className="space-y-3" data-testid="home-recommendations">
+              <h3 className="text-lg font-bold text-slate-800">مقترح لك</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {homeRecs.map((rec) => {
+                  const fromList = list.find((e) => e.id === rec.equipmentId);
+                  return (
+                    <button
+                      key={rec.id}
+                      type="button"
+                      data-testid="home-rec-card"
+                      onClick={() => {
+                        if (fromList) openBooking(fromList);
+                        else {
+                          const params = new URLSearchParams(window.location.search);
+                          params.set('equipment', rec.equipmentId);
+                          window.history.replaceState(
+                            {},
+                            '',
+                            `${window.location.pathname}?${params.toString()}`
+                          );
+                          refreshEquipment();
+                        }
+                      }}
+                      className="text-right bg-white rounded-2xl border border-slate-200 overflow-hidden hover:border-blue-300 transition-colors"
+                    >
+                      {(rec.imageUrl || fromList?.image) && (
+                        <div className="aspect-[4/3] overflow-hidden bg-slate-100">
+                          <img
+                            src={rec.imageUrl || fromList?.image}
+                            alt={rec.equipmentName}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                      )}
+                      <div className="p-3 space-y-1">
+                        <p className="font-bold text-sm text-slate-800 line-clamp-1">{rec.equipmentName}</p>
+                        {(rec.category || fromList?.category) && (
+                          <p className="text-[11px] text-slate-500">{rec.category || fromList?.category}</p>
+                        )}
+                        {(rec.price != null || fromList?.price != null) && (
+                          <p className="text-xs font-bold text-blue-700">
+                            {(rec.price ?? fromList?.price)?.toLocaleString()} د.ع / يوم
+                          </p>
+                        )}
+                        {rec.reason && (
+                          <p className="text-[10px] text-slate-400 line-clamp-1">{rec.reason}</p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {listError && (
             <div className="p-4 bg-red-50 text-red-800 rounded-xl text-sm flex flex-wrap items-center justify-between gap-3">

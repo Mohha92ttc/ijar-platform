@@ -1,15 +1,16 @@
 import { Router } from 'express';
 import { AuthController } from './auth.controller';
 import { authenticateToken } from './auth.middleware';
+import { authSensitiveLimiter } from '../../middleware/rateLimit';
 
 const router = Router();
 const authController = new AuthController();
 
 // Registration
-router.post('/register', authController.register);
+router.post('/register', authSensitiveLimiter, authController.register);
 
 // Login
-router.post('/login', authController.login);
+router.post('/login', authSensitiveLimiter, authController.login);
 router.post('/logout', authController.logout);
 
 // Current User Profile
@@ -21,7 +22,7 @@ router.get('/verify-email/:token', authController.verifyEmail);
 router.post('/resend-verification', authController.resendVerification);
 
 // Password Reset
-router.post('/forgot-password', authController.forgotPassword);
+router.post('/forgot-password', authSensitiveLimiter, authController.forgotPassword);
 router.post('/reset-password', authController.resetPassword);
 router.post('/forgot-password-approval', authController.forgotPasswordApprovalRequest);
 router.get('/forgot-password-status', authController.forgotPasswordStatus);
