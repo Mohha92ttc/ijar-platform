@@ -10,6 +10,7 @@ import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLoc
 import MapPicker, { googleMapsDirectionsUrl, type MapPin } from './MapPicker';
 import { iraqWaDigits } from '../lib/phone';
 import { toast } from '../lib/toast';
+import { getLang, t, type Lang } from '../lib/i18n';
 
 type Eq = {
   id: string;
@@ -87,8 +88,18 @@ function resolveProofUrl(raw?: string | null): string | null {
 
 export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string; onBack: () => void }) {
   const [activeTab, setActiveTab] = useState('bookings');
+  const [lang, setLang] = useState<Lang>(() => getLang());
   const [myEquipment, setMyEquipment] = useState<Eq[]>([]);
   const [profile, setProfile] = useState<any>(null);
+
+  useEffect(() => {
+    const onLang = (e: Event) => {
+      const detail = (e as CustomEvent<Lang>).detail;
+      setLang(detail === 'en' ? 'en' : getLang());
+    };
+    window.addEventListener('ijar-lang', onLang as EventListener);
+    return () => window.removeEventListener('ijar-lang', onLang as EventListener);
+  }, []);
 
   const [newEquipment, setNewEquipment] = useState({
     title: '',
@@ -924,7 +935,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       {/* Sidebar */}
       <aside className="w-64 bg-blue-900 text-white hidden lg:flex flex-col">
         <div className="p-6 border-b border-blue-800">
-          <h1 className="text-xl font-bold">لوحة تحكم الشريك</h1>
+          <h1 className="text-xl font-bold">{t('partner.title', lang)}</h1>
         </div>
         <nav className="flex-1 p-4 space-y-2">
           <button 
@@ -935,7 +946,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               activeTab === 'bookings' ? 'bg-blue-700' : 'hover:bg-blue-800 text-blue-200'
             }`}
           >
-            <Clock size={18} /> الطلبات الواصلة
+            <Clock size={18} /> {t('partner.nav.bookings', lang)}
           </button>
           <button 
             type="button"
@@ -945,7 +956,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               activeTab === 'equipment' ? 'bg-blue-700' : 'hover:bg-blue-800 text-blue-200'
             }`}
           >
-            <Package size={18} /> معداتي
+            <Package size={18} /> {t('partner.nav.equipment', lang)}
           </button>
           <button 
             type="button"
@@ -955,7 +966,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               activeTab === 'couriers' ? 'bg-blue-700' : 'hover:bg-blue-800 text-blue-200'
             }`}
           >
-            <Truck size={18} /> المندوبين
+            <Truck size={18} /> {t('partner.nav.couriers', lang)}
           </button>
           <button 
             type="button"
@@ -965,7 +976,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               activeTab === 'reports' ? 'bg-blue-700' : 'hover:bg-blue-800 text-blue-200'
             }`}
           >
-            <BarChart2 size={18} /> التقارير
+            <BarChart2 size={18} /> {t('partner.nav.reports', lang)}
           </button>
           <button 
             type="button"
@@ -975,7 +986,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               activeTab === 'featured' ? 'bg-blue-700' : 'hover:bg-blue-800 text-blue-200'
             }`}
           >
-            <Sparkles size={18} /> إعلان مميز
+            <Sparkles size={18} /> {t('partner.nav.featured', lang)}
           </button>
           <button 
             type="button"
@@ -985,7 +996,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
               activeTab === 'settings' ? 'bg-blue-700' : 'hover:bg-blue-800 text-blue-200'
             }`}
           >
-            <Settings size={18} /> الإعدادات
+            <Settings size={18} /> {t('partner.nav.settings', lang)}
           </button>
           <button 
             type="button"
@@ -993,7 +1004,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
             onClick={onBack}
             className="w-full flex items-center gap-3 p-3 hover:bg-blue-800 rounded-xl text-sm font-bold text-blue-200 border-t border-blue-800 pt-4"
           >
-            <Home size={18} /> العودة للرئيسية
+            <Home size={18} /> {t('partner.nav.home', lang)}
           </button>
         </nav>
       </aside>
@@ -1006,12 +1017,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         <div className="grid grid-cols-6 gap-0.5 px-1 py-1 overflow-x-auto">
           {(
             [
-              { id: 'bookings', label: 'طلبات', icon: Clock, testId: 'partner-nav-bookings-m' },
-              { id: 'equipment', label: 'معدات', icon: Package, testId: 'partner-nav-equipment-m' },
-              { id: 'couriers', label: 'مندوبين', icon: Truck, testId: 'partner-nav-couriers-m' },
-              { id: 'reports', label: 'تقارير', icon: BarChart2, testId: 'partner-nav-reports-m' },
-              { id: 'featured', label: 'مميز', icon: Sparkles, testId: 'partner-nav-featured-m' },
-              { id: 'settings', label: 'إعدادات', icon: Settings, testId: 'partner-nav-settings-m' },
+              { id: 'bookings', label: t('partner.nav.bookingsShort', lang), icon: Clock, testId: 'partner-nav-bookings-m' },
+              { id: 'equipment', label: t('partner.nav.equipmentShort', lang), icon: Package, testId: 'partner-nav-equipment-m' },
+              { id: 'couriers', label: t('partner.nav.couriersShort', lang), icon: Truck, testId: 'partner-nav-couriers-m' },
+              { id: 'reports', label: t('partner.nav.reportsShort', lang), icon: BarChart2, testId: 'partner-nav-reports-m' },
+              { id: 'featured', label: t('partner.nav.featuredShort', lang), icon: Sparkles, testId: 'partner-nav-featured-m' },
+              { id: 'settings', label: t('partner.nav.settingsShort', lang), icon: Settings, testId: 'partner-nav-settings-m' },
             ] as const
           ).map((item) => {
             const Icon = item.icon;

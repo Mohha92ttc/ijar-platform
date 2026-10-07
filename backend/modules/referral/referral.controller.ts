@@ -106,6 +106,19 @@ export async function applyReferralOnRegister(
     [row.id]
   );
 
+  try {
+    await query(
+      `
+      INSERT INTO referral_uses (referral_code_id, referrer_id, referee_id)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (referee_id) DO NOTHING
+      `,
+      [row.id, row.user_id, newUserId]
+    );
+  } catch (e) {
+    console.warn('referral_uses insert failed:', e instanceof Error ? e.message : e);
+  }
+
   // Program defaults (optional row)
   let rewardAmount = Number(row.reward_amount) || 0;
   let refereePercent = DEFAULT_REFEREE_PERCENT;
@@ -326,6 +339,21 @@ export const referralController = {
         [row.id]
       );
 
+      if (userId) {
+        try {
+          await query(
+            `
+            INSERT INTO referral_uses (referral_code_id, referrer_id, referee_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (referee_id) DO NOTHING
+            `,
+            [row.id, row.user_id, userId]
+          );
+        } catch (e) {
+          console.warn('referral_uses insert failed:', e instanceof Error ? e.message : e);
+        }
+      }
+
       res.json({
         success: true,
         referralCode: row.code,
@@ -466,25 +494,114 @@ export const referralController = {
     }
   },
 
-  async getReferralTransactions(_req: Request, res: Response) {
-    res.json([]);
+  async getReferralTransactions(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'للإدارة فقط' });
+      }
+      const result = await query(
+        `
+        SELECT ru.*,
+          ref.name AS referrer_name,
+          ree.name AS referee_name,
+          rc.code AS referral_code
+        FROM referral_uses ru
+        JOIN users ref ON ref.id = ru.referrer_id
+        JOIN users ree ON ree.id = ru.referee_id
+        JOIN referral_codes rc ON rc.id = ru.referral_code_id
+        ORDER BY ru.created_at DESC
+        LIMIT 200
+        `
+      );
+      res.json(result.rows);
+    } catch (error) {
+      console.error('getReferralTransactions', error);
+      res.status(500).json({ error: 'فشل جلب معاملات الإحالة' });
+    }
   },
 
-  async getUserReferralTransactions(req: Request, res: Response) {
+  async getUserReferralTransactions(req: AuthenticatedRequest, res: Response) {
     try {
+      const authId = req.user?.userId || req.user?.id;
       const { userId } = req.params;
-      const result = await query(
+      if (!authId) return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
+      if (String(userId) !== String(authId) && req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'غير مصرح' });
+      }
+      const codes = await query(
         `SELECT * FROM referral_codes WHERE user_id = $1 ORDER BY created_at DESC`,
         [userId]
       );
-      res.json(result.rows);
+      const uses = await query(
+        `
+        SELECT ru.*, u.name AS referee_name, u.email AS referee_email, rc.code
+        FROM referral_uses ru
+        JOIN users u ON u.id = ru.referee_id
+        JOIN referral_codes rc ON rc.id = ru.referral_code_id
+        WHERE ru.referrer_id = $1
+        ORDER BY ru.created_at DESC
+        LIMIT 100
+        `,
+        [userId]
+      );
+      res.json({ codes: codes.rows, referrals: uses.rows });
     } catch (error) {
       console.error('getUserReferralTransactions', error);
       res.status(500).json({ error: 'فشل جلب بيانات الإحالة' });
     }
   },
 
-  async getPersonalizedRecommendations(_req: Request, res: Response) {
-    res.json({ referrals: [], userProfile: {} });
+  async getPersonalizedRecommendations(req: AuthenticatedRequest, res: Response) {
+    try {
+      const userId = req.user?.userId || req.user?.id;
+      if (!userId) return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
+
+      const codeRes = await query(
+        `SELECT * FROM referral_codes WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [userId]
+      );
+      const codeRow = codeRes.rows[0] || null;
+
+      const countRes = await query(
+        `SELECT COUNT(*)::int AS cnt FROM referral_uses WHERE referrer_id = $1`,
+        [userId]
+      );
+      const referredCount = Number(countRes.rows[0]?.cnt || codeRow?.uses_count || 0);
+
+      const recent = await query(
+        `
+        SELECT
+          ru.id,
+          ru.referee_id,
+          ru.created_at,
+          u.name AS referee_name,
+          LEFT(COALESCE(u.email, ''), 3) || '***' AS referee_email_masked,
+          rc.code AS referral_code
+        FROM referral_uses ru
+        JOIN users u ON u.id = ru.referee_id
+        JOIN referral_codes rc ON rc.id = ru.referral_code_id
+        WHERE ru.referrer_id = $1
+        ORDER BY ru.created_at DESC
+        LIMIT 20
+        `,
+        [userId]
+      );
+
+      res.json({
+        referredCount,
+        recentReferrals: recent.rows,
+        referrals: recent.rows,
+        userProfile: {
+          userId,
+          referralCode: codeRow ? String(codeRow.code) : null,
+          usesCount: Number(codeRow?.uses_count || referredCount),
+          rewardAmount: Number(codeRow?.reward_amount || 0),
+          isActive: codeRow ? Boolean(codeRow.is_active) : false,
+        },
+      });
+    } catch (error) {
+      console.error('getPersonalizedRecommendations', error);
+      res.status(500).json({ error: 'فشل جلب إحصائيات الإحالة' });
+    }
   },
 };

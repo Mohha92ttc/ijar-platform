@@ -16,14 +16,25 @@ import AdminBookingsPanel from './AdminBookingsPanel';
 import AdminEquipmentPanel from './AdminEquipmentPanel';
 import AdminSupportPanel from './AdminSupportPanel';
 import { toast } from '../lib/toast';
+import { getLang, t, type Lang } from '../lib/i18n';
 
 export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
+  const [lang, setLang] = useState<Lang>(() => getLang());
   const [partners, setPartners] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [couriers, setCouriers] = useState<any[]>([]);
   const [passwordResetRequests, setPasswordResetRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onLang = (e: Event) => {
+      const detail = (e as CustomEvent<Lang>).detail;
+      setLang(detail === 'en' ? 'en' : getLang());
+    };
+    window.addEventListener('ijar-lang', onLang as EventListener);
+    return () => window.removeEventListener('ijar-lang', onLang as EventListener);
+  }, []);
   
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -112,6 +123,28 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
     max_uses: '',
   });
   const [discountSaving, setDiscountSaving] = useState(false);
+  const [campaigns, setCampaigns] = useState<
+    {
+      id: string;
+      name: string;
+      description?: string | null;
+      discount_type: string;
+      discount_value: number;
+      is_active: boolean;
+      promo_code?: string | null;
+      starts_at?: string | null;
+      ends_at?: string | null;
+    }[]
+  >([]);
+  const [campaignLoading, setCampaignLoading] = useState(false);
+  const [campaignSaving, setCampaignSaving] = useState(false);
+  const [campaignForm, setCampaignForm] = useState({
+    name: '',
+    description: '',
+    discount_type: 'percentage' as 'percentage' | 'fixed',
+    discount_value: '',
+    code: '',
+  });
 
   const loadDiscountCodes = async () => {
     setDiscountLoading(true);
@@ -172,6 +205,78 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       await loadDiscountCodes();
     } catch (e) {
       toast(e instanceof ApiError ? e.message : 'فشل تعطيل الكود');
+    }
+  };
+
+  const loadCampaigns = async () => {
+    setCampaignLoading(true);
+    try {
+      const rows = await apiJson<any[]>('/api/discounts/campaigns');
+      setCampaigns(
+        (Array.isArray(rows) ? rows : []).map((r) => ({
+          id: String(r.id),
+          name: String(r.name || ''),
+          description: r.description != null ? String(r.description) : null,
+          discount_type: String(r.discount_type || 'percentage'),
+          discount_value: Number(r.discount_value || 0),
+          is_active: Boolean(r.is_active),
+          promo_code: r.promo_code != null ? String(r.promo_code) : null,
+          starts_at: r.starts_at ? String(r.starts_at) : null,
+          ends_at: r.ends_at ? String(r.ends_at) : null,
+        }))
+      );
+    } catch {
+      setCampaigns([]);
+    } finally {
+      setCampaignLoading(false);
+    }
+  };
+
+  const createCampaign = async () => {
+    const name = campaignForm.name.trim();
+    const value = Number(campaignForm.discount_value);
+    if (!name || !Number.isFinite(value) || value <= 0) {
+      toast('أدخل اسم الحملة وقيمة خصم صالحة');
+      return;
+    }
+    setCampaignSaving(true);
+    try {
+      const body: Record<string, unknown> = {
+        name,
+        description: campaignForm.description.trim() || undefined,
+        discount_type: campaignForm.discount_type,
+        discount_value: value,
+      };
+      if (campaignForm.code.trim()) {
+        body.code = campaignForm.code.trim().toUpperCase();
+      }
+      await apiJson('/api/discounts/campaigns', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      setCampaignForm({
+        name: '',
+        description: '',
+        discount_type: 'percentage',
+        discount_value: '',
+        code: '',
+      });
+      await loadCampaigns();
+      toast('تم إنشاء الحملة');
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'فشل إنشاء الحملة');
+    } finally {
+      setCampaignSaving(false);
+    }
+  };
+
+  const deactivateCampaign = async (id: string) => {
+    if (!confirm('تعطيل الحملة؟')) return;
+    try {
+      await apiJson(`/api/discounts/campaigns/${id}`, { method: 'DELETE' });
+      await loadCampaigns();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'فشل تعطيل الحملة');
     }
   };
 
@@ -296,6 +401,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
     }
     if (activeTab === 'discounts') {
       loadDiscountCodes();
+      loadCampaigns();
     }
   }, [activeTab]);
 
@@ -483,7 +589,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-white hidden lg:flex flex-col">
         <div className="p-6 border-b border-slate-800">
-          <h1 className="text-xl font-bold text-blue-400">لوحة تحكم الإدارة</h1>
+          <h1 className="text-xl font-bold text-blue-400">{t('admin.title', lang)}</h1>
         </div>
         <nav className="flex-1 p-4 space-y-2">
           <button 
@@ -494,7 +600,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'partners' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Users size={18} /> إدارة الشركاء
+            <Users size={18} /> {t('admin.nav.partners', lang)}
           </button>
           <button
             type="button"
@@ -504,7 +610,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'customers' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Users size={18} /> إدارة الزبائن
+            <Users size={18} /> {t('admin.nav.customers', lang)}
           </button>
           <button
             type="button"
@@ -514,7 +620,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'couriers' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Truck size={18} /> المندوبين
+            <Truck size={18} /> {t('admin.nav.couriers', lang)}
           </button>
           <button
             type="button"
@@ -524,7 +630,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'bookings' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Calendar size={18} /> الحجوزات
+            <Calendar size={18} /> {t('admin.nav.bookings', lang)}
           </button>
           <button
             type="button"
@@ -534,7 +640,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'equipment' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Package size={18} /> المعدات
+            <Package size={18} /> {t('admin.nav.equipment', lang)}
           </button>
           <button 
             type="button"
@@ -544,7 +650,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'payment-approval' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <CheckCircle size={18} /> موافقات الدفع
+            <CheckCircle size={18} /> {t('admin.nav.paymentApproval', lang)}
           </button>
           <button 
             type="button"
@@ -554,7 +660,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'featured-approval' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Sparkles size={18} /> الإعلان المميز
+            <Sparkles size={18} /> {t('admin.nav.featured', lang)}
           </button>
           <button 
             type="button"
@@ -564,7 +670,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'subscription-approval' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <CreditCard size={18} /> اشتراكات الشركاء
+            <CreditCard size={18} /> {t('admin.nav.subscription', lang)}
           </button>
           <button
             type="button"
@@ -574,7 +680,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'password-resets' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Bell size={18} /> طلبات تغيير كلمة المرور
+            <Bell size={18} /> {t('admin.nav.passwordResets', lang)}
           </button>
           <button 
             type="button"
@@ -584,7 +690,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'partner-statement' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <FileText size={18} /> كشوف الحسابات
+            <FileText size={18} /> {t('admin.nav.partnerStatement', lang)}
           </button>
           <button 
             type="button"
@@ -594,7 +700,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'categories' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Settings size={18} /> التصنيفات
+            <Settings size={18} /> {t('admin.nav.categories', lang)}
           </button>
           <button 
             type="button"
@@ -604,7 +710,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'support' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Headphones size={18} /> رسائل الدعم
+            <Headphones size={18} /> {t('admin.nav.support', lang)}
           </button>
           <button
             type="button"
@@ -614,7 +720,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'insurance' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Shield size={18} /> مطالبات التأمين
+            <Shield size={18} /> {t('admin.nav.insurance', lang)}
           </button>
           <button 
             type="button"
@@ -624,7 +730,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'content' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Settings size={18} /> إدارة المحتوى
+            <Settings size={18} /> {t('admin.nav.content', lang)}
           </button>
           <button 
             type="button"
@@ -634,7 +740,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'payments' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <CreditCard size={18} /> المدفوعات
+            <CreditCard size={18} /> {t('admin.nav.payments', lang)}
           </button>
           <button
             type="button"
@@ -644,7 +750,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'discounts' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Sparkles size={18} /> أكواد الخصم
+            <Sparkles size={18} /> {t('admin.nav.discounts', lang)}
           </button>
           <button 
             type="button"
@@ -654,7 +760,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'settings' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <Settings size={18} /> إعدادات النظام
+            <Settings size={18} /> {t('admin.nav.settings', lang)}
           </button>
           <button 
             type="button"
@@ -664,7 +770,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               activeTab === 'stats' ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
             }`}
           >
-            <BarChart3 size={18} /> الإحصائيات
+            <BarChart3 size={18} /> {t('admin.nav.stats', lang)}
           </button>
           {onBack && (
             <button
@@ -673,7 +779,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
               onClick={onBack}
               className="flex items-center gap-3 p-3 rounded-xl text-sm font-bold transition-colors w-full text-right border-t border-slate-800 mt-4 pt-4 hover:bg-slate-800 text-slate-300"
             >
-              <Home size={18} /> العودة للرئيسية
+              <Home size={18} /> {t('admin.nav.home', lang)}
             </button>
           )}
         </nav>
@@ -686,19 +792,19 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         <div className="flex gap-1 px-2 py-1 min-w-max">
           {(
             [
-              { id: 'partners', label: 'شركاء', testId: 'admin-nav-partners-m' },
-              { id: 'customers', label: 'زبائن', testId: 'admin-nav-customers-m' },
-              { id: 'couriers', label: 'مندوبين', testId: 'admin-nav-couriers-m' },
-              { id: 'bookings', label: 'حجوزات', testId: 'admin-nav-bookings-m' },
-              { id: 'equipment', label: 'معدات', testId: 'admin-nav-equipment-m' },
-              { id: 'payment-approval', label: 'دفعات', testId: 'admin-nav-payment-approval-m' },
-              { id: 'subscription-approval', label: 'اشتراك', testId: 'admin-nav-subscription-approval-m' },
-              { id: 'categories', label: 'تصنيفات', testId: 'admin-nav-categories-m' },
-              { id: 'support', label: 'دعم', testId: 'admin-nav-support-m' },
-              { id: 'insurance', label: 'تأمين', testId: 'admin-nav-insurance-m' },
-              { id: 'discounts', label: 'خصم', testId: 'admin-nav-discounts-m' },
-              { id: 'settings', label: 'إعدادات', testId: 'admin-nav-settings-m' },
-              { id: 'stats', label: 'إحصاء', testId: 'admin-nav-stats-m' },
+              { id: 'partners', label: t('admin.nav.partnersShort', lang), testId: 'admin-nav-partners-m' },
+              { id: 'customers', label: t('admin.nav.customersShort', lang), testId: 'admin-nav-customers-m' },
+              { id: 'couriers', label: t('admin.nav.couriersShort', lang), testId: 'admin-nav-couriers-m' },
+              { id: 'bookings', label: t('admin.nav.bookingsShort', lang), testId: 'admin-nav-bookings-m' },
+              { id: 'equipment', label: t('admin.nav.equipmentShort', lang), testId: 'admin-nav-equipment-m' },
+              { id: 'payment-approval', label: t('admin.nav.paymentShort', lang), testId: 'admin-nav-payment-approval-m' },
+              { id: 'subscription-approval', label: t('admin.nav.subscriptionShort', lang), testId: 'admin-nav-subscription-approval-m' },
+              { id: 'categories', label: t('admin.nav.categoriesShort', lang), testId: 'admin-nav-categories-m' },
+              { id: 'support', label: t('admin.nav.supportShort', lang), testId: 'admin-nav-support-m' },
+              { id: 'insurance', label: t('admin.nav.insuranceShort', lang), testId: 'admin-nav-insurance-m' },
+              { id: 'discounts', label: t('admin.nav.discountsShort', lang), testId: 'admin-nav-discounts-m' },
+              { id: 'settings', label: t('admin.nav.settingsShort', lang), testId: 'admin-nav-settings-m' },
+              { id: 'stats', label: t('admin.nav.statsShort', lang), testId: 'admin-nav-stats-m' },
             ] as const
           ).map((item) => (
             <button
@@ -1763,6 +1869,116 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                   )}
                 </div>
               ))}
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-4" data-testid="admin-campaigns-panel">
+              <h3 className="text-lg font-bold">{t('admin.campaigns.title', lang)}</h3>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <input
+                  type="text"
+                  data-testid="admin-campaign-name"
+                  placeholder={t('admin.campaigns.name', lang)}
+                  value={campaignForm.name}
+                  onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+                <input
+                  type="text"
+                  data-testid="admin-campaign-desc"
+                  placeholder="وصف (اختياري)"
+                  value={campaignForm.description}
+                  onChange={(e) => setCampaignForm({ ...campaignForm, description: e.target.value })}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+                <input
+                  type="text"
+                  data-testid="admin-campaign-code"
+                  placeholder="كود مرتبط (اختياري)"
+                  value={campaignForm.code}
+                  onChange={(e) => setCampaignForm({ ...campaignForm, code: e.target.value })}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+                <select
+                  data-testid="admin-campaign-type"
+                  value={campaignForm.discount_type}
+                  onChange={(e) =>
+                    setCampaignForm({
+                      ...campaignForm,
+                      discount_type: e.target.value as 'percentage' | 'fixed',
+                    })
+                  }
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                >
+                  <option value="percentage">نسبة مئوية</option>
+                  <option value="fixed">مبلغ ثابت</option>
+                </select>
+                <input
+                  type="number"
+                  data-testid="admin-campaign-value"
+                  placeholder={campaignForm.discount_type === 'percentage' ? 'القيمة %' : 'القيمة د.ع'}
+                  value={campaignForm.discount_value}
+                  onChange={(e) => setCampaignForm({ ...campaignForm, discount_value: e.target.value })}
+                  className="px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-testid="admin-campaign-create"
+                  disabled={campaignSaving}
+                  onClick={createCampaign}
+                  className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-60"
+                >
+                  <Plus size={16} />{' '}
+                  {campaignSaving ? 'جاري الحفظ…' : t('admin.campaigns.create', lang)}
+                </button>
+                <button
+                  type="button"
+                  onClick={loadCampaigns}
+                  disabled={campaignLoading}
+                  className="text-xs font-bold px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {campaignLoading ? 'جاري التحميل…' : 'تحديث'}
+                </button>
+              </div>
+              {campaigns.length === 0 && !campaignLoading && (
+                <p className="text-sm text-slate-500">{t('admin.campaigns.empty', lang)}</p>
+              )}
+              <div className="space-y-3">
+                {campaigns.map((c) => (
+                  <div
+                    key={c.id}
+                    data-testid="admin-campaign-row"
+                    className="rounded-xl border border-slate-100 bg-slate-50 p-4 flex flex-wrap items-center justify-between gap-3"
+                  >
+                    <div>
+                      <p className="font-bold text-slate-800">{c.name}</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {c.discount_type === 'percentage'
+                          ? `${c.discount_value}%`
+                          : `${c.discount_value.toLocaleString()} د.ع`}
+                        {c.promo_code ? ` · ${c.promo_code}` : ''}
+                        {' · '}
+                        {c.is_active ? (
+                          <span className="text-green-700">نشط</span>
+                        ) : (
+                          <span className="text-slate-400">معطّل</span>
+                        )}
+                      </p>
+                    </div>
+                    {c.is_active && (
+                      <button
+                        type="button"
+                        data-testid="admin-campaign-deactivate"
+                        onClick={() => deactivateCampaign(c.id)}
+                        className="text-xs font-bold px-3 py-2 rounded-xl border border-red-200 text-red-700 hover:bg-red-50"
+                      >
+                        تعطيل
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

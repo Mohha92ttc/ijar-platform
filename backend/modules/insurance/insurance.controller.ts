@@ -19,10 +19,17 @@ function mapClaim(row: Record<string, unknown>) {
     description: String(row.description || ''),
     amount: Number(row.amount || 0),
     status: String(row.status),
+    settlement_note: row.settlement_note != null ? String(row.settlement_note) : null,
+    settlementNote: row.settlement_note != null ? String(row.settlement_note) : null,
+    admin_notes: row.admin_notes != null ? String(row.admin_notes) : null,
+    adminNotes: row.admin_notes != null ? String(row.admin_notes) : null,
+    reviewed_at: row.reviewed_at ?? null,
+    reviewedAt: row.reviewed_at ?? null,
     created_at: row.created_at,
     createdAt: row.created_at,
     equipment_title: row.equipment_title != null ? String(row.equipment_title) : undefined,
     customer_name: row.customer_name != null ? String(row.customer_name) : undefined,
+    owner_id: row.owner_id != null ? String(row.owner_id) : undefined,
   };
 }
 
@@ -413,27 +420,92 @@ export const insuranceController = {
         return res.status(403).json({ error: 'مراجعة المطالبات للإدارة فقط' });
       }
 
+      const adminId = uid(req);
+      const body = req.body || {};
+      const adminNotes = String(body.admin_notes || body.adminNotes || body.notes || '')
+        .trim()
+        .slice(0, 1000);
+      let settlementNote = String(
+        body.settlement_note || body.settlementNote || ''
+      )
+        .trim()
+        .slice(0, 1000);
+
+      if (status === 'approved' && !settlementNote) {
+        const amountHint = body.amount != null ? Number(body.amount) : null;
+        settlementNote = amountHint
+          ? `معتمدة للتسوية بمبلغ ${amountHint.toLocaleString()} د.ع — يرجى تسوية المطالبة مع الزبون.`
+          : 'معتمدة — يرجى تسوية المطالبة مع الزبون وإبلاغ المنصة عند الإتمام.';
+      }
+
       const updated = await query(
         `
-        UPDATE insurance_claims SET status = $1 WHERE id = $2
+        UPDATE insurance_claims SET
+          status = $1,
+          settlement_note = CASE
+            WHEN $3::text IS NOT NULL AND $3::text <> '' THEN $3::text
+            ELSE settlement_note
+          END,
+          admin_notes = CASE
+            WHEN $4::text IS NOT NULL AND $4::text <> '' THEN $4::text
+            ELSE admin_notes
+          END,
+          reviewed_at = NOW(),
+          reviewed_by = $5
+        WHERE id = $2
         RETURNING *
         `,
-        [status, req.params.id]
+        [status, req.params.id, settlementNote || null, adminNotes || null, adminId || null]
       );
       if (updated.rows.length === 0) {
         return res.status(404).json({ error: 'المطالبة غير موجودة' });
       }
-      const claim = mapClaim(updated.rows[0]);
+
+      // Enrich with booking/equipment owner for partner notify
+      const enriched = await query(
+        `
+        SELECT c.*, e.title AS equipment_title, e.owner_id, u.name AS customer_name
+        FROM insurance_claims c
+        JOIN bookings b ON b.id = c.booking_id
+        JOIN equipment e ON e.id = b.equipment_id
+        JOIN users u ON u.id = c.customer_id
+        WHERE c.id = $1
+        LIMIT 1
+        `,
+        [req.params.id]
+      );
+      const claim = mapClaim(enriched.rows[0] || updated.rows[0]);
 
       const label =
         status === 'approved' ? 'مقبولة' : status === 'rejected' ? 'مرفوضة' : 'قيد المراجعة';
+      const customerMsg =
+        status === 'approved'
+          ? `تمت الموافقة على مطالبة التأمين${claim.settlement_note ? `: ${claim.settlement_note}` : ''}`
+          : status === 'rejected'
+            ? `تم رفض مطالبة التأمين${adminNotes ? ` — ${adminNotes}` : ''}`
+            : `تم تحديث حالة مطالبة التأمين إلى: ${label}`;
+
       await notifications.sendNotification({
         userId: claim.customer_id,
         type: 'system',
         title: `مطالبة التأمين ${label}`,
-        message: `تم تحديث حالة مطالبة التأمين إلى: ${label}`,
+        message: customerMsg,
         data: { related_id: claim.booking_id, claimId: claim.id },
       });
+
+      if (status === 'approved' && claim.owner_id) {
+        try {
+          await notifications.sendNotification({
+            userId: claim.owner_id,
+            type: 'system',
+            title: 'تسوية مطالبة تأمين — إجراء مطلوب',
+            message: `وافقت الإدارة على مطالبة تأمين لحجز «${claim.equipment_title || claim.booking_id}» بمبلغ ${claim.amount.toLocaleString()} د.ع. ${claim.settlement_note || 'يرجى التنسيق للتسوية.'}`,
+            data: { related_id: claim.booking_id, claimId: claim.id },
+          });
+        } catch (e) {
+          console.warn('partner claim notify failed:', e instanceof Error ? e.message : e);
+        }
+      }
 
       return res.json(claim);
     } catch (error) {

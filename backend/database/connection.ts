@@ -597,6 +597,55 @@ async function createTables() {
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Who used whose referral code (for owner stats / recommendations)
+    CREATE TABLE IF NOT EXISTS referral_uses (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      referral_code_id UUID NOT NULL REFERENCES referral_codes(id) ON DELETE CASCADE,
+      referrer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      referee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (referee_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_referral_uses_referrer ON referral_uses (referrer_id);
+    CREATE INDEX IF NOT EXISTS idx_referral_uses_code ON referral_uses (referral_code_id);
+
+    -- Loyalty: 1 point per 1000 IQD on completed bookings
+    CREATE TABLE IF NOT EXISTS loyalty_programs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT,
+      points_per_1000_iqd NUMERIC NOT NULL DEFAULT 1,
+      redeem_iqd_per_point NUMERIC NOT NULL DEFAULT 1000,
+      min_redeem_points INT NOT NULL DEFAULT 10,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS loyalty_balances (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      total_points INT NOT NULL DEFAULT 0,
+      available_points INT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS loyalty_ledger (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+      points INT NOT NULL,
+      reason TEXT,
+      discount_code TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_loyalty_ledger_user ON loyalty_ledger (user_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_loyalty_ledger_booking_earn
+      ON loyalty_ledger (booking_id) WHERE booking_id IS NOT NULL AND points > 0;
+
+    ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS settlement_note TEXT;
+    ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS admin_notes TEXT;
+    ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+    ALTER TABLE insurance_claims ADD COLUMN IF NOT EXISTS reviewed_by UUID REFERENCES users(id);
+
     -- Create indexes for better performance
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);

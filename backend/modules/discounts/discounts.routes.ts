@@ -54,7 +54,7 @@ router.delete(
   discountController.deleteDiscountCampaign
 );
 
-// Loyalty programs (stubs)
+// Loyalty — points routes BEFORE /:id so "points" is not captured as id
 router.post(
   '/loyalty',
   authenticateToken,
@@ -62,13 +62,6 @@ router.post(
   discountController.createLoyaltyProgram
 );
 router.get('/loyalty', authenticateToken, discountController.getLoyaltyPrograms);
-router.get('/loyalty/:id', authenticateToken, discountController.getLoyaltyProgram);
-router.put(
-  '/loyalty/:id',
-  authenticateToken,
-  requireRole(['admin']),
-  discountController.updateLoyaltyProgram
-);
 router.get(
   '/loyalty/points/:userId',
   authenticateToken,
@@ -77,7 +70,20 @@ router.get(
 router.post(
   '/loyalty/points/:userId/add',
   authenticateToken,
+  requireRole(['admin']),
   discountController.addLoyaltyPoints
+);
+router.post(
+  '/loyalty/redeem',
+  authenticateToken,
+  discountController.redeemLoyaltyPoints
+);
+router.get('/loyalty/:id', authenticateToken, discountController.getLoyaltyProgram);
+router.put(
+  '/loyalty/:id',
+  authenticateToken,
+  requireRole(['admin']),
+  discountController.updateLoyaltyProgram
 );
 
 router.get(

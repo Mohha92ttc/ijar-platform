@@ -3,7 +3,10 @@ import { Booking, CreateBookingDTO, BookingStatus } from './bookings.types';
 import { EquipmentService } from '../equipment/equipment.service';
 import { NotificationService } from '../notifications/notification.service';
 import { PaymentService } from '../payments/payment.service';
-import { validateDiscountAgainstAmount } from '../discounts/discount.controller';
+import {
+  awardLoyaltyForCompletedBooking,
+  validateDiscountAgainstAmount,
+} from '../discounts/discount.controller';
 
 function rowToBooking(row: Record<string, unknown>): Booking {
   return {
@@ -573,6 +576,27 @@ export class BookingService {
         );
       } catch {
         // non-blocking
+      }
+      try {
+        const awarded = await awardLoyaltyForCompletedBooking(
+          booking.customer_id,
+          booking.id,
+          booking.total_price
+        );
+        if (awarded && awarded.points > 0) {
+          await this.notificationService.create({
+            user_id: booking.customer_id,
+            type: 'system',
+            title: 'نقاط ولاء جديدة',
+            message: `حصلت على ${awarded.points} نقطة ولاء من إيجار «${equipment.title}».`,
+            related_id: booking.id,
+          });
+        }
+      } catch (e) {
+        console.warn(
+          '[booking] loyalty award failed',
+          e instanceof Error ? e.message : e
+        );
       }
       if (actor.role === 'admin') {
         try {

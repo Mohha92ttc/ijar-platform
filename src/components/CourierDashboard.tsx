@@ -3,6 +3,7 @@ import { Truck, MapPin, Phone, Navigation, CheckCircle, Package, BarChart2, Home
 import { apiJson, apiLogout } from '../lib/api';
 import { googleMapsDirectionsUrl, googleMapsMultiStopUrl } from './MapPicker';
 import { toast } from '../lib/toast';
+import { getLang, t, type Lang } from '../lib/i18n';
 
 type CourierBooking = {
   id: string;
@@ -70,10 +71,20 @@ export default function CourierDashboard({
     items: any[];
   } | null>(null);
   const [tab, setTab] = useState<'orders' | 'report' | 'account'>('orders');
+  const [lang, setLang] = useState<Lang>(() => getLang());
   const [notes, setNotes] = useState<{ id: string; title: string; message: string; is_read: boolean }[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '' });
   const [passwordSaving, setPasswordSaving] = useState(false);
+
+  useEffect(() => {
+    const onLang = (e: Event) => {
+      const detail = (e as CustomEvent<Lang>).detail;
+      setLang(detail === 'en' ? 'en' : getLang());
+    };
+    window.addEventListener('ijar-lang', onLang as EventListener);
+    return () => window.removeEventListener('ijar-lang', onLang as EventListener);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -281,7 +292,7 @@ export default function CourierDashboard({
               tab === 'orders' ? 'bg-emerald-700 text-white' : 'bg-white border border-slate-200 text-slate-600'
             }`}
           >
-            <Package size={16} /> طلباتي
+            <Package size={16} /> {t('courier.nav.orders', lang)}
           </button>
           <button
             type="button"
@@ -291,7 +302,7 @@ export default function CourierDashboard({
               tab === 'report' ? 'bg-emerald-700 text-white' : 'bg-white border border-slate-200 text-slate-600'
             }`}
           >
-            <BarChart2 size={16} /> تقرير الشهر
+            <BarChart2 size={16} /> {t('courier.nav.report', lang)}
           </button>
           <button
             type="button"
@@ -301,7 +312,7 @@ export default function CourierDashboard({
               tab === 'account' ? 'bg-emerald-700 text-white' : 'bg-white border border-slate-200 text-slate-600'
             }`}
           >
-            حسابي
+            {t('courier.nav.account', lang)}
           </button>
         </div>
 
