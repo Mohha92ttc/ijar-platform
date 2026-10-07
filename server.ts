@@ -22,6 +22,7 @@ import referralRoutes from './backend/modules/referral/referral.routes';
 import discountRoutes from './backend/modules/discounts/discounts.routes';
 import { couriersRoutes } from './backend/modules/couriers';
 import favoritesRoutes from './backend/modules/favorites/favorites.routes';
+import cartRoutes from './backend/modules/cart/cart.routes';
 import { initializeDatabase } from './backend/database/connection';
 import { MigrationService } from './backend/services/migration.service';
 import { WebSocketService } from './backend/services/websocket.service';
@@ -187,6 +188,7 @@ async function startServer() {
   app.use('/api/discounts', discountRoutes);
   app.use('/api/couriers', couriersRoutes);
   app.use('/api/favorites', favoritesRoutes);
+  app.use('/api/cart', cartRoutes);
 
   app.get('/api/health', async (_req, res) => {
     const migrationService = new MigrationService();

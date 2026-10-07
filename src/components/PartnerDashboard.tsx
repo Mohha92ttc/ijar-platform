@@ -9,6 +9,7 @@ import { paymentMethodLabel, type CartPaymentMethod } from '../lib/cartStorage';
 import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from '../lib/iraqLocations';
 import MapPicker, { googleMapsDirectionsUrl, type MapPin } from './MapPicker';
 import { iraqWaDigits } from '../lib/phone';
+import { toast } from '../lib/toast';
 
 type Eq = {
   id: string;
@@ -311,7 +312,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const guardSub = (actionLabel: string, opts?: { allowLifecycle?: boolean }) => {
     if (subscriptionActive) return true;
     if (opts?.allowLifecycle) return true;
-    alert(
+    toast(
       `الحساب مجمّد: ${actionLabel} تحتاج اشتراكاً مفعّلاً. يمكنك إكمال الحجوزات الجارية من تبويب الطلبات، وجدّد الاشتراك لإضافة معدات جديدة.`
     );
     setActiveTab('featured');
@@ -350,12 +351,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const createCourier = async () => {
     if (!guardSub('إدارة المندوبين')) return;
     if (!newCourier.name.trim() || !newCourier.phone.trim()) {
-      alert('الاسم ورقم الهاتف مطلوبان');
+      toast('الاسم ورقم الهاتف مطلوبان');
       return;
     }
     const email = newCourier.email.trim().toLowerCase();
     if (!email || !email.includes('@') || email.endsWith('.local') || email.includes('@ijar.local')) {
-      alert('بريد حقيقي مطلوب للمندوب (يحتوي @ وليس .local)');
+      toast('بريد حقيقي مطلوب للمندوب (يحتوي @ وليس .local)');
       return;
     }
     setCourierCreating(true);
@@ -377,7 +378,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       setNewCourier({ name: '', phone: '', email: '', password: '' });
       await loadCouriers();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إنشاء المندوب');
+      toast(e instanceof ApiError ? e.message : 'تعذر إنشاء المندوب');
     } finally {
       setCourierCreating(false);
     }
@@ -391,7 +392,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadCouriers();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر التحديث');
+      toast(e instanceof ApiError ? e.message : 'تعذر التحديث');
     }
   };
 
@@ -403,9 +404,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         body: JSON.stringify({}),
       });
       setCreatedCreds({ name, email: r.email, password: r.temp_password });
-      alert('تم توليد كلمة مرور جديدة — احفظها أو انسخها من البطاقة الخضراء أعلاه');
+      toast('تم توليد كلمة مرور جديدة — احفظها أو انسخها من البطاقة الخضراء أعلاه');
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إعادة التعيين');
+      toast(e instanceof ApiError ? e.message : 'تعذر إعادة التعيين');
     }
   };
 
@@ -424,7 +425,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       }
       await loadData();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تحديث التعيين');
+      toast(e instanceof ApiError ? e.message : 'تعذر تحديث التعيين');
     }
   };
 
@@ -438,7 +439,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadData();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر طلب الاسترجاع');
+      toast(e instanceof ApiError ? e.message : 'تعذر طلب الاسترجاع');
     }
   };
 
@@ -452,7 +453,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadData();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إلغاء الاسترجاع');
+      toast(e instanceof ApiError ? e.message : 'تعذر إلغاء الاسترجاع');
     }
   };
 
@@ -466,7 +467,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadData();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تأكيد الاسترداد');
+      toast(e instanceof ApiError ? e.message : 'تعذر تأكيد الاسترداد');
     }
   };
 
@@ -490,7 +491,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadData();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تحديث الحالة');
+      toast(e instanceof ApiError ? e.message : 'تعذر تحديث الحالة');
     }
   };
 
@@ -506,7 +507,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadCouriers();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر التحديث');
+      toast(e instanceof ApiError ? e.message : 'تعذر التحديث');
     }
   };
 
@@ -534,7 +535,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       setCourierReport(r);
     } catch (e: unknown) {
       setCourierReport(null);
-      alert(e instanceof ApiError ? e.message : 'تعذر جلب التقرير');
+      toast(e instanceof ApiError ? e.message : 'تعذر جلب التقرير');
     }
   };
 
@@ -607,9 +608,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
           delivery_fee: Math.max(0, Number(paySettings.delivery_fee) || 0),
         }),
       });
-      alert('تم حفظ إعدادات الدفع والتوصيل');
+      toast('تم حفظ إعدادات الدفع والتوصيل');
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'فشل الحفظ');
+      toast(e instanceof Error ? e.message : 'فشل الحفظ');
     } finally {
       setPaySettingsSaving(false);
     }
@@ -625,7 +626,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
 
   const submitPlatformPayment = async (kind: 'featured_promotion' | 'subscription_renewal', file: File | null, notes: string) => {
     if (!ownerId || !transferInfo || !file) {
-      alert(kind === 'featured_promotion' ? 'يرجى اختيار صورة إثبات التحويل' : 'يرجى اختيار صورة إثبات التحويل');
+      toast(kind === 'featured_promotion' ? 'يرجى اختيار صورة إثبات التحويل' : 'يرجى اختيار صورة إثبات التحويل');
       return;
     }
     const amount =
@@ -639,7 +640,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         method: 'POST',
         body: JSON.stringify({ kind, amount, payment_proof, notes: notes.trim() || undefined }),
       });
-      alert('تم إرسال الطلب. سيتم مراجعته من الإدارة قريباً.');
+      toast('تم إرسال الطلب. سيتم مراجعته من الإدارة قريباً.');
       setFeatNotes('');
       setSubNotes('');
       setFeatFile(null);
@@ -652,7 +653,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       }
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'تعذر إرسال الطلب';
-      alert(msg);
+      toast(msg);
     } finally {
       setPaySubmitting(false);
     }
@@ -664,19 +665,19 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     if (newStatus === 'completed' && booking?.deliveryRequested) {
       const ds = String(booking.deliveryStatus || '');
       if (ds !== 'delivered') {
-        alert('أكمل تسليم التوصيل للزبون قبل إكمال الإيجار.');
+        toast('أكمل تسليم التوصيل للزبون قبل إكمال الإيجار.');
         return;
       }
     }
     if (newStatus === 'completed') {
       if (!booking?.returnRequested || String(booking.returnStatus || '') !== 'delivered') {
-        alert('اطلب استرجاع المعدة وأكمل الاسترجاع (أو سجّل استرجعت بنفسي) قبل إكمال الإيجار.');
+        toast('اطلب استرجاع المعدة وأكمل الاسترجاع (أو سجّل استرجعت بنفسي) قبل إكمال الإيجار.');
         return;
       }
     }
     if (newStatus === 'confirmed' && booking && !booking.isCod) {
       if (!booking.paymentProof) {
-        alert('لا يمكن الموافقة قبل وجود صورة إثبات التحويل من الزبون.');
+        toast('لا يمكن الموافقة قبل وجود صورة إثبات التحويل من الزبون.');
         return;
       }
       const ok = confirm('هل راجعت صورة إثبات التحويل وتأكدت من وصول المبلغ؟');
@@ -695,7 +696,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       setBookings((prev) => prev.map((b) => (b.id === id ? { ...b, status: newStatus } : b)));
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تحديث حالة الحجز');
+      toast(e instanceof ApiError ? e.message : 'تعذر تحديث حالة الحجز');
     }
   };
 
@@ -716,25 +717,25 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
   const addEquipment = async () => {
     if (!guardSub('إضافة/تعديل المعدات')) return;
     if (!ownerId) {
-      alert('تعذر تحديد هوية المالك. يرجى تسجيل الدخول مرة أخرى.');
+      toast('تعذر تحديد هوية المالك. يرجى تسجيل الدخول مرة أخرى.');
       return;
     }
     if (!newEquipment.title || !newEquipment.category || !newEquipment.price) {
-      alert('يرجى ملء جميع الحقول المطلوبة: الاسم، التصنيف، والسعر.');
+      toast('يرجى ملء جميع الحقول المطلوبة: الاسم، التصنيف، والسعر.');
       return;
     }
     if (!newEquipment.governorate.trim()) {
-      alert('يرجى اختيار المحافظة التي تتوفر فيها المعدة.');
+      toast('يرجى اختيار المحافظة التي تتوفر فيها المعدة.');
       return;
     }
     const price = parseInt(newEquipment.price, 10);
     if (Number.isNaN(price)) {
-      alert('السعر يجب أن يكون رقماً صحيحاً.');
+      toast('السعر يجب أن يكون رقماً صحيحاً.');
       return;
     }
     const quantity = Math.max(1, Math.min(100000, Math.floor(Number(newEquipment.quantity) || 1)));
     if (!Number.isFinite(quantity) || quantity < 1) {
-      alert('كمية المخزون يجب أن تكون 1 على الأقل.');
+      toast('كمية المخزون يجب أن تكون 1 على الأقل.');
       return;
     }
 
@@ -743,7 +744,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       newEquipment.extraImageFiles.length > 0 ||
       newEquipment.existingImages.length > 0;
     if (!editingEquipmentId && !hasAnyImage) {
-      alert('أرفق صورة حقيقية للمعدة قبل الحفظ.');
+      toast('أرفق صورة حقيقية للمعدة قبل الحفظ.');
       return;
     }
 
@@ -757,12 +758,12 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
     }
     const uniqueImages = Array.from(new Set(images.filter(Boolean))).slice(0, 5);
     if (!uniqueImages.length) {
-      alert('الصورة مطلوبة.');
+      toast('الصورة مطلوبة.');
       return;
     }
 
     if (!newEquipment.pickupPin) {
-      alert('حدد موقع الاستلام على الخريطة — يحتاجه الزبون عند الاستلام الذاتي.');
+      toast('حدد موقع الاستلام على الخريطة — يحتاجه الزبون عند الاستلام الذاتي.');
       return;
     }
 
@@ -815,7 +816,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       setEditingEquipmentId(null);
       await loadData();
     } catch {
-      alert(editingEquipmentId ? 'تعذر تحديث المعدة' : 'تعذر حفظ المعدة');
+      toast(editingEquipmentId ? 'تعذر تحديث المعدة' : 'تعذر حفظ المعدة');
     }
   };
 
@@ -850,7 +851,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadData();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تحديث الحالة');
+      toast(e instanceof ApiError ? e.message : 'تعذر تحديث الحالة');
     }
   };
 
@@ -870,9 +871,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         name: String(prof.name || ''),
         phone: String(prof.phone || ''),
       });
-      alert('تم حفظ الملف الشخصي');
+      toast('تم حفظ الملف الشخصي');
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
+      toast(e instanceof ApiError ? e.message : 'تعذر الحفظ');
     } finally {
       setProfileSaving(false);
     }
@@ -880,7 +881,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
 
   const changePartnerPassword = async () => {
     if (passwordForm.next.length < 8) {
-      alert('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+      toast('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
       return;
     }
     setPasswordSaving(true);
@@ -893,9 +894,9 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
         }),
       });
       setPasswordForm({ current: '', next: '' });
-      alert('تم تحديث كلمة المرور');
+      toast('تم تحديث كلمة المرور');
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تحديث كلمة المرور');
+      toast(e instanceof ApiError ? e.message : 'تعذر تحديث كلمة المرور');
     } finally {
       setPasswordSaving(false);
     }
@@ -914,7 +915,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
       });
       await loadData();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر حذف المعدة');
+      toast(e instanceof ApiError ? e.message : 'تعذر حذف المعدة');
     }
   };
 
@@ -1364,7 +1365,7 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                                     });
                                     await loadData();
                                   } catch (e) {
-                                    alert(e instanceof ApiError ? e.message : 'تعذر رفض الإثبات');
+                                    toast(e instanceof ApiError ? e.message : 'تعذر رفض الإثبات');
                                   }
                                 }}
                                 className="mt-2 text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200"
@@ -1636,8 +1637,8 @@ export default function PartnerDashboard({ ownerId, onBack }: { ownerId?: string
                     onClick={() => {
                       const text = `مندوب: ${createdCreds.name}\nالبريد: ${createdCreds.email}\nكلمة المرور: ${createdCreds.password}\nادخل عبر تطبيق إيجار`;
                       navigator.clipboard?.writeText(text).then(
-                        () => alert('تم نسخ بيانات الدخول'),
-                        () => alert(text)
+                        () => toast('تم نسخ بيانات الدخول'),
+                        () => toast(text)
                       );
                     }}
                   >

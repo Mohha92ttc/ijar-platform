@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Package, EyeOff, Eye, RefreshCw } from 'lucide-react';
 import { apiJson, ApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 
 type AdminEquipment = {
   id: string;
@@ -53,7 +54,7 @@ export default function AdminEquipmentPanel() {
       });
       await load();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر التحديث');
+      toast(e instanceof ApiError ? e.message : 'تعذر التحديث');
     }
   };
 

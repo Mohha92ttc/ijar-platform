@@ -33,6 +33,8 @@ import { loadCart, saveCart, clearCartStorage, switchCartUser, type CartLine, ty
 import { IRAQ_GOVERNORATES, GOVERNORATE_AREAS, formatEquipmentLocation, parseLocationHint } from './lib/iraqLocations';
 import InstallAppButtons from './components/InstallAppButtons';
 import { iraqWaDigits } from './lib/phone';
+import { toast } from './lib/toast';
+import { getLang, t, type Lang } from './lib/i18n';
 
 type EquipmentRow = {
   id: string;
@@ -142,10 +144,20 @@ export default function App() {
       reason?: string;
     }[]
   >([]);
+  const [lang, setLangState] = useState<Lang>(() => getLang());
 
   const menuRef = useRef<HTMLDivElement>(null);
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
   const cartReadyRef = useRef(false);
+
+  useEffect(() => {
+    const onLang = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      setLangState(detail === 'en' ? 'en' : 'ar');
+    };
+    window.addEventListener('ijar-lang', onLang);
+    return () => window.removeEventListener('ijar-lang', onLang);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -176,14 +188,30 @@ export default function App() {
       if (cancelled) return;
       if (me) {
         setUser(me);
-        setCart(loadCart(me.id));
-        prevUserIdRef.current = me.id;
-        if (me.role === 'courier') setView('courier');
+        let local = loadCart(me.id);
         if (me.role === 'customer') {
+          try {
+            const remote = await apiJson<{ items?: CartLine[] }>('/api/cart');
+            const remoteItems = Array.isArray(remote?.items) ? remote.items : [];
+            // Merge: remote wins on id+startDate; keep local-only lines
+            const keyOf = (x: CartLine) => `${x.id}:${x.startDate || ''}`;
+            const map = new Map<string, CartLine>();
+            for (const x of remoteItems) map.set(keyOf(x), x);
+            for (const x of local) {
+              if (!map.has(keyOf(x))) map.set(keyOf(x), x);
+            }
+            local = Array.from(map.values());
+            saveCart(local, me.id);
+          } catch {
+            // offline / guest fallback — keep localStorage
+          }
           apiJson<string[]>('/api/favorites/ids')
             .then((ids) => setFavoriteIds(new Set(ids)))
             .catch(() => setFavoriteIds(new Set()));
         }
+        if (!cancelled) setCart(local);
+        prevUserIdRef.current = me.id;
+        if (me.role === 'courier') setView('courier');
       } else {
         setUser(null);
         setCart(loadCart(null));
@@ -214,6 +242,21 @@ export default function App() {
     saveCart(cart, user?.id ?? null);
   }, [cart, user?.id]);
 
+  // Debounced server cart sync for logged-in customers
+  useEffect(() => {
+    if (!cartReadyRef.current) return;
+    if (!user?.id || user?.role !== 'customer') return;
+    const t = window.setTimeout(() => {
+      apiJson('/api/cart', {
+        method: 'PUT',
+        body: JSON.stringify({ items: cart }),
+      }).catch(() => {
+        // keep localStorage fallback
+      });
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [cart, user?.id, user?.role]);
+
   useEffect(() => {
     if (!cartReadyRef.current) return;
     const nextId = user?.id ?? null;
@@ -223,10 +266,31 @@ export default function App() {
       return;
     }
     if (prev !== nextId) {
-      setCart(switchCartUser(prev, nextId));
+      const mergedLocal = switchCartUser(prev, nextId);
       prevUserIdRef.current = nextId;
+      if (nextId && user?.role === 'customer') {
+        (async () => {
+          try {
+            const remote = await apiJson<{ items?: CartLine[] }>('/api/cart');
+            const remoteItems = Array.isArray(remote?.items) ? remote.items : [];
+            const keyOf = (x: CartLine) => `${x.id}:${x.startDate || ''}`;
+            const map = new Map<string, CartLine>();
+            for (const x of remoteItems) map.set(keyOf(x), x);
+            for (const x of mergedLocal) {
+              if (!map.has(keyOf(x))) map.set(keyOf(x), x);
+            }
+            const merged = Array.from(map.values());
+            saveCart(merged, nextId);
+            setCart(merged);
+          } catch {
+            setCart(mergedLocal);
+          }
+        })();
+      } else {
+        setCart(mergedLocal);
+      }
     }
-  }, [user?.id]);
+  }, [user?.id, user?.role]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -508,7 +572,7 @@ export default function App() {
   const toggleFavorite = async (equipmentId: string, e: ReactMouseEvent) => {
     e.stopPropagation();
     if (!user?.id || user.role !== 'customer') {
-      alert('سجّل دخولك كزبون لإضافة المفضلة');
+      toast('سجّل دخولك كزبون لإضافة المفضلة');
       setView('auth');
       return;
     }
@@ -526,7 +590,7 @@ export default function App() {
         setFavoriteIds((prev) => new Set(prev).add(equipmentId));
       }
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'تعذر تحديث المفضلة');
+      toast(err instanceof ApiError ? err.message : 'تعذر تحديث المفضلة');
     }
   };
 
@@ -572,7 +636,7 @@ export default function App() {
     const onExpired = () => {
       setUser(null);
       setView('auth');
-      alert('انتهت الجلسة. سجّل الدخول من جديد.');
+      toast('انتهت الجلسة. سجّل الدخول من جديد.');
     };
     window.addEventListener('ijar:session-expired', onExpired);
     return () => window.removeEventListener('ijar:session-expired', onExpired);
@@ -631,7 +695,7 @@ export default function App() {
         (x) => x.owner_id && equipment.owner_id && x.owner_id !== equipment.owner_id
       );
       if (otherOwners.length > 0) {
-        alert(
+        toast(
           'السلة تقبل معدات من شريك واحد فقط في كل عملية دفع. أفرغ السلة أو أكمل الطلب الحالي أولاً.'
         );
         return prev;
@@ -646,7 +710,7 @@ export default function App() {
         return startMs < xe && endMs > xs;
       });
       if (overlappingSame.length >= stock) {
-        alert(
+        toast(
           stock <= 1
             ? 'هذه المعدة موجودة في السلة بتواريخ متداخلة. عدّل التواريخ أو احذف السطر السابق.'
             : `الكمية المتاحة لهذه المعدة ${stock} — السلة فيها حجوزات متداخلة بعدد المخزون.`
@@ -685,7 +749,7 @@ export default function App() {
     discount_code?: string;
   }) => {
     if (!user?.id) {
-      alert('يرجى تسجيل الدخول لإتمام الحجز');
+      toast('يرجى تسجيل الدخول لإتمام الحجز');
       try {
         sessionStorage.setItem('ijar_resume_checkout', '1');
       } catch {
@@ -695,7 +759,7 @@ export default function App() {
       return;
     }
     if (user.role !== 'customer') {
-      alert('الحجز يتم بحساب زبون فقط. سجّل دخولك كزبون (مو أدمن/شريك).');
+      toast('الحجز يتم بحساب زبون فقط. سجّل دخولك كزبون (مو أدمن/شريك).');
       setView('auth');
       return;
     }
@@ -704,7 +768,7 @@ export default function App() {
     const isStripe = payMethod === 'stripe';
     if (needsProof && (!formData.proofImage || formData.proofImage.length < 20)) {
       setCheckoutError('يرجى إرفاق صورة إثبات التحويل');
-      alert('يرجى إرفاق صورة إثبات التحويل');
+      toast('يرجى إرفاق صورة إثبات التحويل');
       return;
     }
     const ownerIds = [...new Set(cart.map((i) => String(i.owner_id || '')).filter(Boolean))];
@@ -712,13 +776,13 @@ export default function App() {
       const msg =
         'السلة فيها معدات من أكثر من شريك. أتمّ الحجوزات شريكاً شريكاً (أفرغ السلة واحجز لكل شريك على حدة) لأن إثبات التحويل يُرسل لحساب واحد.';
       setCheckoutError(msg);
-      alert(msg);
+      toast(msg);
       return;
     }
     const anyDelivery = cart.some((i) => i.wantsDelivery);
     if (anyDelivery && (formData.deliveryLat == null || formData.deliveryLng == null)) {
       setCheckoutError('حدد موقع التوصيل على الخريطة');
-      alert('حدد موقع التوصيل على الخريطة');
+      toast('حدد موقع التوصيل على الخريطة');
       return;
     }
     setCheckoutError(null);
@@ -826,12 +890,12 @@ export default function App() {
             done += 1;
             setCart((prev) => prev.filter((x) => !(x.id === item.id && x.startDate === item.startDate)));
             clearCart();
-            alert('تم إنشاء جلسة الدفع. أكمل الدفع عبر Stripe من الرابط المرسل أو أعد المحاولة.');
+            toast('تم إنشاء جلسة الدفع. أكمل الدفع عبر Stripe من الرابط المرسل أو أعد المحاولة.');
             setView('customer');
             return;
           }
           if (isStripe && !checkoutUrl) {
-            alert('تم تسجيل الحجز. رابط الدفع غير متوفر — راجع حجوزاتك أو تواصل مع الدعم.');
+            toast('تم تسجيل الحجز. رابط الدفع غير متوفر — راجع حجوزاتك أو تواصل مع الدعم.');
           }
         } catch (payErr) {
           try {
@@ -864,7 +928,7 @@ export default function App() {
         // ignore
       }
       setView('customer');
-      alert(
+      toast(
         needsProof
           ? 'تم إرسال حجوزاتك مع إثبات الدفع. بانتظار مراجعة الشريك وموافقته.'
           : isStripe
@@ -878,7 +942,7 @@ export default function App() {
           ? ` تم إرسال ${done} طلب بنجاح قبل الخطأ — الباقي ما زال في السلة.`
           : '';
       setCheckoutError(msg + partial);
-      alert(msg + partial);
+      toast(msg + partial);
       if (err instanceof ApiError && err.status === 401) {
         setUser(null);
         setView('auth');
@@ -925,7 +989,7 @@ export default function App() {
             const e = await apiJson<Record<string, unknown>>(`/api/equipment/${equipmentId}`);
             await openBooking(mapApiEquipment(e));
           } catch {
-            alert('المعدة غير متاحة أو أُزيلت من السوق');
+            toast('المعدة غير متاحة أو أُزيلت من السوق');
           }
         }}
       />
@@ -941,7 +1005,7 @@ export default function App() {
         <div className="bg-emerald-50 border-b border-emerald-200 text-emerald-900 text-sm px-4 py-3 text-center" data-testid="email-verify-banner">
           {verifyBanner}{' '}
           <button type="button" className="font-bold underline" onClick={() => setVerifyBanner(null)}>
-            إغلاق
+            {t('nav.close', lang)}
           </button>
         </div>
       )}
@@ -962,11 +1026,11 @@ export default function App() {
               className={`p-2 rounded-full transition-colors relative shrink-0 ${
                 cart.length > 0 ? 'text-blue-600 hover:bg-blue-50' : 'text-slate-400 hover:bg-slate-100'
               }`}
-              title="السلة"
+              title={t('nav.cart', lang)}
             >
               <ShoppingCart size={22} />
               {cart.length > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+                <span className="absolute -top-0.5 -end-0.5 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
                   {cart.length}
                 </span>
               )}
@@ -979,7 +1043,7 @@ export default function App() {
                   {unreadNotifs > 0 && (
                     <span
                       data-testid="header-notif-badge"
-                      className="absolute -top-0.5 -right-0.5 min-w-[1.15rem] h-5 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white"
+                      className="absolute -top-0.5 -end-0.5 min-w-[1.15rem] h-5 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white"
                     >
                       {unreadNotifs > 99 ? '99+' : unreadNotifs}
                     </span>
@@ -992,34 +1056,34 @@ export default function App() {
                   </button>
 
                   {showUserMenu && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute left-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50">
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute end-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-2 z-50">
                       {user.role === 'customer' && (
-                        <button type="button" onClick={() => { setView('customer'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-right text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                        <button type="button" onClick={() => { setView('customer'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                           <User size={16} />
-                          لوحة التحكم
+                          {t('nav.dashboard', lang)}
                         </button>
                       )}
                       {user.role === 'owner' && (
-                        <button type="button" onClick={() => { setView('partner'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-right text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                        <button type="button" onClick={() => { setView('partner'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                           <Briefcase size={16} />
-                          لوحة التحكم
+                          {t('nav.dashboard', lang)}
                         </button>
                       )}
                       {user.role === 'courier' && (
-                        <button type="button" data-testid="nav-courier-dashboard" onClick={() => { setView('courier'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-right text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                        <button type="button" data-testid="nav-courier-dashboard" onClick={() => { setView('courier'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                           <Briefcase size={16} />
-                          لوحة المندوب
+                          {t('nav.courierDashboard', lang)}
                         </button>
                       )}
                       {user.role === 'admin' && (
-                        <button type="button" onClick={() => { setView('admin'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-right text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                        <button type="button" onClick={() => { setView('admin'); setShowUserMenu(false); }} className="w-full px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                           <LayoutDashboard size={16} />
-                          لوحة التحكم
+                          {t('nav.dashboard', lang)}
                         </button>
                       )}
-                      <button type="button" onClick={handleLogout} className="w-full px-4 py-2 text-right text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
+                      <button type="button" onClick={handleLogout} className="w-full px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2">
                         <LogOut size={16} />
-                        تسجيل الخروج
+                        {t('nav.logout', lang)}
                       </button>
                     </motion.div>
                   )}
@@ -1036,8 +1100,8 @@ export default function App() {
                 }}
                 className="bg-blue-600 text-white px-3 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold hover:bg-blue-700 transition-all whitespace-nowrap"
               >
-                <span className="sm:hidden">دخول</span>
-                <span className="hidden sm:inline">دخول / تسجيل</span>
+                <span className="sm:hidden">{t('nav.login', lang)}</span>
+                <span className="hidden sm:inline">{t('nav.loginRegister', lang)}</span>
               </button>
             )}
           </div>
@@ -1046,15 +1110,15 @@ export default function App() {
         {/* صف البحث — بعرض كامل على الموبايل */}
         <div className="max-w-7xl mx-auto px-3 sm:px-4 pb-3">
           <div className="relative">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <Search className={`absolute ${lang === 'en' ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 text-slate-400`} size={18} />
             <input
               type="search"
               enterKeyHint="search"
               data-testid="home-search"
               value={searchQ}
               onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="ابحث عن معدات أو اسم شريك…"
-              className="w-full bg-slate-100 border-none rounded-xl py-3 pr-10 pl-4 text-sm focus:ring-2 focus:ring-blue-500 transition-all"
+              placeholder={t('nav.searchPlaceholder', lang)}
+              className={`w-full bg-slate-100 border-none rounded-xl py-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all ${lang === 'en' ? 'pl-10 pr-4' : 'pr-10 pl-4'}`}
             />
           </div>
         </div>

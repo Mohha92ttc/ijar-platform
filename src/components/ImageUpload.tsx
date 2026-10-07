@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, Image as ImageIcon } from 'lucide-react';
+import { toast } from '../lib/toast';
 
 interface ImageUploadProps {
   onImageSelect: (file: File | null) => void;
@@ -47,7 +48,7 @@ export default function ImageUpload({ onImageSelect, currentImage, className = '
       };
       reader.readAsDataURL(file);
     } else {
-      alert('الرجاء اختيار ملف صورة صالح');
+      toast('الرجاء اختيار ملف صورة صالح');
     }
   };
 

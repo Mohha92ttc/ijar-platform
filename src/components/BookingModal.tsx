@@ -4,6 +4,7 @@ import { Calendar, MapPin, ShieldCheck, CreditCard, Info, X, Truck, Banknote, St
 import type { CartPaymentMethod } from '../lib/cartStorage';
 import { paymentMethodLabel } from '../lib/cartStorage';
 import { apiJson } from '../lib/api';
+import { toast } from '../lib/toast';
 
 type ConfirmPayload = {
   dates: { start: string; end: string };
@@ -254,7 +255,7 @@ export default function BookingModal({
                       const url = `${window.location.origin}${window.location.pathname}?equipment=${encodeURIComponent(equipment.id)}`;
                       try {
                         await navigator.clipboard.writeText(url);
-                        alert('تم نسخ رابط المعدة');
+                        toast('تم نسخ رابط المعدة');
                       } catch {
                         prompt('انسخ الرابط:', url);
                       }

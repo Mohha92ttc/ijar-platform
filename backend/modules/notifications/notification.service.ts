@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { query } from '../../database/connection';
 import { Notification, CreateNotificationDTO, NotificationType } from './notification.types';
 import { mailService } from '../../services/mail.service';
+import { smsService } from '../../services/sms.service';
 import { getRealtimeService } from '../../services/realtime';
 
 /** Map app notification types to DB enum notification_type */
@@ -24,6 +25,25 @@ function toDbType(type: NotificationType | string): string {
     default:
       return 'system';
   }
+}
+
+/** Important types that may also trigger SMS when user opted in */
+function isSmsWorthy(type: NotificationType | string): boolean {
+  const t = String(type);
+  return (
+    t === 'payment' ||
+    t === 'payment_received' ||
+    t === 'booking' ||
+    t === 'booking_confirmed' ||
+    t === 'booking_cancelled'
+  );
+}
+
+function shortArabicSms(title: string, message: string): string {
+  const t = String(title || '').trim();
+  const m = String(message || '').trim();
+  const combined = t && m ? `${t}: ${m}` : t || m;
+  return combined.slice(0, 160);
 }
 
 function rowToNotification(row: Record<string, unknown>): Notification {
@@ -74,6 +94,10 @@ export class NotificationService {
     }
 
     await this.sendEmail(data.user_id, data.title, data.message);
+    // Non-blocking SMS for payment / booking status when user opted in
+    if (isSmsWorthy(data.type)) {
+      void this.sendSms(data.user_id, data.title, data.message).catch(() => {});
+    }
     return notification;
   }
 
@@ -111,6 +135,28 @@ export class NotificationService {
       });
     } catch (err) {
       console.warn('[notif email]', err instanceof Error ? err.message : err);
+    }
+  }
+
+  private async sendSms(userId: string, title: string, message: string): Promise<void> {
+    try {
+      const pref = await query(
+        `SELECT sms_notifications FROM user_preferences WHERE user_id = $1 LIMIT 1`,
+        [userId]
+      );
+      // Default true when no prefs row; skip only when explicitly false
+      if (pref.rows[0] && pref.rows[0].sms_notifications === false) {
+        return;
+      }
+      const u = await query(`SELECT phone FROM users WHERE id = $1 LIMIT 1`, [userId]);
+      const phone = u.rows[0]?.phone;
+      if (!phone) return;
+      await smsService.send({
+        to: String(phone),
+        body: shortArabicSms(title, message),
+      });
+    } catch (err) {
+      console.warn('[notif sms]', err instanceof Error ? err.message : err);
     }
   }
 

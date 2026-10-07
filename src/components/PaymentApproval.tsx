@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle, XCircle, AlertCircle, Eye, Download, MessageCircle, Clock, DollarSign, CreditCard, Banknote, Smartphone } from 'lucide-react';
 import { Payment } from '../types';
 import { apiJson, ApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 
 type Props = { filterType?: string | string[] };
 
@@ -122,11 +123,11 @@ export default function PaymentApproval({ filterType }: Props) {
         method: 'POST',
         body: JSON.stringify({ approve: true })
       });
-      alert('تم الموافقة على الدفعة بنجاح');
+      toast('تم الموافقة على الدفعة بنجاح');
       fetchData();
       setSelectedRequest(null);
     } catch (err) {
-      alert('فشل الموافقة على الدفعة');
+      toast('فشل الموافقة على الدفعة');
     }
   };
 
@@ -137,13 +138,13 @@ export default function PaymentApproval({ filterType }: Props) {
           method: 'POST',
           body: JSON.stringify({ approve: false, notes: rejectionReason.trim() })
         });
-        alert('تم رفض الدفعة');
+        toast('تم رفض الدفعة');
         fetchData();
         setSelectedRequest(null);
         setShowRejectModal(false);
         setRejectionReason('');
       } catch (err) {
-        alert('فشل معالجة الرفض');
+        toast('فشل معالجة الرفض');
       }
     }
   };

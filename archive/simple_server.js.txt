@@ -1,0 +1,2 @@
+// archived — use server.ts
+// Former mock Express server (simple_server.js) kept for history only.

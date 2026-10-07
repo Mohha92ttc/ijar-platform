@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { toast } from '../lib/toast';
 
 // Fix default marker icons under Vite bundling
 import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
@@ -90,7 +91,7 @@ export default function MapPicker({
 
   const useMyLocation = () => {
     if (!navigator.geolocation) {
-      alert('المتصفح لا يدعم تحديد الموقع');
+      toast('المتصفح لا يدعم تحديد الموقع');
       return;
     }
     navigator.geolocation.getCurrentPosition(
@@ -102,7 +103,7 @@ export default function MapPicker({
           mapRef.current.setView([pin.lat, pin.lng], 15);
         }
       },
-      () => alert('تعذر الحصول على موقعك — حرّك الدبوس يدوياً'),
+      () => toast('تعذر الحصول على موقعك — حرّك الدبوس يدوياً'),
       { enableHighAccuracy: true, timeout: 12000 }
     );
   };

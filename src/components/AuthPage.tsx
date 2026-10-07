@@ -4,6 +4,8 @@ import { User, Mail, Phone, Lock, ArrowRight, Briefcase, ShieldCheck } from 'luc
 import { apiJson, setSession, ApiError, apiLogout, clearSession } from '../lib/api';
 
 import { UserRole } from '../types';
+import { toast } from '../lib/toast';
+import { getLang, t } from '../lib/i18n';
 
 export default function AuthPage({
   onLogin,
@@ -175,7 +177,7 @@ export default function AuthPage({
           completionToken,
         }),
       });
-      alert('تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
+      toast(t('auth.passwordUpdated'), 'success');
       setForgotMode(false);
       setForgotStatus('idle');
       setNewForgotPassword('');
@@ -207,7 +209,7 @@ export default function AuthPage({
           newPassword: newForgotPassword,
         }),
       });
-      alert('تم تحديث كلمة المرور بنجاح. يمكنك تسجيل الدخول الآن.');
+      toast(t('auth.passwordUpdated'), 'success');
       setForgotMode(false);
       setForgotStatus('idle');
       setForgotChannel('admin');
@@ -235,7 +237,7 @@ export default function AuthPage({
           </div>
 
           <h2 className="text-2xl font-bold text-center mb-2">
-            {isLogin ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}
+            {isLogin ? t('auth.loginTitle') : t('auth.registerTitle')}
           </h2>
           {infoMessage && (
             <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-4 text-center" data-testid="auth-info">
@@ -382,8 +384,12 @@ export default function AuthPage({
               disabled={loading}
               className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              {loading ? 'جاري المعالجة...' : isLogin ? 'دخول' : 'إنشاء الحساب'}
-              <ArrowRight size={18} className="rotate-180" />
+              {loading
+                ? t('auth.processing')
+                : isLogin
+                  ? t('auth.submitLogin')
+                  : t('auth.submitRegister')}
+              <ArrowRight size={18} className={getLang() === 'en' ? '' : 'rotate-180'} />
             </button>
           </form>
           ) : (
@@ -516,7 +522,7 @@ export default function AuthPage({
                 }}
                 className="text-sm text-amber-600 hover:text-amber-700 font-medium mb-3 block w-full"
               >
-                {forgotMode ? 'العودة لتسجيل الدخول' : 'نسيت كلمة المرور؟'}
+                {forgotMode ? t('auth.backToLogin') : t('auth.forgotPassword')}
               </button>
             )}
             <button
@@ -525,7 +531,7 @@ export default function AuthPage({
               onClick={() => setIsLogin(!isLogin)}
               className="text-sm text-slate-500 hover:text-blue-600 font-medium"
             >
-              {isLogin ? 'ليس لديك حساب؟ سجل الآن' : 'لديك حساب بالفعل؟ سجل دخولك'}
+              {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}
             </button>
           </div>
         </div>

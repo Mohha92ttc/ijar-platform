@@ -4,12 +4,13 @@ import { authenticateToken, requireRole } from '../auth/auth.middleware';
 
 const router = Router();
 
-// Policies (stubs)
-router.post('/policies', authenticateToken, insuranceController.createPolicy);
+// Policies (real minimal)
+router.post('/policies', authenticateToken, requireRole(['customer', 'admin']), insuranceController.createPolicy);
 router.get('/policies', authenticateToken, insuranceController.getPolicies);
 router.get('/policies/:id', authenticateToken, insuranceController.getPolicy);
 router.put('/policies/:id', authenticateToken, requireRole(['admin']), insuranceController.updatePolicy);
-router.delete('/policies/:id', authenticateToken, requireRole(['admin']), insuranceController.deletePolicy);
+router.post('/policies/:id/cancel', authenticateToken, insuranceController.cancelPolicy);
+router.delete('/policies/:id', authenticateToken, insuranceController.deletePolicy);
 
 // Claims (real)
 router.post('/claims', authenticateToken, requireRole(['customer', 'admin']), insuranceController.createClaim);

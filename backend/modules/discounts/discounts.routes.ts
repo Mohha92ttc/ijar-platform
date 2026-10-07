@@ -32,15 +32,15 @@ router.post(
   discountController.useDiscountCode
 );
 
-// Discount campaigns (stubs — use codes)
+// Discount campaigns (real minimal — public list of active)
 router.post(
   '/campaigns',
   authenticateToken,
   requireRole(['admin']),
   discountController.createDiscountCampaign
 );
-router.get('/campaigns', authenticateToken, discountController.getDiscountCampaigns);
-router.get('/campaigns/:id', authenticateToken, discountController.getDiscountCampaign);
+router.get('/campaigns', discountController.getDiscountCampaigns);
+router.get('/campaigns/:id', discountController.getDiscountCampaign);
 router.put(
   '/campaigns/:id',
   authenticateToken,

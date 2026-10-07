@@ -548,6 +548,55 @@ async function createTables() {
     CREATE INDEX IF NOT EXISTS idx_insurance_claims_booking ON insurance_claims (booking_id);
     CREATE INDEX IF NOT EXISTS idx_insurance_claims_status ON insurance_claims (status);
 
+    -- Insurance policies (optional coverage on confirmed bookings)
+    CREATE TABLE IF NOT EXISTS insurance_policies (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      booking_id UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+      customer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      coverage_amount NUMERIC NOT NULL DEFAULT 0,
+      premium NUMERIC NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'cancelled')),
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (booking_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_insurance_policies_customer ON insurance_policies (customer_id);
+    CREATE INDEX IF NOT EXISTS idx_insurance_policies_booking ON insurance_policies (booking_id);
+    CREATE INDEX IF NOT EXISTS idx_insurance_policies_status ON insurance_policies (status);
+
+    -- Server-side carts (customer)
+    CREATE TABLE IF NOT EXISTS carts (
+      user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      items JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Discount campaigns
+    CREATE TABLE IF NOT EXISTS discount_campaigns (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT,
+      discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+      discount_value NUMERIC NOT NULL,
+      starts_at TIMESTAMPTZ,
+      ends_at TIMESTAMPTZ,
+      is_active BOOLEAN DEFAULT true,
+      discount_code_id UUID REFERENCES discount_codes(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_discount_campaigns_active ON discount_campaigns (is_active);
+
+    -- Optional referral programs (minimal default supported even without rows)
+    CREATE TABLE IF NOT EXISTS referral_programs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      name TEXT NOT NULL,
+      description TEXT,
+      reward_amount NUMERIC NOT NULL DEFAULT 5000,
+      referee_percent NUMERIC NOT NULL DEFAULT 5,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+
     -- Create indexes for better performance
     CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
     CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);

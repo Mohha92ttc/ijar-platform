@@ -5,6 +5,8 @@ import NotificationsPanel from './NotificationsPanel';
 import { googleMapsDirectionsUrl } from './MapPicker';
 import { iraqWaDigits } from '../lib/phone';
 import { canUseWebPush, enableDevicePushNotifications } from '../lib/webPush';
+import { toast } from '../lib/toast';
+import { getLang, setLang as persistLang, t, type Lang } from '../lib/i18n';
 
 type Row = {
   id: string;
@@ -119,7 +121,7 @@ export default function CustomerDashboard({
   const [savingProfile, setSavingProfile] = useState(false);
   const [notifyOn, setNotifyOn] = useState(true);
   const [smsOn, setSmsOn] = useState(true);
-  const [lang, setLang] = useState('ar');
+  const [lang, setLang] = useState<Lang>(() => getLang());
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '' });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [reviewDraft, setReviewDraft] = useState<Record<string, { rating: number; comment: string }>>({});
@@ -164,7 +166,7 @@ export default function CustomerDashboard({
       if (row?.code) setReferralCode(String(row.code));
       else await loadReferralCode();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إنشاء كود الإحالة');
+      toast(e instanceof ApiError ? e.message : 'تعذر إنشاء كود الإحالة');
     } finally {
       setReferralLoading(false);
     }
@@ -177,7 +179,7 @@ export default function CustomerDashboard({
       setReferralCopied(true);
       setTimeout(() => setReferralCopied(false), 2000);
     } catch {
-      alert(referralCode);
+      toast(referralCode);
     }
   };
 
@@ -188,13 +190,22 @@ export default function CustomerDashboard({
       const p = JSON.parse(raw);
       if (typeof p.notifyOn === 'boolean') setNotifyOn(p.notifyOn);
       if (typeof p.smsOn === 'boolean') setSmsOn(p.smsOn);
-      if (p.lang) setLang(String(p.lang));
+      if (p.lang === 'en' || p.lang === 'ar') {
+        setLang(p.lang);
+        persistLang(p.lang);
+      }
     } catch {
       // ignore
     }
   }, [userId]);
 
-  const savePrefs = (next: { notifyOn?: boolean; smsOn?: boolean; lang?: string }) => {
+  useEffect(() => {
+    const stored = getLang();
+    setLang(stored);
+    persistLang(stored);
+  }, []);
+
+  const savePrefs = (next: { notifyOn?: boolean; smsOn?: boolean; lang?: Lang }) => {
     const merged = {
       notifyOn: next.notifyOn ?? notifyOn,
       smsOn: next.smsOn ?? smsOn,
@@ -202,7 +213,10 @@ export default function CustomerDashboard({
     };
     if (next.notifyOn != null) setNotifyOn(next.notifyOn);
     if (next.smsOn != null) setSmsOn(next.smsOn);
-    if (next.lang != null) setLang(next.lang);
+    if (next.lang != null) {
+      setLang(next.lang);
+      persistLang(next.lang);
+    }
     localStorage.setItem(PREFS_KEY(userId), JSON.stringify(merged));
     if ((next.notifyOn != null || next.smsOn != null) && userId) {
       const body: Record<string, boolean> = {};
@@ -353,9 +367,9 @@ export default function CustomerDashboard({
       });
       const prof = await apiJson<any>('/api/auth/me');
       setProfile(prof);
-      alert('تم حفظ الملف الشخصي');
+      toast('تم حفظ الملف الشخصي');
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
+      toast(e instanceof ApiError ? e.message : 'تعذر الحفظ');
     } finally {
       setSavingProfile(false);
     }
@@ -363,7 +377,7 @@ export default function CustomerDashboard({
 
   const changePassword = async () => {
     if (passwordForm.next.length < 8) {
-      alert('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+      toast('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
       return;
     }
     setPasswordSaving(true);
@@ -376,9 +390,9 @@ export default function CustomerDashboard({
         }),
       });
       setPasswordForm({ current: '', next: '' });
-      alert('تم تحديث كلمة المرور');
+      toast('تم تحديث كلمة المرور');
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر تحديث كلمة المرور');
+      toast(e instanceof ApiError ? e.message : 'تعذر تحديث كلمة المرور');
     } finally {
       setPasswordSaving(false);
     }
@@ -389,7 +403,7 @@ export default function CustomerDashboard({
       await apiJson(`/api/favorites/${equipmentId}`, { method: 'DELETE' });
       await loadFavorites();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر الحذف');
+      toast(e instanceof ApiError ? e.message : 'تعذر الحذف');
     }
   };
 
@@ -404,10 +418,10 @@ export default function CustomerDashboard({
           comment: draft.comment || undefined,
         }),
       });
-      alert('شكراً لتقييمك');
+      toast('شكراً لتقييمك');
       setBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, reviewed: true } : b)));
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إرسال التقييم');
+      toast(e instanceof ApiError ? e.message : 'تعذر إرسال التقييم');
     }
   };
 
@@ -424,7 +438,7 @@ export default function CustomerDashboard({
       });
       await loadBookings();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إلغاء الحجز');
+      toast(e instanceof ApiError ? e.message : 'تعذر إلغاء الحجز');
     }
   };
 
@@ -446,7 +460,7 @@ export default function CustomerDashboard({
         terms_text: String(c.terms_text || c.terms || ''),
       });
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر فتح عقد الإيجار');
+      toast(e instanceof ApiError ? e.message : 'تعذر فتح عقد الإيجار');
     } finally {
       setContractBusy(false);
     }
@@ -466,11 +480,35 @@ export default function CustomerDashboard({
         status: String(c.status),
         terms_text: String(c.terms_text || c.terms || contractModal.terms_text),
       });
-      alert('تم توقيع العقد بنجاح');
+      toast('تم توقيع العقد بنجاح');
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر توقيع العقد');
+      toast(e instanceof ApiError ? e.message : 'تعذر توقيع العقد');
     } finally {
       setContractBusy(false);
+    }
+  };
+
+  const [policyBusy, setPolicyBusy] = useState<string | null>(null);
+
+  const addOptionalInsurance = async (bookingId: string) => {
+    if (
+      !window.confirm(
+        'تفعيل تأمين اختياري لهذا الحجز؟ يُحسب القسط تلقائياً (~3% من التغطية).'
+      )
+    ) {
+      return;
+    }
+    setPolicyBusy(bookingId);
+    try {
+      await apiJson('/api/insurance/policies', {
+        method: 'POST',
+        body: JSON.stringify({ bookingId }),
+      });
+      toast('تم تفعيل التأمين الاختياري لهذا الحجز', 'success');
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : 'تعذر تفعيل التأمين', 'error');
+    } finally {
+      setPolicyBusy(null);
     }
   };
 
@@ -478,14 +516,14 @@ export default function CustomerDashboard({
     const description = window.prompt('صف الضرر أو سبب مطالبة التأمين:');
     if (description == null) return;
     if (!description.trim()) {
-      alert('الوصف مطلوب');
+      toast('الوصف مطلوب');
       return;
     }
     const amountRaw = window.prompt('المبلغ التقديري (د.ع):', '0');
     if (amountRaw == null) return;
     const amount = Number(amountRaw);
     if (!Number.isFinite(amount) || amount < 0) {
-      alert('مبلغ غير صالح');
+      toast('مبلغ غير صالح');
       return;
     }
     setClaimBusy(bookingId);
@@ -498,9 +536,9 @@ export default function CustomerDashboard({
           amount,
         }),
       });
-      alert('تم إرسال مطالبة التأمين — ستراجعها الإدارة');
+      toast('تم إرسال مطالبة التأمين — ستراجعها الإدارة');
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إرسال المطالبة');
+      toast(e instanceof ApiError ? e.message : 'تعذر إرسال المطالبة');
     } finally {
       setClaimBusy(null);
     }
@@ -528,10 +566,10 @@ export default function CustomerDashboard({
           notes: 'تحديث/استبدال إثبات الدفع',
         }),
       });
-      alert('تم إرسال إثبات الدفع للمراجعة');
+      toast('تم إرسال إثبات الدفع للمراجعة');
       await loadBookings();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر إرسال الإثبات');
+      toast(e instanceof ApiError ? e.message : 'تعذر إرسال الإثبات');
     } finally {
       setRepayBusy(null);
     }
@@ -568,10 +606,10 @@ export default function CustomerDashboard({
   };
 
   const navItems = [
-    { id: 'rentals', label: 'حجوزاتي', icon: Calendar, testId: 'customer-nav-rentals' },
-    { id: 'favorites', label: 'مفضلة', icon: Star, testId: 'customer-nav-favorites' },
-    { id: 'profile', label: 'حسابي', icon: User, testId: 'customer-nav-profile' },
-    { id: 'settings', label: 'إعدادات', icon: Settings, testId: 'customer-nav-settings' },
+    { id: 'rentals', label: t('dash.bookings', lang), icon: Calendar, testId: 'customer-nav-rentals' },
+    { id: 'favorites', label: t('dash.favorites', lang), icon: Star, testId: 'customer-nav-favorites' },
+    { id: 'profile', label: t('dash.profile', lang), icon: User, testId: 'customer-nav-profile' },
+    { id: 'settings', label: t('dash.settings', lang), icon: Settings, testId: 'customer-nav-settings' },
   ] as const;
 
   return (
@@ -601,7 +639,7 @@ export default function CustomerDashboard({
                   activeTab === item.id ? 'bg-blue-600' : 'hover:bg-slate-800 text-slate-400'
                 }`}
               >
-                <Icon size={18} /> {item.label === 'مفضلة' ? 'المفضلة' : item.label === 'حسابي' ? 'الملف الشخصي' : item.label}
+                <Icon size={18} /> {item.label}
               </button>
             );
           })}
@@ -903,6 +941,18 @@ export default function CustomerDashboard({
                       className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 border border-blue-200 px-3 py-1.5 rounded-xl hover:bg-blue-50 disabled:opacity-60"
                     >
                       <FileText size={12} /> عقد الإيجار
+                    </button>
+                  )}
+                  {booking.status === 'confirmed' && (
+                    <button
+                      type="button"
+                      data-testid="customer-optional-insurance"
+                      disabled={policyBusy === booking.id}
+                      onClick={() => addOptionalInsurance(booking.id)}
+                      className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl hover:bg-emerald-50 disabled:opacity-60"
+                    >
+                      <Shield size={12} />
+                      {policyBusy === booking.id ? 'جاري التفعيل…' : 'تأمين اختياري'}
                     </button>
                   )}
                   {booking.status === 'completed' && (
@@ -1213,16 +1263,17 @@ export default function CustomerDashboard({
               )}
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg gap-3">
                 <div>
-                  <div className="font-bold">اللغة</div>
-                  <div className="text-sm text-slate-500">العربية هي اللغة المعتمدة حالياً</div>
+                  <div className="font-bold">{t('lang.label', lang)}</div>
+                  <div className="text-sm text-slate-500">{t('lang.hint', lang)}</div>
                 </div>
                 <select
                   data-testid="customer-settings-lang"
-                  value="ar"
-                  disabled
-                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-100 text-slate-500"
+                  value={lang}
+                  onChange={(e) => savePrefs({ lang: e.target.value === 'en' ? 'en' : 'ar' })}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-800"
                 >
-                  <option value="ar">العربية</option>
+                  <option value="ar">{t('lang.ar', lang)}</option>
+                  <option value="en">{t('lang.en', lang)}</option>
                 </select>
               </div>
               <div className="p-4 bg-slate-50 rounded-lg space-y-3" data-testid="customer-change-password">

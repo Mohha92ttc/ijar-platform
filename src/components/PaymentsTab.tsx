@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { CreditCard, DollarSign, Calendar, CheckCircle, XCircle, Clock, Search, Download, Eye } from 'lucide-react';
 import { Payment } from '../types';
 import { apiJson, ApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 
 export default function PaymentsTab() {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -21,7 +22,7 @@ export default function PaymentsTab() {
       } catch (err) {
         console.error('Failed to fetch payments', err);
         const msg = err instanceof Error ? err.message : 'فشل تحميل المدفوعات';
-        alert(msg);
+        toast(msg);
       } finally {
       setLoading(false);
     }
@@ -42,7 +43,7 @@ export default function PaymentsTab() {
       });
       fetchData();
     } catch (err) {
-      alert('فشل تحديث حالة الدفعة');
+      toast('فشل تحديث حالة الدفعة');
     }
   };
 
@@ -56,7 +57,7 @@ export default function PaymentsTab() {
       fetchData();
       setSelectedPayment(null);
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : 'فشل تأكيد الاسترداد');
+      toast(err instanceof ApiError ? err.message : 'فشل تأكيد الاسترداد');
     }
   };
 

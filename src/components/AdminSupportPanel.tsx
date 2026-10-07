@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Headphones, RefreshCw } from 'lucide-react';
 import { apiJson, ApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 
 type SupportMsg = {
   id: string;
@@ -59,14 +60,14 @@ export default function AdminSupportPanel() {
       });
       await load();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر التحديث');
+      toast(e instanceof ApiError ? e.message : 'تعذر التحديث');
     }
   };
 
   const saveReply = async (id: string) => {
     const reply = String(replyDrafts[id] || '').trim();
     if (reply.length < 2) {
-      alert('اكتب رداً قبل الحفظ');
+      toast('اكتب رداً قبل الحفظ');
       return;
     }
     setSavingId(id);
@@ -81,7 +82,7 @@ export default function AdminSupportPanel() {
       });
       await load();
     } catch (e: unknown) {
-      alert(e instanceof ApiError ? e.message : 'تعذر الحفظ');
+      toast(e instanceof ApiError ? e.message : 'تعذر الحفظ');
     } finally {
       setSavingId(null);
     }

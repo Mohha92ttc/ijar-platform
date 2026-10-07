@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Calendar, XCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 import { apiJson, ApiError } from '../lib/api';
+import { toast } from '../lib/toast';
 
 type AdminBooking = {
   id: string;
@@ -62,7 +63,7 @@ export default function AdminBookingsPanel() {
     if (reason === null) return;
     const trimmed = reason.trim();
     if (!trimmed) {
-      alert('سبب الإلغاء مطلوب');
+      toast('سبب الإلغاء مطلوب');
       return;
     }
     if (!confirm('تأكيد الإلغاء الطارئ؟')) return;
@@ -73,7 +74,7 @@ export default function AdminBookingsPanel() {
       });
       await load();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر الإلغاء');
+      toast(e instanceof ApiError ? e.message : 'تعذر الإلغاء');
     }
   };
 
@@ -85,7 +86,7 @@ export default function AdminBookingsPanel() {
     if (reason === null) return;
     const trimmed = reason.trim();
     if (!trimmed) {
-      alert('سبب الإكمال مطلوب');
+      toast('سبب الإكمال مطلوب');
       return;
     }
     if (!confirm('تأكيد الإكمال القسري؟ سيُحرَّر المعدة من حالة الإيجار.')) return;
@@ -96,7 +97,7 @@ export default function AdminBookingsPanel() {
       });
       await load();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر الإكمال');
+      toast(e instanceof ApiError ? e.message : 'تعذر الإكمال');
     }
   };
 

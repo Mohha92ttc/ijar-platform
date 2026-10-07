@@ -8,6 +8,8 @@ import TransferAccountsPanel from './TransferAccountsPanel';
 import ImageUpload from './ImageUpload';
 import MapPicker, { type MapPin as DeliveryPin } from './MapPicker';
 import { iraqWaDigits } from '../lib/phone';
+import { toast } from '../lib/toast';
+import { t } from '../lib/i18n';
 
 export type CheckoutFormData = {
   phone: string;
@@ -195,21 +197,21 @@ export default function CheckoutPage({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (requireProof && ownersMissingAccounts.length > 0) {
-      alert(
+      toast(
         'الشريك لم يُضف حسابات استلام بعد. اختر «دفع عند التسليم» أو تواصل مع الشريك ليضيف زين كاش / ماستركارد من إعداداته.'
       );
       return;
     }
     if (requireProof && !proofDataUrl) {
-      alert('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
+      toast('يرجى إرفاق صورة إثبات التحويل قبل إرسال الطلب');
       return;
     }
     if (needsDeliveryMap && !deliveryPin) {
-      alert('حدد موقع التوصيل على الخريطة');
+      toast('حدد موقع التوصيل على الخريطة');
       return;
     }
     if (!iraqWaDigits(formData.phone)) {
-      alert('أدخل رقم هاتف عراقي صالح (مثال: 07xx xxx xxxx)');
+      toast('أدخل رقم هاتف عراقي صالح (مثال: 07xx xxx xxxx)');
       return;
     }
     await onComplete({
@@ -285,23 +287,23 @@ export default function CheckoutPage({
         animate={{ opacity: 1, scale: 1 }}
         className="bg-white w-full max-w-4xl rounded-[32px] shadow-2xl relative z-10 overflow-hidden flex flex-col md:flex-row max-h-[90vh]"
       >
-        <div className="flex-1 p-8 overflow-y-auto border-l border-slate-100">
+        <div className="flex-1 p-8 overflow-y-auto border-s border-slate-100">
           <div className="flex justify-between items-center mb-6 gap-3 flex-wrap">
             <h3 className="text-2xl font-bold flex items-center gap-3">
-              <ShoppingBag className="text-blue-600" /> سلة الحجوزات
+              <ShoppingBag className="text-blue-600" /> {t('cart.title')}
             </h3>
             <div className="flex items-center gap-3">
-              <span className="text-sm text-slate-400 font-medium">{cart.length} معدات مختارة</span>
+              <span className="text-sm text-slate-400 font-medium">{cart.length} {t('cart.selectedCount')}</span>
               {cart.length > 0 && (
                 <button
                   type="button"
                   data-testid="checkout-clear-cart"
                   onClick={() => {
-                    if (confirm('تفريغ السلة بالكامل؟')) onClear();
+                    if (confirm(t('cart.clearConfirm'))) onClear();
                   }}
                   className="text-xs font-bold text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-red-100"
                 >
-                  تفريغ السلة
+                  {t('cart.clear')}
                 </button>
               )}
             </div>
@@ -310,14 +312,14 @@ export default function CheckoutPage({
           <div className="space-y-4">
             {cart.length === 0 && (
               <div className="text-center text-slate-500 py-12 space-y-4" data-testid="checkout-empty">
-                <p className="font-bold text-slate-700">السلة فارغة</p>
-                <p className="text-sm">أضف معدات من الصفحة الرئيسية ثم ارجع لإتمام الحجز.</p>
+                <p className="font-bold text-slate-700">{t('cart.emptyTitle')}</p>
+                <p className="text-sm">{t('cart.emptyHint')}</p>
                 <button
                   type="button"
                   onClick={onClose}
                   className="inline-flex items-center gap-2 bg-blue-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-blue-700"
                 >
-                  تصفح المعدات
+                  {t('cart.browse')}
                   <ArrowRight size={16} />
                 </button>
               </div>
@@ -355,7 +357,7 @@ export default function CheckoutPage({
                       </span>
                     )}
                   </div>
-                  <div className="text-sm font-bold text-slate-800 mt-2 text-left">{lineTotal.toLocaleString()} د.ع</div>
+                  <div className="text-sm font-bold text-slate-800 mt-2 text-start">{lineTotal.toLocaleString()} د.ع</div>
                 </div>
               </div>
               );

@@ -227,21 +227,218 @@ export const discountController = {
     }
   },
 
-  // Legacy campaign / loyalty stubs kept for existing routes & e2e soft checks
-  async createDiscountCampaign(_req: Request, res: Response) {
-    res.status(501).json({ error: 'حملات الخصم غير مفعّلة؛ استخدم أكواد الخصم' });
+  async createDiscountCampaign(req: AuthenticatedRequest, res: Response) {
+    try {
+      const body = req.body || {};
+      const name = String(body.name || '').trim();
+      const description = String(body.description || '').trim();
+      const discountType = String(body.discount_type || body.discountType || '')
+        .trim()
+        .toLowerCase();
+      const discountValue = Number(body.discount_value ?? body.discountValue);
+      const startsAt = body.starts_at || body.startDate || null;
+      const endsAt = body.ends_at || body.endDate || null;
+      const autoCode =
+        body.auto_code != null
+          ? Boolean(body.auto_code)
+          : body.create_code !== false;
+
+      if (!name) {
+        return res.status(400).json({ error: 'اسم الحملة مطلوب' });
+      }
+      if (discountType !== 'percentage' && discountType !== 'fixed') {
+        return res
+          .status(400)
+          .json({ error: 'نوع الخصم يجب أن يكون percentage أو fixed' });
+      }
+      if (!Number.isFinite(discountValue) || discountValue <= 0) {
+        return res.status(400).json({ error: 'قيمة الخصم غير صالحة' });
+      }
+      if (discountType === 'percentage' && discountValue > 100) {
+        return res.status(400).json({ error: 'نسبة الخصم لا يمكن أن تتجاوز 100%' });
+      }
+
+      let discountCodeId: string | null = null;
+      let createdCode: Record<string, unknown> | null = null;
+
+      if (autoCode) {
+        const codeRaw = normalizeCode(
+          body.code || `CAMP-${name.replace(/\s+/g, '').slice(0, 8)}${Date.now().toString(36).slice(-4)}`
+        );
+        const codeResult = await query(
+          `
+          INSERT INTO discount_codes (
+            code, discount_type, discount_value, max_uses, min_order,
+            starts_at, ends_at, is_active, created_by
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8)
+          RETURNING *
+          `,
+          [
+            codeRaw.slice(0, 24),
+            discountType,
+            discountValue,
+            body.max_uses != null ? Number(body.max_uses) : null,
+            Number(body.min_order ?? 0) || 0,
+            startsAt,
+            endsAt,
+            req.user?.userId || req.user?.id || null,
+          ]
+        );
+        createdCode = codeResult.rows[0];
+        discountCodeId = String(createdCode.id);
+      }
+
+      const result = await query(
+        `
+        INSERT INTO discount_campaigns (
+          name, description, discount_type, discount_value,
+          starts_at, ends_at, is_active, discount_code_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, true, $7)
+        RETURNING *
+        `,
+        [name, description || null, discountType, discountValue, startsAt, endsAt, discountCodeId]
+      );
+
+      res.status(201).json({
+        ...result.rows[0],
+        discount_code: createdCode,
+      });
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        return res.status(409).json({ error: 'كود الخصم المرتبط بالحملة موجود مسبقاً' });
+      }
+      console.error('createDiscountCampaign', error);
+      res.status(500).json({ error: 'فشل إنشاء حملة الخصم' });
+    }
   },
-  async getDiscountCampaigns(_req: Request, res: Response) {
-    res.json([]);
+
+  async getDiscountCampaigns(req: Request, res: Response) {
+    try {
+      const authReq = req as AuthenticatedRequest;
+      const isAdmin = authReq.user?.role === 'admin';
+      const nowFilter = !isAdmin || String(req.query.active) === '1';
+
+      let sql = `SELECT c.*, dc.code AS promo_code
+        FROM discount_campaigns c
+        LEFT JOIN discount_codes dc ON dc.id = c.discount_code_id
+        WHERE 1=1`;
+      if (nowFilter) {
+        sql += ` AND c.is_active = true
+          AND (c.starts_at IS NULL OR c.starts_at <= NOW())
+          AND (c.ends_at IS NULL OR c.ends_at >= NOW())`;
+      }
+      sql += ` ORDER BY c.created_at DESC LIMIT 100`;
+
+      const result = await query(sql);
+      res.json(result.rows);
+    } catch (error) {
+      console.error('getDiscountCampaigns', error);
+      res.status(500).json({ error: 'فشل جلب الحملات' });
+    }
   },
-  async getDiscountCampaign(_req: Request, res: Response) {
-    res.status(404).json({ error: 'الحملة غير موجودة' });
+
+  async getDiscountCampaign(req: Request, res: Response) {
+    try {
+      const result = await query(
+        `
+        SELECT c.*, dc.code AS promo_code
+        FROM discount_campaigns c
+        LEFT JOIN discount_codes dc ON dc.id = c.discount_code_id
+        WHERE c.id = $1
+        LIMIT 1
+        `,
+        [req.params.id]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'الحملة غير موجودة' });
+      }
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('getDiscountCampaign', error);
+      res.status(500).json({ error: 'فشل جلب الحملة' });
+    }
   },
-  async updateDiscountCampaign(_req: Request, res: Response) {
-    res.status(501).json({ error: 'حملات الخصم غير مفعّلة' });
+
+  async updateDiscountCampaign(req: AuthenticatedRequest, res: Response) {
+    try {
+      const body = req.body || {};
+      const name = body.name != null ? String(body.name).trim() : null;
+      const description =
+        body.description != null ? String(body.description).trim() : null;
+      const discountType =
+        body.discount_type != null || body.discountType != null
+          ? String(body.discount_type || body.discountType)
+              .trim()
+              .toLowerCase()
+          : null;
+      const discountValue =
+        body.discount_value != null || body.discountValue != null
+          ? Number(body.discount_value ?? body.discountValue)
+          : null;
+      const startsAt =
+        body.starts_at !== undefined || body.startDate !== undefined
+          ? body.starts_at ?? body.startDate
+          : undefined;
+      const endsAt =
+        body.ends_at !== undefined || body.endDate !== undefined
+          ? body.ends_at ?? body.endDate
+          : undefined;
+      const isActive = body.is_active != null ? Boolean(body.is_active) : null;
+
+      if (discountType && discountType !== 'percentage' && discountType !== 'fixed') {
+        return res.status(400).json({ error: 'نوع الخصم غير صالح' });
+      }
+
+      const result = await query(
+        `
+        UPDATE discount_campaigns SET
+          name = COALESCE($2, name),
+          description = COALESCE($3, description),
+          discount_type = COALESCE($4, discount_type),
+          discount_value = COALESCE($5, discount_value),
+          starts_at = CASE WHEN $6::boolean THEN $7::timestamptz ELSE starts_at END,
+          ends_at = CASE WHEN $8::boolean THEN $9::timestamptz ELSE ends_at END,
+          is_active = COALESCE($10, is_active)
+        WHERE id = $1
+        RETURNING *
+        `,
+        [
+          req.params.id,
+          name,
+          description,
+          discountType,
+          discountValue,
+          startsAt !== undefined,
+          startsAt ?? null,
+          endsAt !== undefined,
+          endsAt ?? null,
+          isActive,
+        ]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'الحملة غير موجودة' });
+      }
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('updateDiscountCampaign', error);
+      res.status(500).json({ error: 'فشل تحديث الحملة' });
+    }
   },
-  async deleteDiscountCampaign(_req: Request, res: Response) {
-    res.status(501).json({ error: 'حملات الخصم غير مفعّلة' });
+
+  async deleteDiscountCampaign(req: AuthenticatedRequest, res: Response) {
+    try {
+      const result = await query(
+        `UPDATE discount_campaigns SET is_active = false WHERE id = $1 RETURNING *`,
+        [req.params.id]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'الحملة غير موجودة' });
+      }
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('deleteDiscountCampaign', error);
+      res.status(500).json({ error: 'فشل حذف الحملة' });
+    }
   },
   async useDiscountCode(_req: Request, res: Response) {
     res.status(501).json({ error: 'يُطبَّق الخصم تلقائياً عند إنشاء الحجز' });

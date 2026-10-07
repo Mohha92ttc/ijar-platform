@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Settings, User, Mail, Phone, Lock, Save, X, ShieldCheck, Database, Server, CreditCard, KeyRound } from 'lucide-react';
 import { User as UserType } from '../types';
 import { apiJson, ApiError, apiFetch } from '../lib/api';
+import { toast } from '../lib/toast';
 
 type ReadinessCheck = {
   name: string;
@@ -144,10 +145,10 @@ export default function AdminSettings() {
           commission_rate: Number(platformBank.commission_rate),
         }),
       });
-      alert('تم حفظ حسابات التحويل والأسعار.');
+      toast('تم حفظ حسابات التحويل والأسعار.');
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'فشل الحفظ';
-      alert(msg);
+      toast(msg);
     } finally {
       setLoading(false);
     }
@@ -155,7 +156,7 @@ export default function AdminSettings() {
 
   const handleProfileUpdate = async () => {
     if (!credentials.username || !credentials.email) {
-      alert('الاسم والبريد الإلكتروني مطلوبان');
+      toast('الاسم والبريد الإلكتروني مطلوبان');
       return;
     }
     try {
@@ -168,11 +169,11 @@ export default function AdminSettings() {
           phone: credentials.phone
         })
       });
-      alert('تم تحديث معلومات الملف الشخصي بنجاح!');
+      toast('تم تحديث معلومات الملف الشخصي بنجاح!');
       setShowProfileForm(false);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'فشل التحديث';
-      alert(msg);
+      toast(msg);
     } finally {
       setLoading(false);
     }
@@ -180,17 +181,17 @@ export default function AdminSettings() {
 
   const handlePasswordUpdate = async () => {
     if (!credentials.currentPassword || !credentials.newPassword) {
-      alert('يرجى إدخال كلمة المرور الحالية والجديدة');
+      toast('يرجى إدخال كلمة المرور الحالية والجديدة');
       return;
     }
 
     if (credentials.newPassword !== credentials.confirmPassword) {
-      alert('كلمة المرور الجديدة وتأكيد كلمة المرور غير متطابقين');
+      toast('كلمة المرور الجديدة وتأكيد كلمة المرور غير متطابقين');
       return;
     }
 
     if (credentials.newPassword.length < 8) {
-      alert('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
+      toast('كلمة المرور يجب أن تكون 8 أحرف على الأقل');
       return;
     }
 
@@ -203,7 +204,7 @@ export default function AdminSettings() {
           newPassword: credentials.newPassword
         })
       });
-      alert('تم تغيير كلمة المرور بنجاح!');
+      toast('تم تغيير كلمة المرور بنجاح!');
       setCredentials({
         ...credentials,
         currentPassword: '',
@@ -213,7 +214,7 @@ export default function AdminSettings() {
       setShowPasswordForm(false);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'فشل تغيير كلمة المرور';
-      alert(msg);
+      toast(msg);
     } finally {
       setLoading(false);
     }

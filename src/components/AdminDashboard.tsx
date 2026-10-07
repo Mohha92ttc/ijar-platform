@@ -15,6 +15,7 @@ import NotificationsPanel from './NotificationsPanel';
 import AdminBookingsPanel from './AdminBookingsPanel';
 import AdminEquipmentPanel from './AdminEquipmentPanel';
 import AdminSupportPanel from './AdminSupportPanel';
+import { toast } from '../lib/toast';
 
 export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const [partners, setPartners] = useState<any[]>([]);
@@ -138,7 +139,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
     const code = discountForm.code.trim().toUpperCase();
     const value = Number(discountForm.discount_value);
     if (!code || !Number.isFinite(value) || value <= 0) {
-      alert('أدخل كوداً صالحاً وقيمة خصم أكبر من صفر');
+      toast('أدخل كوداً صالحاً وقيمة خصم أكبر من صفر');
       return;
     }
     setDiscountSaving(true);
@@ -155,7 +156,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       setDiscountForm({ code: '', discount_type: 'percentage', discount_value: '', max_uses: '' });
       await loadDiscountCodes();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'فشل إنشاء كود الخصم');
+      toast(e instanceof ApiError ? e.message : 'فشل إنشاء كود الخصم');
     } finally {
       setDiscountSaving(false);
     }
@@ -170,7 +171,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       });
       await loadDiscountCodes();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'فشل تعطيل الكود');
+      toast(e instanceof ApiError ? e.message : 'فشل تعطيل الكود');
     }
   };
 
@@ -202,7 +203,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       await apiJson(`/api/insurance/claims/${id}/${action}`, { method: 'POST', body: JSON.stringify({}) });
       await loadInsuranceClaims();
     } catch (e) {
-      alert(e instanceof ApiError ? e.message : 'تعذر مراجعة المطالبة');
+      toast(e instanceof ApiError ? e.message : 'تعذر مراجعة المطالبة');
     }
   };
 
@@ -303,7 +304,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       await apiJson(`/api/admin/users/${id}/approve`, { method: 'PATCH' });
       fetchData();
     } catch (err) {
-      alert('فشل تحديث حالة الشريك');
+      toast('فشل تحديث حالة الشريك');
     }
   };
 
@@ -313,7 +314,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       await apiJson(`/api/admin/users/${id}/ban`, { method: 'PATCH' });
       fetchData();
     } catch (err) {
-      alert('فشل حظر المستخدم');
+      toast('فشل حظر المستخدم');
     }
   };
 
@@ -323,7 +324,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       await apiJson(`/api/admin/users/${id}/unban`, { method: 'PATCH' });
       fetchData();
     } catch (err) {
-      alert('فشل إلغاء الحظر');
+      toast('فشل إلغاء الحظر');
     }
   };
 
@@ -336,9 +337,9 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           body: JSON.stringify({ months: parseInt(months) })
         });
         fetchData();
-        alert('تم تجديد الاشتراك بنجاح');
+        toast('تم تجديد الاشتراك بنجاح');
       } catch (err) {
-        alert('فشل تجديد الاشتراك');
+        toast('فشل تجديد الاشتراك');
       }
     }
   };
@@ -346,7 +347,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
   const addPartner = async () => {
     if (newPartner.name && newPartner.email && newPartner.password) {
       if (newPartner.password !== newPartner.confirmPassword) {
-        alert('كلمة المرور وتأكيد كلمة المرور غير متطابقين');
+        toast('كلمة المرور وتأكيد كلمة المرور غير متطابقين');
         return;
       }
       
@@ -384,16 +385,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
         setNewPartner({ name: '', email: '', phone: '', password: '', confirmPassword: '', subscriptionMonths: 1 });
         setShowPartnerForm(false);
         await fetchData();
-        alert('تم إضافة الشريك بنجاح!');
+        toast('تم إضافة الشريك بنجاح!');
       } catch (err) {
         const msg = err instanceof ApiError || err instanceof Error ? err.message : 'فشل إضافة الشريك';
         if (/انتهت الجلسة|Invalid token|Unauthorized/i.test(String(msg))) {
           clearSession();
-          alert('انتهت الجلسة. سجّل الدخول من جديد.');
+          toast('انتهت الجلسة. سجّل الدخول من جديد.');
           window.location.href = '/';
           return;
         }
-        alert(msg);
+        toast(msg);
       }
     }
   };
@@ -404,14 +405,14 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       await apiJson(`/api/admin/users/${id}`, { method: 'DELETE' });
       fetchData();
     } catch (err) {
-      alert('فشل حذف الشريك');
+      toast('فشل حذف الشريك');
     }
   };
 
   const addCategory = async () => {
     if (newCategory.name) {
       if (!newCategory.imageFile) {
-        alert('أرفق صورة للتصنيف قبل الحفظ.');
+        toast('أرفق صورة للتصنيف قبل الحفظ.');
         return;
       }
 
@@ -426,7 +427,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
           fetchData();
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'فشل إضافة التصنيف';
-          alert(msg);
+          toast(msg);
         }
       };
 
@@ -444,7 +445,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       await apiJson(`/api/equipment/categories/${id}`, { method: 'DELETE' });
       fetchData();
     } catch (err) {
-      alert('فشل حذف التصنيف');
+      toast('فشل حذف التصنيف');
     }
   };
 
@@ -473,7 +474,7 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
       }
       await fetchData();
     } catch (err) {
-      alert('فشل تحديث طلب تغيير كلمة المرور');
+      toast('فشل تحديث طلب تغيير كلمة المرور');
     }
   };
 
@@ -1612,16 +1613,16 @@ export default function AdminDashboard({ onBack }: { onBack?: () => void }) {
                         setPlatformInfo({ ...platformInfo, ...payload });
                         setTempInfo({ ...platformInfo, ...payload });
                         setEditingInfo(false);
-                        alert('تم حفظ التغييرات بنجاح');
+                        toast('تم حفظ التغييرات بنجاح');
                       } catch (err) {
                         const msg = err instanceof Error ? err.message : 'فشل حفظ التغييرات';
                         if (/انتهت الجلسة|Invalid token|Unauthorized/i.test(msg)) {
-                          alert('انتهت الجلسة. سجّل الدخول من جديد ثم أعد الحفظ.');
+                          toast('انتهت الجلسة. سجّل الدخول من جديد ثم أعد الحفظ.');
                           clearSession();
                           window.location.href = '/';
                           return;
                         }
-                        alert(msg || 'فشل حفظ التغييرات');
+                        toast(msg || 'فشل حفظ التغييرات');
                       }
                     }}
                     className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 transition-colors"

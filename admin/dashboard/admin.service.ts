@@ -1,4 +1,4 @@
-import { query } from '../../backend/database/connection';
+import { query, withTransaction } from '../../backend/database/connection';
 import { AdminDashboardData, AdminStats, MostRentedEquipment } from './admin.types';
 import { NotificationService } from '../../backend/modules/notifications/notification.service';
 import { PaymentService } from '../../backend/modules/payments/payment.service';
@@ -394,8 +394,53 @@ export class AdminService {
     );
   }
 
+  /**
+   * Soft-deactivate instead of hard DELETE (avoids FK breakage on bookings/payments/equipment).
+   * Cancels pending bookings, hides partner equipment, bans + unapproves, clears reset/push sessions.
+   */
   async deleteUser(id: string): Promise<void> {
-    await query('DELETE FROM users WHERE id = $1', [id]);
+    await withTransaction(async (client) => {
+      const found = await client.query(`SELECT id, role FROM users WHERE id = $1 FOR UPDATE`, [id]);
+      if (found.rows.length === 0) throw new Error('User not found');
+      const role = String(found.rows[0].role || '');
+
+      await client.query(
+        `UPDATE bookings SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP
+         WHERE status IN ('pending', 'confirmed')
+           AND (customer_id = $1 OR equipment_id IN (SELECT id FROM equipment WHERE owner_id = $1))`,
+        [id]
+      );
+
+      if (role === 'owner' || role === 'courier') {
+        await client.query(
+          `UPDATE equipment SET status = 'hidden', updated_at = CURRENT_TIMESTAMP WHERE owner_id = $1`,
+          [id]
+        );
+      }
+
+      await client.query(
+        `UPDATE password_reset_requests
+         SET status = 'rejected', admin_notes = COALESCE(admin_notes, 'user deactivated'),
+             reviewed_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND status = 'pending'`,
+        [id]
+      );
+
+      await client.query(`DELETE FROM push_subscriptions WHERE user_id = $1`, [id]);
+
+      await client.query(
+        `UPDATE users SET
+           is_approved = FALSE,
+           subscription_status = 'banned',
+           subscription_end_date = LEAST(COALESCE(subscription_end_date, NOW()), NOW()),
+           verification_token = NULL,
+           reset_password_token = NULL,
+           reset_password_expires = NULL,
+           updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [id]
+      );
+    });
   }
 
   async reviewPayment(

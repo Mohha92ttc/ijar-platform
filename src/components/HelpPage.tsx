@@ -2,6 +2,7 @@ import { motion } from 'motion/react';
 import { ArrowRight, Phone, Mail, MessageCircle, HelpCircle, Search, Book, Headphones, Send } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { apiJson, ApiError, getStoredUser, getToken } from '../lib/api';
+import { toast } from '../lib/toast';
 
 const faqData = [
   {
@@ -372,7 +373,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
                       onClick={async () => {
                         const reply = String(replyDrafts[t.id] || '').trim();
                         if (reply.length < 5) {
-                          alert('الرد قصير جداً');
+                          toast('الرد قصير جداً');
                           return;
                         }
                         setReplyBusy(t.id);
@@ -386,7 +387,7 @@ export default function HelpPage({ onBack }: { onBack: () => void }) {
                           );
                           setReplyDrafts((prev) => ({ ...prev, [t.id]: '' }));
                         } catch (e) {
-                          alert(e instanceof Error ? e.message : 'تعذر إرسال الرد');
+                          toast(e instanceof Error ? e.message : 'تعذر إرسال الرد');
                         } finally {
                           setReplyBusy(null);
                         }

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Truck, MapPin, Phone, Navigation, CheckCircle, Package, BarChart2, Home, RefreshCw, MessageCircle, LogOut, Route } from 'lucide-react';
 import { apiJson, apiLogout } from '../lib/api';
 import { googleMapsDirectionsUrl, googleMapsMultiStopUrl } from './MapPicker';
+import { toast } from '../lib/toast';
 
 type CourierBooking = {
   id: string;
@@ -129,7 +130,7 @@ export default function CourierDashboard({
       await load();
       if (tab === 'report') await loadReport();
     } catch (e: any) {
-      alert(e?.message || 'تعذر تحديث الحالة');
+      toast(e?.message || 'تعذر تحديث الحالة');
     }
   };
 
@@ -176,10 +177,10 @@ export default function CourierDashboard({
     }
     const phone = String(b.customer_phone || b.customer_user_phone || '').trim();
     if (leg === 'return' && phone) {
-      alert(`لا إحداثيات للزبون — اتصل به لتنسيق الاسترجاع: ${phone}`);
+      toast(`لا إحداثيات للزبون — اتصل به لتنسيق الاسترجاع: ${phone}`);
       return;
     }
-    alert('لا توجد إحداثيات لهذا الطلب — اطلب من الشريك تحديد موقع الاستلام والزبون موقع التوصيل');
+    toast('لا توجد إحداثيات لهذا الطلب — اطلب من الشريك تحديد موقع الاستلام والزبون موقع التوصيل');
   };
 
   const pendingStops = useMemo(
@@ -199,7 +200,7 @@ export default function CourierDashboard({
       pendingStops.map((b) => ({ lat: Number(b.delivery_lat), lng: Number(b.delivery_lng) }))
     );
     if (!url) {
-      alert('لا توجد نقاط توصيل مفتوحة بإحداثيات');
+      toast('لا توجد نقاط توصيل مفتوحة بإحداثيات');
       return;
     }
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -564,7 +565,7 @@ export default function CourierDashboard({
               disabled={passwordSaving}
               onClick={async () => {
                 if (passwordForm.next.length < 8) {
-                  alert('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
+                  toast('كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل');
                   return;
                 }
                 setPasswordSaving(true);
@@ -577,9 +578,9 @@ export default function CourierDashboard({
                     }),
                   });
                   setPasswordForm({ current: '', next: '' });
-                  alert('تم تحديث كلمة المرور');
+                  toast('تم تحديث كلمة المرور');
                 } catch (e: any) {
-                  alert(e?.message || 'تعذر تحديث كلمة المرور');
+                  toast(e?.message || 'تعذر تحديث كلمة المرور');
                 } finally {
                   setPasswordSaving(false);
                 }

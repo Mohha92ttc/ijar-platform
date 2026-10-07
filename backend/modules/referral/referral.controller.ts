@@ -1,6 +1,12 @@
 import { Request, Response } from 'express';
 import { query } from '../../database/connection';
 import { AuthenticatedRequest } from '../auth/auth.middleware';
+import { NotificationService } from '../../services/notification.service';
+
+const notifications = new NotificationService();
+
+const DEFAULT_REFERRER_REWARD = 5000;
+const DEFAULT_REFEREE_PERCENT = 5;
 
 function normalizeCode(raw: unknown): string {
   return String(raw || '')
@@ -14,10 +20,62 @@ function generateReferralCode(userId: string): string {
   return `REF${suffix}${rand}`.slice(0, 16);
 }
 
+function defaultProgram() {
+  return {
+    id: 'default',
+    name: 'برنامج الإحالة الافتراضي',
+    description:
+      'ادعُ صديقاً: يحصل على خصم ترحيبي 5%، وتحصل أنت على كود خصم بقيمة المكافأة عند تسجيله.',
+    reward_amount: DEFAULT_REFERRER_REWARD,
+    referee_percent: DEFAULT_REFEREE_PERCENT,
+    is_active: true,
+    status: 'active',
+    type: 'customer',
+  };
+}
+
+async function insertUniqueDiscountCode(params: {
+  code: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  maxUses?: number;
+}): Promise<string> {
+  let code = params.code;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const result = await query(
+        `
+        INSERT INTO discount_codes (
+          code, discount_type, discount_value, max_uses, min_order,
+          starts_at, ends_at, is_active
+        ) VALUES ($1, $2, $3, $4, 0, NOW(), NOW() + INTERVAL '90 days', true)
+        RETURNING code
+        `,
+        [
+          code,
+          params.discountType,
+          params.discountValue,
+          params.maxUses != null ? params.maxUses : 1,
+        ]
+      );
+      return String(result.rows[0].code);
+    } catch (error: any) {
+      if (error?.code === '23505') {
+        code = `${params.code}${Math.random().toString(36).slice(2, 4).toUpperCase()}`.slice(
+          0,
+          24
+        );
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('تعذر إنشاء كود خصم فريد');
+}
+
 /**
  * Apply referral on register (optional).
- * Call from auth.register when body.referral_code is present —
- * wiring may live in auth.service separately; this helper is the DB apply path.
+ * Creates WELCOME discount for new user + fixed IQD discount for referrer; notifies both.
  */
 export async function applyReferralOnRegister(
   referralCodeRaw: string,
@@ -33,7 +91,12 @@ export async function applyReferralOnRegister(
   if (result.rows.length === 0) {
     return { ok: false, message: 'كود الإحالة غير صالح' };
   }
-  const row = result.rows[0] as { id: string; user_id: string };
+  const row = result.rows[0] as {
+    id: string;
+    user_id: string;
+    code: string;
+    reward_amount?: number | string;
+  };
   if (String(row.user_id) === String(newUserId)) {
     return { ok: false, message: 'لا يمكن استخدام كود الإحالة الخاص بك' };
   }
@@ -42,6 +105,79 @@ export async function applyReferralOnRegister(
     `UPDATE referral_codes SET uses_count = COALESCE(uses_count, 0) + 1 WHERE id = $1`,
     [row.id]
   );
+
+  // Program defaults (optional row)
+  let rewardAmount = Number(row.reward_amount) || 0;
+  let refereePercent = DEFAULT_REFEREE_PERCENT;
+  try {
+    const prog = await query(
+      `SELECT reward_amount, referee_percent FROM referral_programs WHERE is_active = true ORDER BY created_at DESC LIMIT 1`
+    );
+    if (prog.rows[0]) {
+      if (!rewardAmount) rewardAmount = Number(prog.rows[0].reward_amount) || DEFAULT_REFERRER_REWARD;
+      refereePercent = Number(prog.rows[0].referee_percent) || DEFAULT_REFEREE_PERCENT;
+    }
+  } catch {
+    // table may be empty / missing on older DBs mid-migrate
+  }
+  if (!rewardAmount || !Number.isFinite(rewardAmount) || rewardAmount <= 0) {
+    rewardAmount = DEFAULT_REFERRER_REWARD;
+  }
+
+  const welcomeBase = `WELCOME-${normalizeCode(row.code)}`.slice(0, 20);
+  const referrerRewardCode = `REFREW-${String(row.user_id).replace(/-/g, '').slice(0, 6)}${Date.now().toString(36).slice(-4)}`
+    .toUpperCase()
+    .slice(0, 20);
+
+  let welcomeCode = welcomeBase;
+  let referrerCode = referrerRewardCode;
+
+  try {
+    welcomeCode = await insertUniqueDiscountCode({
+      code: welcomeBase,
+      discountType: 'percentage',
+      discountValue: refereePercent,
+      maxUses: 1,
+    });
+  } catch (e) {
+    console.warn('referral welcome code failed:', e instanceof Error ? e.message : e);
+  }
+
+  try {
+    referrerCode = await insertUniqueDiscountCode({
+      code: referrerRewardCode,
+      discountType: 'fixed',
+      discountValue: rewardAmount,
+      maxUses: 1,
+    });
+  } catch (e) {
+    console.warn('referral referrer code failed:', e instanceof Error ? e.message : e);
+  }
+
+  try {
+    await notifications.sendNotification({
+      userId: newUserId,
+      type: 'system',
+      title: 'مرحباً بك — خصم ترحيبي',
+      message: `شكراً لانضمامك عبر إحالة! كودك: ${welcomeCode} (${refereePercent}% لمرة واحدة)`,
+      data: { related_id: row.id },
+    });
+  } catch (e) {
+    console.warn('referral notify new user:', e instanceof Error ? e.message : e);
+  }
+
+  try {
+    await notifications.sendNotification({
+      userId: String(row.user_id),
+      type: 'system',
+      title: 'مكافأة إحالة',
+      message: `انضم مستخدم بكودك! كود مكافأتك: ${referrerCode} (${Number(rewardAmount).toLocaleString()} د.ع لمرة واحدة)`,
+      data: { related_id: row.id },
+    });
+  } catch (e) {
+    console.warn('referral notify referrer:', e instanceof Error ? e.message : e);
+  }
+
   return { ok: true };
 }
 
@@ -64,10 +200,10 @@ export const referralController = {
         result = await query(
           `
           INSERT INTO referral_codes (user_id, code, uses_count, reward_amount, is_active)
-          VALUES ($1, $2, 0, 0, true)
+          VALUES ($1, $2, 0, $3, true)
           RETURNING *
           `,
-          [userId, code]
+          [userId, code, DEFAULT_REFERRER_REWARD]
         );
       }
 
@@ -95,7 +231,8 @@ export const referralController = {
 
       const custom = normalizeCode(req.body?.code);
       const code = custom || generateReferralCode(userId);
-      const rewardAmount = Number(req.body?.reward_amount ?? 0) || 0;
+      const rewardAmount =
+        Number(req.body?.reward_amount ?? DEFAULT_REFERRER_REWARD) || DEFAULT_REFERRER_REWARD;
 
       const result = await query(
         `
@@ -171,6 +308,19 @@ export const referralController = {
         return res.status(400).json({ error: 'لا يمكن استخدام كود الإحالة الخاص بك' });
       }
 
+      if (userId) {
+        const applied = await applyReferralOnRegister(code, String(userId));
+        if (!applied.ok) {
+          return res.status(400).json({ error: applied.message || 'فشل تطبيق الإحالة' });
+        }
+        return res.json({
+          success: true,
+          referralCode: row.code,
+          reward_amount: Number(row.reward_amount || DEFAULT_REFERRER_REWARD),
+          userId,
+        });
+      }
+
       await query(
         `UPDATE referral_codes SET uses_count = COALESCE(uses_count, 0) + 1 WHERE id = $1`,
         [row.id]
@@ -188,25 +338,138 @@ export const referralController = {
     }
   },
 
-  // Program / analytics stubs for existing routes
-  async createReferralProgram(_req: Request, res: Response) {
-    res.status(501).json({ error: 'برامج الإحالة المتقدمة غير مفعّلة؛ استخدم أكواد الإحالة' });
+  async createReferralProgram(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'للإدارة فقط' });
+      }
+      const name = String(req.body?.name || 'برنامج إحالة').trim();
+      const description = String(req.body?.description || '').trim();
+      const rewardAmount =
+        Number(req.body?.reward_amount ?? DEFAULT_REFERRER_REWARD) || DEFAULT_REFERRER_REWARD;
+      const refereePercent =
+        Number(req.body?.referee_percent ?? DEFAULT_REFEREE_PERCENT) || DEFAULT_REFEREE_PERCENT;
+
+      const result = await query(
+        `
+        INSERT INTO referral_programs (name, description, reward_amount, referee_percent, is_active)
+        VALUES ($1, $2, $3, $4, true)
+        RETURNING *
+        `,
+        [name, description, rewardAmount, refereePercent]
+      );
+      res.status(201).json(result.rows[0]);
+    } catch (error) {
+      console.error('createReferralProgram', error);
+      res.status(500).json({ error: 'فشل إنشاء برنامج الإحالة' });
+    }
   },
+
   async getReferralPrograms(_req: Request, res: Response) {
-    res.json([]);
+    try {
+      const result = await query(
+        `SELECT * FROM referral_programs WHERE is_active = true ORDER BY created_at DESC`
+      );
+      if (result.rows.length === 0) {
+        return res.json([defaultProgram()]);
+      }
+      res.json(
+        result.rows.map((r) => ({
+          ...r,
+          status: r.is_active ? 'active' : 'inactive',
+          type: 'customer',
+        }))
+      );
+    } catch (error) {
+      console.error('getReferralPrograms', error);
+      res.json([defaultProgram()]);
+    }
   },
-  async getReferralProgram(_req: Request, res: Response) {
-    res.status(404).json({ error: 'البرنامج غير موجود' });
+
+  async getReferralProgram(req: Request, res: Response) {
+    try {
+      if (req.params.id === 'default') {
+        return res.json(defaultProgram());
+      }
+      const result = await query(`SELECT * FROM referral_programs WHERE id = $1 LIMIT 1`, [
+        req.params.id,
+      ]);
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'البرنامج غير موجود' });
+      }
+      const r = result.rows[0];
+      res.json({
+        ...r,
+        status: r.is_active ? 'active' : 'inactive',
+        type: 'customer',
+      });
+    } catch (error) {
+      console.error('getReferralProgram', error);
+      res.status(500).json({ error: 'فشل جلب البرنامج' });
+    }
   },
-  async updateReferralProgram(_req: Request, res: Response) {
-    res.status(501).json({ error: 'برامج الإحالة المتقدمة غير مفعّلة' });
+
+  async updateReferralProgram(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'للإدارة فقط' });
+      }
+      const name = req.body?.name != null ? String(req.body.name).trim() : null;
+      const description =
+        req.body?.description != null ? String(req.body.description).trim() : null;
+      const rewardAmount =
+        req.body?.reward_amount != null ? Number(req.body.reward_amount) : null;
+      const refereePercent =
+        req.body?.referee_percent != null ? Number(req.body.referee_percent) : null;
+      const isActive =
+        req.body?.is_active != null ? Boolean(req.body.is_active) : null;
+
+      const result = await query(
+        `
+        UPDATE referral_programs SET
+          name = COALESCE($2, name),
+          description = COALESCE($3, description),
+          reward_amount = COALESCE($4, reward_amount),
+          referee_percent = COALESCE($5, referee_percent),
+          is_active = COALESCE($6, is_active)
+        WHERE id = $1
+        RETURNING *
+        `,
+        [req.params.id, name, description, rewardAmount, refereePercent, isActive]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'البرنامج غير موجود' });
+      }
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('updateReferralProgram', error);
+      res.status(500).json({ error: 'فشل تحديث البرنامج' });
+    }
   },
-  async deleteReferralProgram(_req: Request, res: Response) {
-    res.status(501).json({ error: 'برامج الإحالة المتقدمة غير مفعّلة' });
+
+  async deleteReferralProgram(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (req.user?.role !== 'admin') {
+        return res.status(403).json({ error: 'للإدارة فقط' });
+      }
+      const result = await query(
+        `UPDATE referral_programs SET is_active = false WHERE id = $1 RETURNING *`,
+        [req.params.id]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'البرنامج غير موجود' });
+      }
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('deleteReferralProgram', error);
+      res.status(500).json({ error: 'فشل حذف البرنامج' });
+    }
   },
+
   async getReferralTransactions(_req: Request, res: Response) {
     res.json([]);
   },
+
   async getUserReferralTransactions(req: Request, res: Response) {
     try {
       const { userId } = req.params;
@@ -220,6 +483,7 @@ export const referralController = {
       res.status(500).json({ error: 'فشل جلب بيانات الإحالة' });
     }
   },
+
   async getPersonalizedRecommendations(_req: Request, res: Response) {
     res.json({ referrals: [], userProfile: {} });
   },
